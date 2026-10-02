@@ -596,7 +596,7 @@ function ServingModeSection({ providers, activeId, chains, busy, onSelectSingle,
                   aria-pressed={picked}
                 >
                   <span className="pv-serving-option-name">{p.name}</span>
-                  <span className="pv-serving-option-meta">{picked ? "Serving" : "Enable"}</span>
+                  <span className={`pv-serving-option-meta${picked ? " serving" : ""}`}>{picked ? "Serving" : "Enable"}</span>
                 </button>
               );
             })}

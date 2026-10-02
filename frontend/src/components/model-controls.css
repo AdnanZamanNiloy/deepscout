@@ -7,8 +7,8 @@
 .pv-view{max-width:1040px;background:var(--side);border:1px solid var(--line-soft);border-radius:var(--r-md);padding:18px 20px}
 .pv-view-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap}
 .pv-summary{display:flex;gap:10px;flex:none}
-.pv-summary-item{display:flex;flex-direction:column;gap:2px;padding:8px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel);min-width:132px}
-.pv-summary-item.on{border-color:color-mix(in srgb,var(--mars) 50%,transparent);background:var(--mars-wash)}
+.pv-summary-item{display:flex;align-items:baseline;gap:8px;padding:6px 13px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.pv-summary-item.on{border-color:color-mix(in srgb,var(--probe-ok) 40%,transparent);background:var(--green-wash)}
 .pv-summary-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:650;color:var(--t4)}
 .pv-summary-value{font-size:13px;font-weight:650;color:var(--t1)}
 .pv-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-top:18px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
@@ -27,6 +27,20 @@
 .pv-panel-head p{margin:3px 0 0;font-size:12px;color:var(--t3);line-height:1.55;max-width:72ch}
 .pv-head-aside{flex:none;padding-top:1px}
 .pv-section-body{padding:18px}
+
+/* Add-model: fit a single screen. The form is only six short controls, so the
+   scroll came from generous vertical rhythm (hints, gaps, panel head), not
+   from real content. Tightening the rhythm keeps every field reachable without
+   a scrollbar; nothing is hidden. */
+#pv-panel-add .pv-section-body{padding:14px 16px 16px}
+#pv-panel-add .pv-field-grid{gap:10px 14px}
+#pv-panel-add .pv-field{gap:4px}
+#pv-panel-add .pv-field input{padding:7px 10px;font-size:12.5px}
+#pv-panel-add .pv-field .pv-hint{font-size:10.5px;line-height:1.4}
+#pv-panel-add .pv-presets{margin-top:1px;gap:5px}
+#pv-panel-add .pv-preset{padding:4px 9px;font-size:11px}
+#pv-panel-add .pv-form-actions{margin-top:12px}
+#pv-panel-add .pv-panel-head{padding:11px 16px}
 .pv-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:620;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--t3);background:var(--panel);white-space:nowrap}
 .pv-chip.tone-muted{color:var(--t3)}
 .pv-chip.tone-good{color:var(--mars);border-color:color-mix(in srgb,var(--mars) 40%,transparent);background:var(--mars-wash)}
@@ -51,7 +65,7 @@
 .pv-empty svg{flex:none;color:var(--t4)}
 .pv-empty p{margin:0;font-size:12.5px}
 .pv-status{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:640;padding:2px 8px 2px 7px;border-radius:999px;border:1px solid var(--line);color:var(--t3);background:var(--panel);white-space:nowrap}
-.pv-status.tone-good{color:var(--mars);border-color:color-mix(in srgb,var(--mars) 40%,transparent);background:var(--mars-wash)}
+.pv-status.tone-good{color:var(--probe-ok);border-color:color-mix(in srgb,var(--probe-ok) 40%,transparent);background:var(--green-wash)}
 .pv-status.tone-bad{color:var(--red);border-color:color-mix(in srgb,var(--red) 40%,transparent);background:var(--red-wash)}
 .pv-status-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
 .pv-status-dot.spin{animation:pv-pulse 1s ease-in-out infinite}
@@ -101,12 +115,12 @@
 .pv-picker-model{font-size:11px;color:var(--t4);font-family:var(--mono)}
 .pv-serving-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .pv-serving-card{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:15px;transition:border-color .15s ease,background .15s ease}
-.pv-serving-card.active{border-color:color-mix(in srgb,var(--mars) 55%,transparent);background:var(--mars-wash)}
+.pv-serving-card.active{border-color:color-mix(in srgb,var(--probe-ok) 45%,transparent)}
 .pv-serving-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
 .pv-serving-title{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:680;color:var(--t1)}
 .pv-radio{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--line-hover);display:grid;place-items:center;flex:none}
-.pv-serving-card.active .pv-radio{border-color:var(--mars)}
-.pv-radio-dot{width:8px;height:8px;border-radius:50%;background:var(--mars)}
+.pv-serving-card.active .pv-radio{border-color:var(--probe-ok)}
+.pv-radio-dot{width:8px;height:8px;border-radius:50%;background:var(--probe-ok)}
 .pv-serving-desc{font-size:12px;color:var(--t3);margin:0 0 12px;line-height:1.55}
 .pv-serving-picker{display:flex;flex-direction:column;gap:7px}
 .pv-serving-option{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--t2);cursor:pointer;font-size:12.5px;text-align:left;transition:border-color .13s ease,color .13s ease,background .13s ease}
@@ -115,6 +129,7 @@
 .pv-serving-option:disabled{opacity:.55;cursor:not-allowed}
 .pv-serving-option-name{font-weight:620;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pv-serving-option-meta{flex:none;font-size:11px;color:var(--t3)}
+.pv-serving-option-meta.serving{color:var(--probe-ok);font-weight:640}
 .pv-serving-foot{margin-top:13px}
 .pv-hint{font-size:11.5px;color:var(--t4)}
 .pv-field-grid,.pv-serving-grid{grid-template-columns:1fr}
@@ -151,14 +166,14 @@
 .pv-model-label{margin:0;font-size:12px;color:var(--t3)}
 .pv-model-meta{margin:0;display:flex;flex-direction:column;gap:4px}
 .pv-model-meta div{display:flex;gap:8px;min-width:0}
-.pv-model-meta dt{flex:none;width:62px;font-size:11px;color:var(--t4)}
+.pv-model-meta dt{flex:none;width:74px;font-size:11px;color:var(--t4);white-space:nowrap}
 .pv-model-meta dd{margin:0;min-width:0;font-size:11.5px;color:var(--t2);overflow:hidden;text-overflow:ellipsis}
 .pv-model-meta code {font-family:var(--mono);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%}
 .pv-muted{color:var(--t4)}
 .pv-muted-note{color:var(--t3)}
 /* Reserved, fixed-height result slot: a one-line success or a multi-line
    ConnectError never changes card height or the grid shape. */
-.pv-probe{margin:0;height:26px;overflow:hidden;display:flex;align-items:center;font-size:11.5px;line-height:1.3;border-radius:var(--r-xs)}
+.pv-probe{margin:0;min-height:26px;max-height:44px;overflow:hidden;display:flex;align-items:flex-start;font-size:11.5px;line-height:1.35;border-radius:var(--r-xs);overflow-wrap:anywhere;word-break:break-word;padding-top:2px}
 .pv-probe.probe-ok{color:var(--probe-ok)}
 .pv-probe.probe-bad{color:var(--red)}
 .pv-probe.probe-testing{color:var(--t3)}
