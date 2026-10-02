@@ -704,7 +704,7 @@ select:focus-visible {
   .skip-link,
   .scroll-top-btn,
   .landing-nav,
-  .landing-foot { display: none !important; }
+  .landing-footer { display: none !important; }
 
   html, body, #root, .shell, .workspace, .thread {
     height: auto !important;
