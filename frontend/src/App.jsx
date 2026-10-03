@@ -17,7 +17,7 @@ import AgentsView from "./components/AgentsView";
 import ModelControlsView from "./components/ModelControlsView";
 import Landing from "./components/Landing";
 import DocsView from "./components/DocsView";
-import { IconChevronDown, IconChevronLeft, IconDoc, IconFolder, IconLayers, IconMenu, IconPencil, IconPin, IconSpark, IconTrash } from "./components/icons";
+import { IconChevronDown, IconChevronLeft, IconDoc, IconFolder, IconLayers, IconMenu, IconPencil, IconPin, IconTrash } from "./components/icons";
 
 let seq = 1;
 const nid = () => `m${Date.now()}-${seq++}`;
@@ -1313,18 +1313,12 @@ function PageTitle({ title, mission, view, onNavigate, showLibrary, onRename, on
   );
 }
 
-const EXAMPLES = [
-  { q: "Compare the commercial viability of solid-state and sodium-ion grid storage in 2025", mode: "deep" },
-  { q: "What regulatory changes affected EU AI model providers in the past 18 months?", mode: "audit" },
-  { q: "Should a mid-size logistics firm replace its diesel fleet with electric now, or wait?", mode: "executive" },
-  { q: "Stress-test the claim that remote work reduces per-employee productivity", mode: "redteam" },
-];
-
-/* The first screen is the working tool, not a brochure. One line of
- * orientation sits above the composer, and the capability paragraph is
- * replaced by example questions that launch a real run — the old paragraph
- * described the product inside the product; this demonstrates it. */
-function WelcomeHero({ composer, onSubmit }) {
+/* The first screen is the working tool, not a brochure: the question box IS
+ * the interface. The example grid and the capability facts strip that used to
+ * sit under the composer were removed — four cards and a row of marketing
+ * claims pushed the actual input below the fold on a laptop, and the composer
+ * alone says what the tool is for. */
+function WelcomeHero({ composer }) {
   return (
     <div className="welcome anim-rise">
       <h1>What should <span className="welcome-accent">MARS</span> investigate?</h1>
@@ -1333,30 +1327,6 @@ function WelcomeHero({ composer, onSubmit }) {
         synthesize. Every claim in the final report stays tied to the source that produced it.
       </p>
       {composer ? <div className="welcome-composer">{composer}</div> : null}
-
-      <div className="welcome-label">Or start from an example</div>
-      <div className="example-grid">
-        {EXAMPLES.map((ex) => (
-          <button
-            key={ex.q}
-            type="button"
-            className="example-btn"
-            onClick={() => onSubmit?.(ex.q)}
-          >
-            <IconSpark size={14} />
-            <span>
-              {ex.q}
-              <span className="ex-mode">{MODE_META[ex.mode]?.label || ex.mode} mode</span>
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <div className="welcome-facts">
-        <span>6 research modes</span>
-        <span>Bring your own OpenAI-compatible key</span>
-        <span>Cited, verifiable reports</span>
-      </div>
     </div>
   );
 }
