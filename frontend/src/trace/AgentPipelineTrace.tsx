@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -473,8 +474,23 @@ export default function AgentPipelineTrace({
   className,
 }: AgentPipelineTraceProps) {
   const [expanded, setExpanded] = useState(defaultOpen);
+  const wasLive = useRef(status === "running");
   const [openOverride, setOpenOverride] = useState<Record<string, boolean>>({});
   const reduce = useReducedMotion();
+
+  // Open automatically the moment a run starts streaming.
+  //
+  // `defaultOpen` cannot express this: the trace mounts with its message,
+  // before any frame arrives, so the run is still idle and a prop change never
+  // reaches a useState initialiser. Watching the idle -> running edge is the
+  // only place the transition is observable.
+  //
+  // Deliberately NOT applied to a restored session — replaying a finished run
+  // should not unroll a long trace into the thread unasked.
+  useEffect(() => {
+    if (status === "running" && !wasLive.current) setExpanded(true);
+    wasLive.current = status === "running";
+  }, [status]);
 
   const all = useMemo(() => buildTrace(events), [events]);
   const steps = useMemo(() => all.slice(-maxSteps), [all, maxSteps]);
