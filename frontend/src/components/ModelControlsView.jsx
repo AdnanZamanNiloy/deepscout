@@ -234,7 +234,7 @@ function AddModelSection({ editing, onSaved, onCancel }) {
 /* ---- 2. Available models ------------------------------------------------ */
 function StatusPill({ probe, isActive, inChain }) {
   if (isActive) {
-    return <span className="pv-status tone-good"><span className="pv-status-dot" />Serving</span>;
+    return <span className="pv-status tone-active"><span className="pv-status-dot" />Serving</span>;
   }
   if (probe?.state === "testing") {
     return <span className="pv-status tone-muted"><span className="pv-status-dot spin" />Testing…</span>;
@@ -441,7 +441,7 @@ function ChainsSection({ providers, chains, loading, busy, onError, onReload }) 
                     <span className="pv-chain-title">
                       <h4>{chain.name}</h4>
                       {chain.is_enabled
-                        ? <span className="pv-status tone-good"><span className="pv-status-dot" />Serving</span>
+                        ? <span className="pv-status tone-active"><span className="pv-status-dot" />Serving</span>
                         : <span className="pv-chip tone-muted">{members.length} model{members.length === 1 ? "" : "s"}</span>}
                     </span>
                     <span className="pv-chain-actions">
@@ -564,7 +564,7 @@ function ServingModeSection({ providers, activeId, chains, busy, onSelectSingle,
       desc="Choose exactly one: a single model, or one fallback chain. Selecting one automatically disables the other."
       aside={mode === "default"
         ? <span className="pv-chip tone-muted">Env default</span>
-        : <span className="pv-chip tone-good">Active</span>}
+        : <span className="pv-chip tone-active">Active</span>}
     >
       <div className="pv-serving-grid" role="radiogroup" aria-label="Serving mode">
         <div className={`pv-serving-card${mode === "single" ? " active" : ""}`} role="radio" aria-checked={mode === "single"} tabIndex={-1}>
