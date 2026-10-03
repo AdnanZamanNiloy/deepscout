@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { lastActiveLabel } from "../lib";
 import {
-  IconAgents, IconCompass, IconMissions, IconMore, IconPencil, IconPin,
-  IconPlus, IconTrash,
+  IconAgents, IconCompass, IconDoc, IconLayers, IconMissions, IconMore,
+  IconPencil, IconPin, IconPlus, IconTrash,
 } from "./icons";
 import ThemeToggle from "./ThemeToggle";
 
@@ -18,6 +18,11 @@ const NAV = [
   { id: "missions", label: "Research", icon: IconMissions },
   { id: "model-controls", label: "Model Controls", icon: IconCompass },
   { id: "agents", label: "Agents", icon: IconAgents },
+  /* These two used to live only behind the title-bar "Library" dropdown.
+     Removing that dropdown without moving them would have left the pages with
+     no route in at all, so they are first-class nav entries now. */
+  { id: "evidence", label: "Evidence", icon: IconLayers },
+  { id: "knowledge", label: "Knowledge", icon: IconDoc },
 ];
 
 export const STATUS_DOT = {

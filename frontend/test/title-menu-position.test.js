@@ -48,7 +48,7 @@ test(".title-menu has a z-index so it paints above the header", () => {
 test(".title-menu stays inside the header for short titles (left-anchored)", () => {
   // Left-anchored to the wrap (which begins at the header's left padding), so
   // a short title's menu cannot extend left past the header into the sidebar.
-  const body = ruleBody(".title-menu:not(.library-menu)");
+  const body = ruleBody(".title-menu");
   assert.match(body, /left\s*:\s*0/, "title menu must left-anchor to stay in the header");
   assert.match(body, /right\s*:\s*auto/, "title menu must not right-anchor past the header edge");
 });
@@ -61,11 +61,21 @@ test(".title-menu-wrap is a positioned anchor that claims free space", () => {
   assert.match(body, /flex\s*:\s*1\s+1\s+auto/, "wrap must grow to give the title room");
 });
 
-test(".library-btn and .library-menu are styled and positioned", () => {
-  assert.ok(ruleBody(".library-btn").length > 0, ".library-btn must have styling");
-  const menu = ruleBody(".library-menu");
-  assert.match(menu, /left\s*:\s*auto/, "Library menu anchors to the right to avoid overflow");
-  assert.match(menu, /right\s*:\s*0/);
+test("the Library dropdown is gone from the title bar", () => {
+  // It was removed; Evidence and Knowledge moved into the sidebar nav so those
+  // views kept a route in. This guards against the chrome creeping back.
+  const css = readFileSync(new URL("../src/layout.css", import.meta.url), "utf8");
+  assert.doesNotMatch(css, /\.library-btn/, "no library button styling should remain");
+  assert.doesNotMatch(css, /\.library-menu/, "no library menu styling should remain");
+
+  const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(app, /LibraryMenu/, "the component should be gone");
+  assert.doesNotMatch(app, /showLibrary/, "and its prop with it");
+
+  // ...and the views it used to own are still reachable.
+  const sidebar = readFileSync(new URL("../src/components/Sidebar.jsx", import.meta.url), "utf8");
+  assert.match(sidebar, /id: "evidence"/, "Evidence must remain navigable");
+  assert.match(sidebar, /id: "knowledge"/, "Knowledge must remain navigable");
 });
 
 test(".page-title-bar is the relative anchor for the header", () => {

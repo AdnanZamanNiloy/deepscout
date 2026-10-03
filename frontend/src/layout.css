@@ -240,12 +240,12 @@
    wrap begins at the header's left padding, so a left anchor keeps the menu
    inside the header for every title length. (Right-anchoring made a short
    title's menu extend leftward past the header and overlap the sidebar.) */
-.title-menu:not(.library-menu) {
+.title-menu {
   left: 0;
   right: auto;
 }
 
-/* Anchor for the title/Library dropdowns. position: relative gives the
+/* Anchor for the title/mission menu. position: relative gives the
    absolutely-positioned menu a containing block. flex: 1 1 auto lets the
    title claim the bar's free space so a short title is never clipped; the
    text itself still ellipsizes only when it is genuinely too long. */
@@ -256,36 +256,6 @@
   flex: 1 1 auto;
   min-width: 0;
 }
-.library-menu-wrap { flex: none; }
-
-.library-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 5px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--t2);
-  font-size: 13px;
-  font-weight: 550;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-.library-btn:hover,
-.library-btn.active {
-  background: var(--menu-hover);
-  color: var(--t1);
-  border-color: var(--line);
-}
-.library-btn .nav-chev { transition: transform 0.15s ease; }
-.library-btn .nav-chev.open { transform: rotate(180deg); }
-/* The Library dropdown is anchored to the right edge of its wrap: the
-   button sits at the far right of the title bar, so a left-anchored menu
-   would overflow the viewport. */
-.library-menu { left: auto; right: 0; }
 .mission-menu-item,
 .title-menu-item {
   display: flex;
