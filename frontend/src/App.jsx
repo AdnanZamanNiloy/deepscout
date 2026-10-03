@@ -1110,8 +1110,10 @@ function ThreadMessage({
   // Reading it here referenced an undefined binding and blew up the whole
   // message list. message.run is the right source at this scope.
   const traceRun = message.kind === "run" ? message.run : null;
-  const [keyStepsOnly, setKeyStepsOnly] = useState(false);
-  const traceStatus = traceRun?.error
+  // An aborted run has done=false and no error, so it used to fall through to
+  // "running" — the header timer then counted up forever after the user had
+  // already stopped the run. Aborted is terminal.
+  const traceStatus = traceRun?.error || traceRun?.aborted
     ? "error"
     : traceRun?.done
       ? "done"
@@ -1148,8 +1150,6 @@ function ThreadMessage({
           events={traceEvents}
           status={traceStatus}
           defaultOpen={false}
-          keyStepsOnly={keyStepsOnly}
-          onKeyStepsOnlyChange={setKeyStepsOnly}
         />
         {run.aborted && !run.done ? (
           <div className="error-box" style={{ borderColor: "var(--line)", background: "var(--card)" }}>
@@ -1190,8 +1190,6 @@ function ThreadMessage({
           events={traceEvents}
           status={traceStatus}
           defaultOpen={false}
-          keyStepsOnly={keyStepsOnly}
-          onKeyStepsOnlyChange={setKeyStepsOnly}
         />
         {trace.final_report ? (
           <ReplayAnswerCard trace={trace} />

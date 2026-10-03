@@ -11,7 +11,6 @@ import {
 
 import {
   buildTrace,
-  summarize,
   type StepKind,
   type StepStatus,
   type TraceChip,
@@ -28,9 +27,6 @@ export type AgentPipelineTraceProps = {
   status?: "idle" | "running" | "done" | "error";
   /** Start collapsed. */
   defaultOpen?: boolean;
-  /** Hide intermediate reasoning, keeping only milestones. */
-  keyStepsOnly?: boolean;
-  onKeyStepsOnlyChange?: (on: boolean) => void;
   /** Render prop for a step body that needs richer content. */
   renderContent?: (step: TraceStep) => ReactNode;
   /** Cap on rendered rows; older ones collapse into a count. */
@@ -454,8 +450,6 @@ export default function AgentPipelineTrace({
   events,
   status = "idle",
   defaultOpen = true,
-  keyStepsOnly = false,
-  onKeyStepsOnlyChange,
   renderContent,
   maxSteps = 100,
   className,
@@ -467,12 +461,8 @@ export default function AgentPipelineTrace({
   const pinnedRef = useRef(true);
 
   const all = useMemo(() => buildTrace(events), [events]);
-  const filtered = useMemo(
-    () => (keyStepsOnly ? summarize(all) : all),
-    [all, keyStepsOnly],
-  );
-  const steps = useMemo(() => filtered.slice(-maxSteps), [filtered, maxSteps]);
-  const hidden = filtered.length - steps.length;
+  const steps = useMemo(() => all.slice(-maxSteps), [all, maxSteps]);
+  const hidden = all.length - steps.length;
 
   // Open-ness is DERIVED during render rather than seeded by an effect. An
   // effect only runs in the browser, so server-rendered and first-paint markup
@@ -534,30 +524,18 @@ export default function AgentPipelineTrace({
           <span>Less steps</span>
         </button>
 
+        {/* Elapsed time only. The LIVE badge and the "Key steps" control were
+            both removed from this header: a live run already animates and the
+            duration counts up on its own, so the badge was redundant, and the
+            milestone filter was one more control competing with the text. */}
         <div className="apt-head-right">
-          {running ? <span className="apt-live">live</span> : null}
-          {/* Elapsed time replaced the raw step count: "Worked for 2m 41s"
-              answers "how long did this take", which is what a reader opening
-              a finished run wants. The count is not lost — it stays in the
-              tooltip for anyone who does want it. */}
           {elapsedMs !== null ? (
             <span
               className="apt-count"
-              title={`${filtered.length} step${filtered.length === 1 ? "" : "s"}`}
+              title={`${all.length} step${all.length === 1 ? "" : "s"}`}
             >
               Worked for {formatDuration(elapsedMs)}
             </span>
-          ) : null}
-          {onKeyStepsOnlyChange ? (
-            <button
-              type="button"
-              className="apt-keytoggle"
-              onClick={() => onKeyStepsOnlyChange(!keyStepsOnly)}
-              aria-pressed={keyStepsOnly}
-              title="Hide intermediate reasoning and keep only milestones"
-            >
-              Key steps
-            </button>
           ) : null}
         </div>
       </header>
