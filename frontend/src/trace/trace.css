@@ -1,0 +1,310 @@
+/* ===========================================================================
+   Agent Pipeline Trace
+   Dark-first, themed entirely through CSS variables so it can be dropped into
+   either theme. Reduced-motion honoured; layout is stable (no reflow when a
+   step expands — the animation animates height/opacity only).
+   =========================================================================== */
+
+.apt {
+  --apt-bg: var(--card, #111113);
+  --apt-fg: var(--t1, #e9e9ec);
+  --apt-dim: var(--t3, #8b8b94);
+  --apt-line: var(--line, #26262c);
+  --apt-run: #34d399;
+  --apt-run-soft: rgba(52, 211, 153, 0.14);
+  --apt-wait: #8b7cf6;
+  --apt-wait-soft: rgba(139, 124, 246, 0.14);
+  --apt-err: #f87171;
+  --apt-err-soft: rgba(248, 113, 113, 0.13);
+  --apt-radius: 10px;
+
+  margin: 8px 0 4px;
+  background: var(--apt-bg);
+  color: var(--apt-fg);
+  border: 1px solid var(--apt-line);
+  border-radius: var(--apt-radius);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.02) inset,
+    0 8px 24px -16px rgba(0, 0, 0, 0.8);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow: hidden;
+  /* Keep the trace from stretching the page: it scrolls internally. */
+  contain: content;
+}
+
+.apt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid transparent;
+}
+
+.apt-body { overflow: hidden; }
+.apt:not([data-status="idle"]) .apt-head { border-bottom-color: var(--apt-line); }
+
+.apt-toggle,
+.apt-minor-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  border: 0;
+  color: var(--apt-fg);
+  font: inherit;
+  font-weight: 550;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.apt-minor-toggle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--apt-dim);
+  letter-spacing: 0.02em;
+}
+.apt-toggle:hover .apt-caret { color: var(--apt-run); }
+.apt-toggle:focus-visible,
+.apt-minor-toggle:focus-visible,
+.apt-step-title:focus-visible,
+.apt-chip:focus-visible {
+  outline: 2px solid var(--apt-run);
+  outline-offset: 2px;
+}
+
+.apt-caret {
+  width: 9px; height: 9px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translate(-1px, -1px);
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  color: var(--apt-dim);
+}
+.apt-caret[data-open="true"] { transform: rotate(-135deg) translate(-2px, -2px); }
+
+.apt-live {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--apt-run);
+  background: var(--apt-run-soft);
+  border-radius: 999px;
+  padding: 1px 6px;
+  animation: apt-pulse 1.8s ease-in-out infinite;
+}
+
+.apt-head-right { display: flex; align-items: center; gap: 10px; }
+.apt-count { font-size: 11px; color: var(--apt-dim); font-variant-numeric: tabular-nums; }
+.apt-minor-toggle[aria-pressed="true"] { color: var(--apt-run); }
+
+.apt-body { max-height: 520px; overflow-y: auto; padding: 2px 10px 10px; }
+.apt-empty,
+.apt-hidden-note {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  color: var(--apt-dim);
+}
+.apt-hidden-note { font-style: italic; }
+
+/* --- the rail ------------------------------------------------------------ */
+
+.apt-steps,
+.apt-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.apt-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 0 6px;
+  padding: 1px 0;
+}
+
+.apt-step-rail { position: relative; display: flex; justify-content: center; }
+/* the connecting thread */
+.apt-step-rail::before {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, var(--apt-line) 12%, var(--apt-line) 88%, transparent);
+}
+.apt-step:first-child .apt-step-rail::before { top: 9px; }
+.apt-step:last-child .apt-step-rail::before { bottom: calc(100% - 9px); }
+
+.apt-dot {
+  position: relative;
+  margin-top: 5px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--apt-run);
+  box-shadow: 0 0 0 3px var(--apt-run-soft);
+  flex: none;
+}
+
+.apt-step-running .apt-dot {
+  background: var(--apt-run);
+  animation: apt-glow 1.4s ease-in-out infinite;
+}
+.apt-step-error .apt-dot { background: var(--apt-err); box-shadow: 0 0 0 3px var(--apt-err-soft); }
+.apt-step[data-kind="gate"] .apt-dot { background: var(--apt-wait); box-shadow: 0 0 0 3px var(--apt-wait-soft); }
+.apt-step[data-kind="final"] .apt-dot { background: var(--apt-run); box-shadow: 0 0 0 4px var(--apt-run-soft); }
+
+/* --- step body ----------------------------------------------------------- */
+
+.apt-step-main { min-width: 0; padding: 1px 0 5px; }
+
+.apt-step-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.apt-kind {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--apt-dim);
+}
+.apt-kind[data-kind="tool"] { color: var(--apt-run); }
+.apt-kind[data-kind="gate"] { color: var(--apt-wait); }
+.apt-kind[data-kind="final"] { color: var(--apt-run); }
+.apt-kind[data-kind="evidence"] { color: #7dd3fc; }
+
+.apt-step-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--apt-fg);
+  font: inherit;
+  font-weight: 550;
+  cursor: default;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+button.apt-step-title { cursor: pointer; }
+button.apt-step-title:hover { color: var(--apt-run); }
+
+.apt-step-error .apt-step-title { color: var(--apt-err); }
+
+.apt-time {
+  flex: none;
+  font-size: 11px;
+  color: var(--apt-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.apt-step-body { min-width: 0; }
+.apt-step-body p {
+  margin: 2px 0 0;
+  color: var(--apt-dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.apt-step-error {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--apt-err);
+}
+
+/* nested steps */
+.apt-children {
+  margin: 6px 0 2px 4px;
+  padding-left: 10px;
+  border-left: 1px solid var(--apt-line);
+}
+.apt-children .apt-step-body p { font-size: 12px; }
+
+/* --- chips --------------------------------------------------------------- */
+
+.apt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 6px 0 2px;
+  overflow: hidden;
+}
+
+.apt-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 320px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--apt-line);
+  background: color-mix(in srgb, var(--apt-fg) 5%, transparent);
+  color: var(--apt-fg);
+  font-size: 11.5px;
+  line-height: 1.5;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+a.apt-chip:hover {
+  transform: translateY(-1px) scale(1.015);
+  border-color: color-mix(in srgb, var(--apt-run) 45%, var(--apt-line));
+  box-shadow: 0 0 0 3px var(--apt-run-soft);
+}
+
+/* --- motion -------------------------------------------------------------- */
+
+@keyframes apt-glow {
+  0%, 100% { box-shadow: 0 0 0 3px var(--apt-run-soft); }
+  50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--apt-run) 22%, transparent); }
+}
+@keyframes apt-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
+/* --- responsive ---------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .apt-body { max-height: 60vh; }
+  .apt-step { grid-template-columns: 14px 1fr; }
+  .apt-step-head { flex-wrap: wrap; row-gap: 2px; }
+  .apt-step-title { white-space: normal; }
+  .apt-chip { max-width: 100%; }
+}
+
+/* Light theme: swap the tokens, keep every rule. */
+:root[data-theme="light"] .apt {
+  --apt-bg: #ffffff;
+  --apt-fg: #14141a;
+  --apt-dim: #5f6470;
+  --apt-line: #e4e6ec;
+  --apt-run: #0f9d63;
+  --apt-run-soft: rgba(15, 157, 99, 0.12);
+  --apt-wait: #6d5ae0;
+  --apt-wait-soft: rgba(109, 90, 224, 0.12);
+  --apt-err: #d33a3a;
+  --apt-err-soft: rgba(211, 58, 58, 0.1);
+  box-shadow: 0 6px 20px -18px rgba(20, 20, 40, 0.45);
+}
+:root[data-theme="light"] .apt-kind[data-kind="evidence"] { color: #0369a1; }
+
+/* Respect the OS setting rather than animating regardless. */
+@media (prefers-reduced-motion: reduce) {
+  .apt *,
+  .apt *::before,
+  .apt *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
