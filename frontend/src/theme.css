@@ -28,26 +28,30 @@
    * panel   → raised surface on a rail (alerts, active rows)
    * card    → cards in the workspace plane
    * card-2  → raised variant of card, genuinely lighter          */
-  --bg: #0e1013;
-  --bg-soft: #14171b;
-  --side: #15181d;
-  --panel: #1e2228;
-  --card: #191d22;
-  --card-2: #21262d;
-  --line: #2b3138;
-  --line-soft: #232930;
-  --track: #262c33;
+  --bg: #191919;
+  --bg-soft: #242424;
+  --side: #1e1e1e;
+  --panel: #262626;
+  --card: #1f1f1f;
+  --card-2: #222222;
+  --line: #303030;
+  --line-soft: #262626;
+  --track: #303030;
 
   /* --- text ramp ---
    * Contrast is computed against the WORST surface each token actually
    * lands on (--menu-hover #252b33 is the lightest in dark mode), not
    * against --bg, because small meta text sits on chips/raised rows far
    * more often than on the page background.
-   *   t1 13.4:1 · t2 7.3:1 · t3 4.9:1 · t4 4.9:1   (worst case)     */
-  --t1: #eef1f5;
-  --t2: #a9b2bd;
-  --t3: #98a2b0;
-  --t4: #8f99a6;
+   * The reference palette's muted step is #777777, which measures 3.4:1 on
+   * the lightest plane (#262626) and fails AA. t3/t4 are therefore the
+   * dimmest values that still clear 4.5:1 there — the visual difference from
+   * #777777 is small, the accessibility difference is not.
+   *   t1 11.9:1 · t2 6.4:1 · t3 5.4:1 · t4 4.6:1   (worst case)      */
+  --t1: #e8e8e8;
+  --t2: #a8a8a8;
+  --t3: #9a9a9a;
+  --t4: #8e8e8e;
 
   /* --- action: warm amber (the one "do this" hue) --- */
   --mars: #f0824d;
@@ -72,7 +76,7 @@
   --danger: var(--red);
   --danger-tint: var(--red-wash);
   --accent: var(--amber);
-  --dot-idle: #59626e;
+  --dot-idle: #555555;
   --probe-ok: var(--mint);
 
   /* --- radii: tighter than before; 16px felt consumer-app --- */
@@ -82,31 +86,31 @@
   --r-lg: 14px;
 
   /* Shadows are plane separation, not glow. */
-  --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.38);
-  --shadow-pop: 0 18px 46px rgba(0, 0, 0, 0.55);
+  --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --shadow-pop: 0 18px 46px rgba(0, 0, 0, 0.6);
 
   /* --- elevated/inset surfaces previously hardcoded per component --- */
-  --inset: #1a1e24;
-  --inset-line: #262c33;
-  --inset-2: #1d2229;
-  --chip: #1c2128;
-  --menu: #1b1f25;
-  --menu-hover: #252b33;
-  --row-hover: #1d222a;
-  --row-active: #232a33;
-  --line-hover: #3a424c;
-  --dash: #4a535e;
+  --inset: #242424;
+  --inset-line: #303030;
+  --inset-2: #262626;
+  --chip: #262626;
+  --menu: #222222;
+  --menu-hover: #262626;
+  --row-hover: #242424;
+  --row-active: #262626;
+  --line-hover: #3a3a3a;
+  --dash: #555555;
 
   /* --- bars: distinct per meaning, never grey-on-grey --- */
-  --bar: #4a5563;
+  --bar: #4a4a4a;
   --bar-green: var(--mint);
   --bar-blue: var(--blue);
 
   --sel: rgba(240, 130, 77, 0.26);
-  --scrim: rgba(6, 8, 10, 0.62);
+  --scrim: rgba(0, 0, 0, 0.66);
   --focus: var(--mars);
   --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--mars-glow);
-  --scrollbar: #333b45;
+  --scrollbar: #3a3a3a;
 
   --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
@@ -261,12 +265,12 @@
    ============================================================ */
 @media (prefers-contrast: more) {
   :root {
-    --line: #4a545f;
-    --line-soft: #3b444d;
-    --line-hover: #6b7683;
-    --t2: #c3ccd6;
-    --t3: #b3bcc7;
-    --t4: #a7b0bc;
+    --line: #4a4a4a;
+    --line-soft: #3d3d3d;
+    --line-hover: #6b6b6b;
+    --t2: #c4c4c4;
+    --t3: #bcbcbc;
+    --t4: #b4b4b4;
     --elev-2: 0 0 0 1px var(--line), 0 2px 8px rgba(0, 0, 0, 0.4);
   }
   :root[data-theme="light"] {
