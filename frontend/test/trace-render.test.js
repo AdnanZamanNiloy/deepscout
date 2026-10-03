@@ -15,7 +15,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -167,6 +167,19 @@ test("header reads 'Less steps' and reports the step count", async () => {
   const html = await render({ events: wireEvents(), status: "done" });
   assert.match(html, /Less steps/);
   assert.match(html, /\d+ steps?/);
+});
+
+test("the trace paints no surface of its own, so backgrounds stay unified", async () => {
+  // The trace used to fill itself with --card while the page used --bg, which
+  // read as a second theme dropped inside the page. Asserted against the
+  // stylesheet because this failure is invisible to markup tests.
+  const css = await readFile(new URL("../src/trace/trace.css", import.meta.url), "utf8");
+  const block = css.match(/^\.apt \{([\s\S]*?)\n\}/m);
+  assert.ok(block, "expected a .apt rule");
+  assert.match(block[1], /background:\s*transparent/);
+  assert.doesNotMatch(css, /var\(--card/, "must not reference --card for its surface");
+  assert.doesNotMatch(css, /box-shadow/, "elevation shadow re-creates the panel look");
+  assert.doesNotMatch(css, /--apt-bg/, "the separate background token is gone");
 });
 
 test("shows a live pulse only while the run is streaming", async () => {

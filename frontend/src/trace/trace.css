@@ -17,8 +17,12 @@
    =========================================================================== */
 
 .apt {
-  /* Surfaces */
-  --apt-bg: var(--card, #0e0e10);
+  /* No surface of its own. The trace used to paint itself with --card while the
+     page painted --bg, so the pipeline read as a differently-themed panel
+     dropped inside the page. Inheriting whatever surface it sits on keeps one
+     background across the interface in both themes, and removes a token that
+     could drift out of sync with theme.css again. */
+  background: transparent;
 
   /* Text: four steps of quiet, brightest for prose. */
   --apt-fg: var(--t1, #e6e6e9);
@@ -37,7 +41,6 @@
   --apt-radius: 12px;
 
   margin: 10px 0 6px;
-  background: var(--apt-bg);
   color: var(--apt-fg);
   border: 1px solid var(--apt-line);
   border-radius: var(--apt-radius);
@@ -375,7 +378,6 @@ a.apt-inline:hover { background: color-mix(in srgb, var(--apt-fg) 12%, transpare
 /* --- light theme --------------------------------------------------------- */
 
 :root[data-theme="light"] .apt {
-  --apt-bg: #ffffff;
   --apt-fg: #16161a;
   --apt-run: #0f9d63;
   --apt-err: #d33a3a;
