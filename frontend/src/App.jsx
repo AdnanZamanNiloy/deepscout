@@ -3,7 +3,7 @@ import { fetchSession, fetchTrace, listSessions, resumeResearch, startResearch }
 import { MODE_META, applyTraceEntry, loadActiveSessionId, loadKnowledge, loadMissions, newSessionId, parseReport, removeMission, saveActiveSessionId, saveKnowledgeItem, shouldAutoScroll, truncateFromMessage, updateMission, upsertMission } from "./lib";
 import Sidebar from "./components/Sidebar";
 import Composer from "./components/Composer";
-import { ErrorCard, MarsMessageShell, TypingRow, UserMessage } from "./components/Thread";
+import { ErrorCard, AgentMessageShell, TypingRow, UserMessage } from "./components/Thread";
 import AgentPipelineTrace from "./trace/AgentPipelineTrace";
 import "./trace/trace.css";
 import AnswerCard, { ReplayAnswerCard } from "./components/AnswerCard";
@@ -1148,7 +1148,7 @@ function ThreadMessage({
   if (message.kind === "run") {
     const { run } = message;
     return (
-      <MarsMessageShell
+      <AgentMessageShell
         id={message.id}
         text={run.report || ""}
         canRegenerate={run.done && !running && !run.error && run.query.length > 0}
@@ -1173,7 +1173,7 @@ function ThreadMessage({
         {run.done && !run.report && !run.error ? (
           <div className="error-box">The run finished without producing a report.</div>
         ) : null}
-      </MarsMessageShell>
+      </AgentMessageShell>
     );
   }
   if (message.kind === "replay") {
@@ -1188,7 +1188,7 @@ function ThreadMessage({
         canRegenerate={!running && message.query.length > 0}
         onRegenerate={onRegenerate ? () => onRegenerate(message.query) : undefined}
       />
-      <MarsMessageShell
+      <AgentMessageShell
         id={message.id}
         text={report}
         canRegenerate={!running && message.query.length > 0}
@@ -1204,15 +1204,15 @@ function ThreadMessage({
         ) : (
           <div className="error-box">This run has no final report recorded.</div>
         )}
-      </MarsMessageShell>
+      </AgentMessageShell>
       </>
     );
   }
   if (message.kind === "notice") {
     return (
-      <MarsMessageShell text={message.text}>
+      <AgentMessageShell text={message.text}>
         <div className="error-box">{message.text}</div>
-      </MarsMessageShell>
+      </AgentMessageShell>
     );
   }
   return null;

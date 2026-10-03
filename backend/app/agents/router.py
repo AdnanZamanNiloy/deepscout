@@ -66,7 +66,7 @@ CONVERSATION = "conversation"
 # are matched deterministically — no LLM call, sub-second handling.
 _GREETING_RE = re.compile(
     r"^\s*(hi|hii+|hey+|hello+|yo|sup|howdy|good\s+(morning|afternoon|evening)|"
-    r"greetings|hiya)\b[\s!.?,]*(there|again|all|everyone|friend|mars)?[\s!.?,]*$",
+    r"greetings|hiya)\b[\s!.?,]*(there|again|all|everyone|friend|deepscout)?[\s!.?,]*$",
     re.IGNORECASE,
 )
 _THANKS_RE = re.compile(
@@ -78,7 +78,7 @@ _META_RE = re.compile(
     r"^\s*(who\s+are\s+you|what\s+are\s+you|what\s+can\s+you\s+do|"
     r"what\s+do\s+you\s+do|help\s+me\s+get\s+started|how\s+do\s+you\s+work|"
     r"what\s+is\s+this|what'?s\s+this|are\s+you\s+(an?\s+)?(ai|bot|assistant)|"
-    r"what\s+is\s+mars|what\s+can\s+this\s+do)"
+    r"what\s+is\s+deepscout|what\s+can\s+this\s+do)"
     r"\b[\s!?.,]*$",
     re.IGNORECASE,
 )

@@ -51,7 +51,7 @@ PROVIDER_METRICS = ("provider_classification_pass_rate",)
 # A throwaway DB path keeps the client's provider-store lookup away from the
 # developer's real research.db (an active provider there would hijack the
 # chain and make this evaluator non-deterministic).
-_TMP_DB = str(Path(tempfile.gettempdir()) / "mars-provider-eval.db")
+_TMP_DB = str(Path(tempfile.gettempdir()) / "deepscout-provider-eval.db")
 
 
 def _settings():
@@ -401,7 +401,7 @@ async def evaluate(thresholds_path: str | None = None) -> Dict[str, Any]:
     )
     failures = check_thresholds(aggregate_result, thresholds)
     return {
-        "suite": "mars-golden-provider-eval",
+        "suite": "deepscout-golden-provider-eval",
         "version": thresholds.get("version", "v1"),
         "ran_at": datetime.now(timezone.utc).isoformat(),
         "thresholds_path": str(thresholds_path or DEFAULT_THRESHOLDS),

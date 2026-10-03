@@ -144,9 +144,9 @@ export function MessageActions({ text, onRegenerate, canRegenerate }) {
   );
 }
 
-export function MarsMessageShell({ text, onRegenerate, canRegenerate, children }) {
+export function AgentMessageShell({ text, onRegenerate, canRegenerate, children }) {
   return (
-    <div className="msg-mars anim-rise">
+    <div className="msg-deepscout anim-rise">
       <div className="msg-body">
         {children}
         {text ? (

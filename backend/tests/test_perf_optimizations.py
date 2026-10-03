@@ -20,7 +20,7 @@ from app.core.depth_controller import _searched_queries
 
 
 def _settings(**kw):
-    return Settings(groq_api_key="k", database_url="/tmp/mars-perf.db", _env_file=None, **kw)
+    return Settings(groq_api_key="k", database_url="/tmp/deepscout-perf.db", _env_file=None, **kw)
 
 
 class _CapturingSearch:

@@ -106,7 +106,7 @@ class RunUsage:
         return snap
 
 
-_RUN_USAGE: ContextVar[Optional[RunUsage]] = ContextVar("mars_run_usage", default=None)
+_RUN_USAGE: ContextVar[Optional[RunUsage]] = ContextVar("deepscout_run_usage", default=None)
 
 
 def start_run_usage(request_id: str, settings: Any, mode: str = "standard") -> RunUsage:

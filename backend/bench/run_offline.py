@@ -714,11 +714,11 @@ def run_all(quick: bool = False, out_dir: str | None = None) -> Dict[str, Any]:
 
     results_dir = Path(out_dir) if out_dir else Path(__file__).parent / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="mars-bench-")
+    tmp = tempfile.mkdtemp(prefix="deepscout-bench-")
 
     settings = _settings(tmp)
     report: Dict[str, Any] = {
-        "suite": "mars-offline-benchmarks",
+        "suite": "deepscout-offline-benchmarks",
         "version": "2.0",
         "ran_at": datetime.now(timezone.utc).isoformat(),
         "python": platform.python_version(),

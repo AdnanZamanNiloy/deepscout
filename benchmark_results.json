@@ -1,5 +1,5 @@
 {
-  "suite": "mars-offline-benchmarks",
+  "suite": "deepscout-offline-benchmarks",
   "version": "2.0",
   "ran_at": "2026-09-12T11:08:35.648311+00:00",
   "python": "3.12.14",

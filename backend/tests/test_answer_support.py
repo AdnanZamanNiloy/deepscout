@@ -11,14 +11,14 @@ ANSWER = (
     "It was invented on Mars by pigeons [2]. "
     "This sentence is short."
     "\n\nSources:\n[1] en.wikipedia.org — https://en.wikipedia.org/wiki/RAG\n"
-    "[2] example.com — https://example.com/mars-pigeons"
+    "[2] example.com — https://example.com/deepscout-pigeons"
 )
 
 FACTS = [
     {"claim": "Retrieval augmented generation is a technique combining search with language models",
      "source": "https://en.wikipedia.org/wiki/RAG", "confidence": 0.9, "verified": True},
     {"claim": "Pigeons are birds commonly found in cities",
-     "source": "https://example.com/mars-pigeons", "confidence": 0.8, "verified": True},
+     "source": "https://example.com/deepscout-pigeons", "confidence": 0.8, "verified": True},
 ]
 
 

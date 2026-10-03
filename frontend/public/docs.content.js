@@ -111,7 +111,7 @@
       "</div>",
     "</div>",
 
-    "<h2 id=\"what-is-mars\">What DeepScout is</h2>",
+    "<h2 id=\"what-is-deepscout\">What DeepScout is</h2>",
     "<p>DeepScout is not a chatbot wrapped around a search API. It behaves like a research organization assembled for one question: it understands the question before it searches, plans a strategy, delegates work to specialist agents, runs independent investigations, verifies evidence deterministically, attacks its own findings, and synthesizes a decision-ready answer with traceable citations.</p>",
     "<p>The pipeline is a <strong>LangGraph state machine</strong> driving bounded, asynchronous agents. Generation runs on remote LLM APIs — Groq primary, HuggingFace fallback, plus any OpenAI-compatible endpoint you add. Every run persists its full timeline to SQLite, so it can be replayed, audited, or resumed after a failure.</p>",
 
@@ -474,7 +474,7 @@
     '<h3 id="sum-roles">Roles</h3>',
     "<p>The planner routes each contract to a specialist via its domain. Each role appends a focused overlay to the base extraction prompt:</p>",
     "<p>",
-      '<span class="pill mars">financial</span> <span class="pill">technical</span> <span class="pill">market</span> <span class="pill">legal</span> ',
+      '<span class="pill pill-deepscout">financial</span> <span class="pill">technical</span> <span class="pill">market</span> <span class="pill">legal</span> ',
       '<span class="pill">scientific</span> <span class="pill">policy</span> <span class="pill">academic</span> <span class="pill">general</span>',
     "</p>",
     '<h3 id="sum-rules">Extraction rules</h3>',
@@ -729,7 +729,7 @@
 
     '<h3 id="persist-security">Security posture</h3>',
     "<ul>",
-      "<li>Provider keys are Fernet-encrypted at rest (<code>MARS_SECRET_KEY</code> or an auto-created 0600 <code>.mars_secret</code>) and never serialised to the UI.</li>",
+      "<li>Provider keys are Fernet-encrypted at rest (<code>DEEPSCOUT_SECRET_KEY</code> or an auto-created 0600 <code>.deepscout_secret</code>) and never serialised to the UI.</li>",
       "<li>The service binds to <code>127.0.0.1</code> by default; do not expose it without an auth layer.</li>",
       "<li>The research endpoint is rate-limited (<code>RATE_LIMIT=5/minute</code> by default).</li>",
       "<li>Secrets are never logged; provider probe failures log only the exception type.</li>",
@@ -810,5 +810,5 @@
     "</div>"
   ];
 
-  window.MARS_DOCS = { nav: NAV, content: C, icon: I };
+  window.DEEPSCOUT_DOCS = { nav: NAV, content: C, icon: I };
 })();

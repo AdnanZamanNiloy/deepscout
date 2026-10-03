@@ -1,12 +1,12 @@
 /* ============================================================================
    DeepScout Documentation — runtime.
    Renders the navigation, pages, client-side search, scroll-spy, theme
-   toggle and copy buttons from the MARS_DOCS content model.
+   toggle and copy buttons from the DEEPSCOUT_DOCS content model.
    ========================================================================== */
 (function () {
   "use strict";
 
-  var DOCS = window.MARS_DOCS || { nav: [], content: {}, icon: {} };
+  var DOCS = window.DEEPSCOUT_DOCS || { nav: [], content: {}, icon: {} };
   var NAV = DOCS.nav || [];
   var CONTENT = DOCS.content || {};
 
@@ -138,10 +138,10 @@
   function applyTheme(mode) {
     var next = mode === "light" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", next);
-    try { localStorage.setItem("mars-docs-theme", next); } catch (e) { /* ignore */ }
+    try { localStorage.setItem("deepscout-docs-theme", next); } catch (e) { /* ignore */ }
   }
   window.addEventListener("message", function (e) {
-    if (e.data && e.data.type === "mars-theme") applyTheme(e.data.mode);
+    if (e.data && e.data.type === "deepscout-theme") applyTheme(e.data.mode);
   });
   applyTheme(document.documentElement.getAttribute("data-theme") || "dark");
 

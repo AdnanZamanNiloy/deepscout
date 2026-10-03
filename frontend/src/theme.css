@@ -749,7 +749,7 @@ select:focus-visible {
   }
   .thread { padding: 0 !important; }
   .thread-inner { max-width: none !important; }
-  .answer, .card, .msg-mars { box-shadow: none !important; border-color: #bbb !important; }
+  .answer, .card, .msg-deepscout { box-shadow: none !important; border-color: #bbb !important; }
   a { color: #000 !important; text-decoration: underline; }
   /* Print the destination of every citation so the report stays auditable on paper. */
   .answer a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 10px; word-break: break-all; }

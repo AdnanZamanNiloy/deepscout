@@ -17,7 +17,7 @@ others). With no enabled chain, resolution is byte-for-byte the legacy
 single-active-provider behavior — single-provider selection stays compatible.
 
 API keys are encrypted at rest (Fernet). Key resolution order:
-MARS_SECRET_KEY env var, else backend/.mars_secret (0600, auto-created on
+DEEPSCOUT_SECRET_KEY env var, else backend/.deepscout_secret (0600, auto-created on
 first encrypt). The plaintext key only ever leaves this module inside
 get_active_provider()/get_chain_providers()/get_provider_secret() (all
 server-side) — list and CRUD responses carry a last-4 hint, never the key.
@@ -41,21 +41,28 @@ def _utcnow() -> str:
 
 
 def _secret_file_path() -> Path:
-    return Path(__file__).resolve().parent.parent / ".mars_secret"
+    return Path(__file__).resolve().parent.parent / ".deepscout_secret"
 
 
 def _fernet_key() -> bytes:
     """Fernet key: real env var first, then Settings (.env file), else the
     local key file (created once, 0600). An arbitrary secret string is
     hashed into key shape; a proper Fernet key is used as-is. Tests pin
-    MARS_SECRET_KEY via env to stay hermetic (never touches the file).
+    DEEPSCOUT_SECRET_KEY via env to stay hermetic (never touches the file).
     """
-    raw = (os.environ.get("MARS_SECRET_KEY") or "").strip()
+    # Read the new name first, then the legacy one. A rename must not silently
+    # break an existing .env: losing this key would drop every UI-added
+    # provider key back to unencrypted.
+    raw = (
+        os.environ.get("DEEPSCOUT_SECRET_KEY")
+        or os.environ.get("MARS_SECRET_KEY")  # legacy pre-rename name
+        or ""
+    ).strip()
     if not raw:
         try:
             from app.core.config import get_settings  # no cycle: config is leaf
 
-            raw = (get_settings().mars_secret_key or "").strip()
+            raw = (get_settings().deepscout_secret_key or "").strip()
         except Exception:
             raw = ""
     if raw:
@@ -88,7 +95,7 @@ def decrypt_api_key(token: str) -> str:
     except InvalidToken as exc:
         raise ValueError(
             "Stored provider key cannot be decrypted with the current secret. "
-            "If MARS_SECRET_KEY changed, re-enter the key."
+            "If DEEPSCOUT_SECRET_KEY changed, re-enter the key."
         ) from exc
 
 

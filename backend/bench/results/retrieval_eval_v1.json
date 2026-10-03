@@ -1,8 +1,8 @@
 {
-  "suite": "mars-retrieval-health-eval",
+  "suite": "deepscout-retrieval-health-eval",
   "version": "v1",
   "ran_at": "2026-09-16T14:51:13.678216+00:00",
-  "thresholds_path": "/home/adnan-zaman/Desktop/mars-ai/backend/bench/golden/thresholds_retrieval_v1.json",
+  "thresholds_path": "/home/adnan-zaman/Desktop/deepscout-ai/backend/bench/golden/thresholds_retrieval_v1.json",
   "aggregate": {
     "scenarios_total": 6,
     "scenarios_passed": 6,

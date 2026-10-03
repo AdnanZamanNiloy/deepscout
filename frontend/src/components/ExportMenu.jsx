@@ -13,7 +13,7 @@ import { downloadReport } from "../api";
  *
  * Layering: the menu is rendered in a PORTAL to document.body with
  * position: fixed, anchored to the button's rect. Report content lives inside
- * scrolling/animated ancestors (.thread overflow, .msg-mars anim-rise) that
+ * scrolling/animated ancestors (.thread overflow, .msg-deepscout anim-rise) that
  * create stacking contexts and clip descendants — an absolutely-positioned
  * dropdown inside them is trapped no matter how high its z-index. A fixed
  * portal escapes every ancestor's overflow and stacking context. */

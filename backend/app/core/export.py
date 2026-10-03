@@ -86,7 +86,7 @@ def safe_filename(query: str, run_id: str, fmt: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", (query or "").strip().lower()).strip("-")
     slug = slug[:60] or "report"
     suffix = (run_id or "")[:8]
-    stem = f"mars-report-{slug}-{suffix}" if suffix else f"mars-report-{slug}"
+    stem = f"deepscout-report-{slug}-{suffix}" if suffix else f"deepscout-report-{slug}"
     return f"{stem}.{fmt}"
 
 

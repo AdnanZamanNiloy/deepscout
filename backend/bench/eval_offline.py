@@ -743,7 +743,7 @@ async def evaluate(golden_path: Optional[str] = None,
     queries = load_queries(golden_path)
     thresholds = load_thresholds(thresholds_path, queries)
 
-    tmp = tempfile.mkdtemp(prefix="mars-golden-")
+    tmp = tempfile.mkdtemp(prefix="deepscout-golden-")
     settings = Settings(
         groq_api_key="golden-offline",
         database_url=f"{tmp}/golden.db",
@@ -834,7 +834,7 @@ async def evaluate(golden_path: Optional[str] = None,
             print(f"[retr {status:>4}] {row['id']:<34} {row.get('description', '')}")
 
     report = {
-        "suite": "mars-golden-offline-eval",
+        "suite": "deepscout-golden-offline-eval",
         "version": thresholds.get("version", "v1"),
         "ran_at": datetime.now(timezone.utc).isoformat(),
         "golden_path": str(golden_path or "bench/golden/queries_v1.json"),

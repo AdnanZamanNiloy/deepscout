@@ -147,7 +147,7 @@ def evaluate(thresholds_path: str | None = None) -> Dict[str, Any]:
     failures = check_thresholds(aggregate_result, thresholds)
 
     return {
-        "suite": "mars-golden-depth-eval",
+        "suite": "deepscout-golden-depth-eval",
         "version": thresholds.get("version", "v1"),
         "ran_at": datetime.now(timezone.utc).isoformat(),
         "thresholds_path": str(thresholds_path or DEFAULT_THRESHOLDS),

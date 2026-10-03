@@ -147,7 +147,7 @@ def _write_md(out_dir: Path, o: dict) -> None:
 
 async def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default="/tmp/mars_multi")
+    ap.add_argument("--out", default="/tmp/deepscout_multi")
     ap.add_argument("--queries", nargs="*", default=None)
     args = ap.parse_args()
     queries = args.queries or DEFAULT_QUERIES

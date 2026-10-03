@@ -8,7 +8,7 @@ providers, and the accuracy/citation metrics on fresh web data.
 
 Cost profile: one research run per query (free-tier providers by default).
 Typical spend with Groq free tier: 20-60k tokens per query. Point
-MARS_LIVE_QUERIES at a smaller list to spend less.
+DEEPSCOUT_LIVE_QUERIES at a smaller list to spend less.
 
 Usage (from backend/):
 
@@ -16,7 +16,7 @@ Usage (from backend/):
     python bench/run_live.py
 
     # Custom queries
-    MARS_LIVE_QUERIES="q1|q2|q3" python bench/run_live.py
+    DEEPSCOUT_LIVE_QUERIES="q1|q2|q3" python bench/run_live.py
 
 Requires: at least one configured LLM provider (GROQ_API_KEY or the
 CUSTOM_LLM_* trio in backend/.env).
@@ -43,7 +43,7 @@ DEFAULT_QUERIES = [
 
 
 def _load_queries() -> List[str]:
-    raw = os.environ.get("MARS_LIVE_QUERIES", "")
+    raw = os.environ.get("DEEPSCOUT_LIVE_QUERIES", "")
     if raw.strip():
         return [q.strip() for q in raw.split("|") if q.strip()]
     return DEFAULT_QUERIES
@@ -143,7 +143,7 @@ async def _main_async() -> int:
 
     ok_runs = [r for r in runs if not r["error"]]
     report: Dict[str, Any] = {
-        "suite": "mars-live-benchmarks",
+        "suite": "deepscout-live-benchmarks",
         "version": "2.0",
         "ran_at": datetime.now(timezone.utc).isoformat(),
         "runs": runs,

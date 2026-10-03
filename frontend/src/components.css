@@ -127,7 +127,7 @@
 .msg-edit-cancel:disabled,
 .msg-edit-save:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.msg-mars { display: flex; gap: 12px; margin-bottom: 24px; }
+.msg-deepscout { display: flex; gap: 12px; margin-bottom: 24px; }
 
 .msg-actions { display: flex; align-items: center; gap: 2px; margin-top: 6px; }
 .msg-actions .icon-btn { color: var(--t4); width: 28px; height: 28px; }

@@ -7,7 +7,7 @@ from app.core.llm import AllProvidersFailedError, LLMClient
 
 @pytest.fixture
 def _secret(monkeypatch):
-    monkeypatch.setenv("MARS_SECRET_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv("DEEPSCOUT_SECRET_KEY", Fernet.generate_key().decode("utf-8"))
 
 
 @pytest.fixture
@@ -81,7 +81,7 @@ async def test_wrong_secret_cannot_decrypt(db_path, monkeypatch):
 
     row = await _seed(db_path)
     await store.set_active_provider(db_path, row["id"])
-    monkeypatch.setenv("MARS_SECRET_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv("DEEPSCOUT_SECRET_KEY", Fernet.generate_key().decode("utf-8"))
     with pytest.raises(ValueError, match="cannot be decrypted"):
         await store.get_active_provider(db_path)
 
