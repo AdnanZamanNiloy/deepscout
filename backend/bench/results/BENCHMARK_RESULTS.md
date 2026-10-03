@@ -1,4 +1,4 @@
-# MARS-AI Benchmark Results
+# DeepScout-AI Benchmark Results
 
 *Suite: mars-offline-benchmarks v2.0 — generated 2026-09-19T16:48:22Z*
 

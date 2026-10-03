@@ -182,7 +182,7 @@ def main() -> int:
     json_path = write_json(report, out_dir)
 
     print("=" * 62)
-    print("MARS offline golden adaptive-depth routing evaluation (v1)")
+    print("DeepScout offline golden adaptive-depth routing evaluation (v1)")
     print("=" * 62)
     for row in report["scenarios"]:
         status = "PASS" if row["passed"] else "FAIL"

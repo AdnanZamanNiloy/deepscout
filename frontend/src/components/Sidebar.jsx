@@ -4,15 +4,8 @@ import {
   IconAgents, IconCompass, IconMissions, IconMore, IconPencil, IconPin,
   IconPlus, IconTrash,
 } from "./icons";
+import BrandLockup from "./Brand";
 import ThemeToggle from "./ThemeToggle";
-
-export function Planet({ size = 40, ring = false }) {
-  return (
-    <span className="planet" style={{ width: size, height: size }} aria-hidden="true">
-      {ring ? <span className="planet-ring" /> : null}
-    </span>
-  );
-}
 
 const NAV = [
   { id: "missions", label: "Research", icon: IconMissions },
@@ -163,11 +156,7 @@ export default function Sidebar({
       {/* A real <button>: Space now works, and the branding is keyboard
           reachable without a role/tabIndex workaround. */}
       <button type="button" className="brand" onClick={() => go("workspace")} title="Back to the research console">
-        <Planet size={38} />
-        <span className="brand-copy">
-          <span className="brand-name">MARS</span>
-          <span className="brand-sub">Multi-Agent Research System</span>
-        </span>
+        <BrandLockup size="md" />
       </button>
 
       <nav className="side-nav" aria-label="Primary">
@@ -217,7 +206,7 @@ export default function Sidebar({
       </div>
 
       <div className="side-foot">
-        <span className="ver">MARS console · v2.1</span>
+        <span className="ver">DeepScout console · v2.1</span>
         <ThemeToggle />
       </div>
     </aside>

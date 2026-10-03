@@ -97,7 +97,7 @@ export default function IntelligencePanel({
               <div className="health-row" key={r.label}>
                 <r.icon size={15} className={`tone-${r.tone}`} />
                 <span className="k">{r.label}</span>
-                <span className="v" style={r.hot ? { color: "var(--mars-soft)" } : undefined}>{r.value}</span>
+                <span className="v" style={r.hot ? { color: "var(--deepscout-soft)" } : undefined}>{r.value}</span>
               </div>
             ))}
             <CitationHealthRow health={run.citationHealth} />
@@ -228,7 +228,7 @@ function BudgetMeter({ budget }) {
         <>
           <div className="health-row" style={{ paddingBottom: 2 }}>
             <span className="k">Budget utilization</span>
-            <span className="v" style={util >= 80 ? { color: "var(--mars-soft)" } : undefined}>{util}%</span>
+            <span className="v" style={util >= 80 ? { color: "var(--deepscout-soft)" } : undefined}>{util}%</span>
           </div>
           <div className="bar budget-util-bar" style={{ marginBottom: 8 }}>
             <div style={{ width: `${util}%` }} />
@@ -261,7 +261,7 @@ function CitationHealthRow({ health }) {
     <div className="health-row">
       <IconShield size={15} className={`tone-${tone}`} />
       <span className="k">Citation health</span>
-      <span className="v" style={broken ? { color: "var(--mars-soft)" } : undefined}>{label}</span>
+      <span className="v" style={broken ? { color: "var(--deepscout-soft)" } : undefined}>{label}</span>
     </div>
   );
 }
@@ -302,7 +302,7 @@ function RedTeamPanel({ redteam }) {
       <div className="health-row">
         <IconShield size={15} className={weak ? "tone-warn" : "tone-good"} />
         <span className="k">Evidence survival</span>
-        <span className="v" style={weak ? { color: "var(--mars-soft)" } : undefined}>
+        <span className="v" style={weak ? { color: "var(--deepscout-soft)" } : undefined}>
           {score !== null ? `${score}%` : "—"}
         </span>
       </div>

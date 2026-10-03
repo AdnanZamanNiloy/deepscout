@@ -247,7 +247,7 @@ def main() -> int:
     json_path = write_json(report, out_dir)
 
     print("=" * 62)
-    print("MARS offline golden contradiction-resolution evaluation (v1)")
+    print("DeepScout offline golden contradiction-resolution evaluation (v1)")
     print("=" * 62)
     for row in report["cases"]:
         status = "PASS" if row["correct"] else "FAIL"

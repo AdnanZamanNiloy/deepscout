@@ -27,7 +27,7 @@ function token(src, name, nth = 0) {
 const SHARED = [
   "bg", "line", "track",
   "t1", "t2", "t3", "t4",
-  "mint", "mars",
+  "mint", "deepscout",
   "card", "card-2",
 ];
 

@@ -434,7 +434,7 @@ def main() -> int:
     out_dir = Path(args.out) if args.out else RESULTS_DIR
     json_path = write_json(report, out_dir)
     print("=" * 62)
-    print("MARS offline golden provider-classification evaluation (v1)")
+    print("DeepScout offline golden provider-classification evaluation (v1)")
     print("=" * 62)
     for row in report["cases"]:
         status = "PASS" if row["passed"] else "FAIL"

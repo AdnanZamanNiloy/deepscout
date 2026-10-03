@@ -154,7 +154,7 @@ def main() -> int:
 
     m = report["metrics"]
     print("=" * 62)
-    print("MARS query-router offline evaluation")
+    print("DeepScout query-router offline evaluation")
     print("=" * 62)
     print(f"routing pass rate: {m['router_routing_pass_rate']:.4f} "
           f"({sum(1 for c in report['cases'] if c['passed'])}/{len(report['cases'])})")

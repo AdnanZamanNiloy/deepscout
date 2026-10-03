@@ -1,7 +1,7 @@
 """Response models for the agents added in this upgrade.
 
 They live here rather than in `app.core.schemas` so this package drops into an
-existing MARS checkout without touching the core module. Import them from
+existing DeepScout checkout without touching the core module. Import them from
 `app.core.schemas` instead if you prefer to consolidate later; the names are
 chosen to not collide.
 

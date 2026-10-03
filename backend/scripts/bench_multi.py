@@ -1,4 +1,4 @@
-"""Diverse-query bench: capture MARS's plan axes + full answer + metrics.
+"""Diverse-query bench: capture DeepScout's plan axes + full answer + metrics.
 
 Generalizes bench_two.py to N queries and additionally records the planner's
 axis/dimension set and coverage note so plan diversity across query TYPES can

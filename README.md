@@ -7,13 +7,13 @@
 ![SQLite](https://img.shields.io/badge/SQLite-aiosqlite-white?style=flat&labelColor=003B57&color=0a6a8a)
 ![License](https://img.shields.io/badge/License-MIT-2da44e?style=flat&labelColor=555)
 
-# MARS — Multi-Agent Research System
+# DeepScout — Multi-Agent Research System
 
 **Deep research with verifiable evidence, honest confidence, and a hard cost ceiling.**
 
 </div>
 
-MARS decomposes a question, runs parallel investigations across multiple search
+DeepScout decomposes a question, runs parallel investigations across multiple search
 providers, verifies every claim against the source it cites, detects
 contradictions, re-checks cited URLs, and produces an auditable, cited report —
 while tracking exactly what the run cost in tokens, calls, dollars, and time.
@@ -102,7 +102,7 @@ quality rather than crashing the run. Persistent state lives in SQLite
 
 A full component map, data model, and the reasoning behind each design
 decision are in [`ARCHITECTURE.md`](ARCHITECTURE.md). The product vision and
-feature rationale are in [`MARS-vision-v2.md`](MARS-vision-v2.md).
+feature rationale are in [`DeepScout-vision-v2.md`](DeepScout-vision-v2.md).
 
 ---
 
@@ -135,7 +135,7 @@ feature rationale are in [`MARS-vision-v2.md`](MARS-vision-v2.md).
 
 ## Reliability and degradation
 
-MARS assumes remote, rate-limited, occasionally-unavailable providers.
+DeepScout assumes remote, rate-limited, occasionally-unavailable providers.
 
 - **Fail fast, not slow.** Auth errors, payment errors, and timeouts are never
   retried within the provider chain; one timeout trips the circuit breaker
@@ -328,7 +328,7 @@ documented in `backend/.env.example` and [`CONFIG.md`](CONFIG.md). Highlights:
 
 ## Testing and benchmarks
 
-MARS is test-heavy by design; several reliability mechanisms exist because a
+DeepScout is test-heavy by design; several reliability mechanisms exist because a
 specific bug shipped once (see [`AGENTS.md`](AGENTS.md) §2).
 
 ```bash
@@ -413,7 +413,7 @@ frontend/
 | [`SETUP.md`](SETUP.md) | Install and run on a fresh machine |
 | [`CONFIG.md`](CONFIG.md) | Every setting, with rationale |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Components, data flow, design decisions |
-| [`MARS-vision-v2.md`](MARS-vision-v2.md) | Product vision and feature rationale |
+| [`DeepScout-vision-v2.md`](DeepScout-vision-v2.md) | Product vision and feature rationale |
 | [`BENCHMARK_RESULTS.md`](BENCHMARK_RESULTS.md) | Measured benchmark results |
 | [`CHANGELOG.md`](CHANGELOG.md) | Per-phase changes and bug-fix history |
 | [`AGENTS.md`](AGENTS.md) | Operating rules for contributors (incl. AI agents) |

@@ -1,4 +1,4 @@
-/* MARS shell layout: sidebar | workspace | intelligence rail.
+/* DeepScout shell layout: sidebar | workspace | intelligence rail.
  *
  * Three depth planes, each a different surface colour, so the layout reads
  * as three physical planes instead of one flat grey wall:
@@ -47,21 +47,6 @@
   transition: background 0.14s;
 }
 .brand:hover { background: var(--row-hover); }
-.brand-copy { min-width: 0; }
-.brand-name {
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: 5px;
-  color: var(--mars);
-  line-height: 1.25;
-}
-.brand-sub {
-  font-size: 10.5px;
-  line-height: 1.45;
-  color: var(--t3);
-  margin-top: 2px;
-}
-
 .new-btn {
   display: flex;
   align-items: center;
@@ -70,11 +55,11 @@
   width: 100%;
   margin-top: 12px;
   padding: 9px 12px;
-  border: 1px solid color-mix(in srgb, var(--mars) 42%, transparent);
+  border: 1px solid color-mix(in srgb, var(--deepscout) 42%, transparent);
   border-radius: var(--r-sm);
   /* Was transparent → token-driven now, with a warm wash so the primary
      action is legible as primary inside a quiet rail. */
-  background: var(--mars-wash);
+  background: var(--deepscout-wash);
   color: var(--t1);
   font-size: 13px;
   font-weight: 600;
@@ -82,8 +67,8 @@
   text-align: left;
   transition: background 0.14s, border-color 0.14s;
 }
-.new-btn:hover { background: color-mix(in srgb, var(--mars) 18%, transparent); border-color: var(--mars); }
-.new-btn svg { color: var(--mars); flex: none; }
+.new-btn:hover { background: color-mix(in srgb, var(--deepscout) 18%, transparent); border-color: var(--deepscout); }
+.new-btn svg { color: var(--deepscout); flex: none; }
 
 .side-nav { display: flex; flex-direction: column; gap: 1px; margin-top: 10px; }
 .side-nav button {
@@ -103,7 +88,7 @@
 }
 .side-nav button:hover { background: var(--row-hover); color: var(--t1); }
 .side-nav button.active { background: var(--row-active); color: var(--t1); }
-.side-nav button.active svg { color: var(--mars); }
+.side-nav button.active svg { color: var(--deepscout); }
 .side-nav svg { color: var(--t3); flex: none; }
 .side-nav .count {
   margin-left: auto;
@@ -144,7 +129,7 @@
   padding: 2px 4px;
   border-radius: var(--r-xs);
 }
-.side-section-head button:hover { color: var(--mars); background: var(--row-hover); }
+.side-section-head button:hover { color: var(--deepscout); background: var(--row-hover); }
 
 /* A chat row is a real <button> with two lines of text — valid, and Space
    works for free (previously a span-with-block inside a button). */
@@ -282,7 +267,7 @@
 .mission-menu-item.danger:hover,
 .title-menu-item.danger:hover { background: var(--red-wash); }
 .title-menu-item.active { background: var(--menu-hover); color: var(--t1); }
-.title-menu-item.active svg { color: var(--mars); }
+.title-menu-item.active svg { color: var(--deepscout); }
 
 .mission-rename-input {
   display: block;
@@ -290,7 +275,7 @@
   padding: 2px 6px;
   margin: -2px 0;
   background: var(--bg-soft);
-  border: 1px solid var(--mars);
+  border: 1px solid var(--deepscout);
   border-radius: var(--r-xs);
   color: var(--t1);
   font-size: 12.5px;
@@ -439,7 +424,7 @@
 .intel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 2px 2px 0; }
 .intel-head h2 { font-size: 13px; font-weight: 700; margin: 0; letter-spacing: 0.09em; text-transform: uppercase; color: var(--t2); }
 .intel-head p { font-size: 11.5px; color: var(--t3); margin: 6px 0 0; line-height: 1.5; }
-.intel-head p strong { color: var(--mars); font-weight: 650; }
+.intel-head p strong { color: var(--deepscout); font-weight: 650; }
 
 .icon-btn {
   width: 26px;
@@ -495,7 +480,7 @@
   line-height: 1.5;
   color: var(--t3);
 }
-.intel-idle-list li svg { flex: none; margin-top: 2px; color: var(--mars); }
+.intel-idle-list li svg { flex: none; margin-top: 2px; color: var(--deepscout); }
 
 .scroll-top-btn {
   position: absolute;

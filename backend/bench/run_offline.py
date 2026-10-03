@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MARS offline benchmark suite.
+"""DeepScout offline benchmark suite.
 
 Deterministic, network-free measurement of the intelligence and performance
 properties the product claims: verification accuracy, citation quality,
@@ -609,7 +609,7 @@ def write_markdown_report(report: Dict[str, Any], results_dir: Path) -> Path:
     lines: List[str] = []
     a = lines.append
 
-    a("# MARS-AI Benchmark Results")
+    a("# DeepScout-AI Benchmark Results")
     a("")
     a(f"*Suite: {report['suite']} v{report['version']} — generated {report['ran_at'][:19]}Z*")
     a("")
@@ -728,7 +728,7 @@ def run_all(quick: bool = False, out_dir: str | None = None) -> Dict[str, Any]:
     }
 
     print("=" * 62)
-    print("MARS offline benchmark suite")
+    print("DeepScout offline benchmark suite")
     print("=" * 62)
 
     benchmarks: List[tuple] = [

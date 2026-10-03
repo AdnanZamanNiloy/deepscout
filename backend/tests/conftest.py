@@ -1,4 +1,4 @@
-"""Shared fixtures for MARS test suite."""
+"""Shared fixtures for DeepScout test suite."""
 import sys
 from pathlib import Path
 

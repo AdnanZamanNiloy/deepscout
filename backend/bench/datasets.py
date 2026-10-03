@@ -1,4 +1,4 @@
-"""Labeled benchmark datasets for the offline MARS evaluation suite.
+"""Labeled benchmark datasets for the offline DeepScout evaluation suite.
 
 Every entry is hand-labeled ground truth for one component. Cases are drawn
 from realistic research-domain phrasings so scores reflect production

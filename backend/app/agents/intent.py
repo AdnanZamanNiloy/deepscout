@@ -20,7 +20,7 @@ What it produces
 
 Design constraints
 ------------------
-* MARS never silently picks the wrong domain, and never BLOCKS on a clarifying
+* DeepScout never silently picks the wrong domain, and never BLOCKS on a clarifying
   question (the stream contract is one-shot). When ambiguous, the answer is
   structured to disambiguate first ("X can mean two things...") and the
   research targets the likely sense(s) — the "provide both meanings briefly"
@@ -346,7 +346,7 @@ class IntentReport:
     def recommended_action(self) -> str:
         """research_both (answer structures both senses) vs research_dominant
         (answer disambiguates in one paragraph, then goes deep on the likely
-        meaning). MARS never blocks on a clarifying question; the disambiguation
+        meaning). DeepScout never blocks on a clarifying question; the disambiguation
         lives in the answer itself.
 
         This is about SENSE (homonym) handling only — under-specification is
