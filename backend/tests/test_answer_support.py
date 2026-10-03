@@ -4,6 +4,7 @@ import app.graph.workflow as wf
 from app.agents.evidence_utils import verify_answer_support
 from app.core.config import Settings
 from app.core.llm import LLMClient
+from app.agents.sources import clean_writer_prose
 
 ANSWER = (
     "Retrieval augmented generation combines search with language models [1]. "
@@ -100,7 +101,13 @@ async def test_synthesizer_node_records_support(monkeypatch):
     assert support["rate"] == 0.5
     # The primary answer is the synthesizer's prose, not a report skeleton.
     assert final["final_report"].strip()
-    assert final["final_report"] == final["synthesized_answer"]
+    # Support analysis reads the citations, so it must run on the marked-up
+    # text BEFORE the report strips them. This pins both halves of that
+    # ordering: the support figures above see [1]/[2], and the delivered
+    # report does not.
+    assert final["final_report"] == clean_writer_prose(final["synthesized_answer"])
+    assert "[1]" in final["synthesized_answer"], "raw synthesis keeps its markers"
+    assert "[1]" not in final["final_report"], "delivered answer drops them"
 
 
 # --- cross-source synthesis is attributed, not unsupported -------------------

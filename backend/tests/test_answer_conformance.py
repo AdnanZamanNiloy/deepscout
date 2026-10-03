@@ -25,6 +25,7 @@ from app.agents.answer_conformance import (
     check_answer_conformance,
 )
 from app.agents.analyst import AnalyticalBrief
+from app.agents.sources import clean_writer_prose
 
 
 # --- shape conformance -------------------------------------------------------
@@ -589,8 +590,9 @@ async def test_conformance_is_carried_into_final_state_and_audit(monkeypatch):
     )
     conf = final.get("answer_conformance")
     assert isinstance(conf, dict) and conf.get("query_type")
-    # The answer is unchanged: conformance is observational, never rewrites.
-    assert final["final_report"] == final["synthesized_answer"]
+    # Conformance is observational: it never rewrites the answer. The report
+    # differs from the synthesis only by the documented cleanup.
+    assert final["final_report"] == clean_writer_prose(final["synthesized_answer"])
     audit = final.get("final_audit", "")
     assert "Answer conformance" in audit
 

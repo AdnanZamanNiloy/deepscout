@@ -76,6 +76,21 @@ CREATE TABLE IF NOT EXISTS agent_events (
     ended_at TEXT
 );
 
+-- The exact NDJSON frames emitted for a run, in order.
+--
+-- agent_events records WHICH NODE ran and when; it does not record what the
+-- user saw. The pipeline trace renders the emitted frames (search queries,
+-- their sources, findings), so replaying from agent_events alone produced an
+-- empty trace on restore — the session looked like it had no history at all.
+-- Storing the frames verbatim means a restored session replays the same trace
+-- the live run showed, instead of a reconstruction of it.
+CREATE TABLE IF NOT EXISTS run_trace_frames (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL REFERENCES research_runs(id),
+    seq INTEGER NOT NULL,
+    frame TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS evidence (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id TEXT NOT NULL REFERENCES research_runs(id),
@@ -615,6 +630,49 @@ async def record_event(
         await db.commit()
 
 
+async def save_trace_frames(
+    database_path: str, run_id: str, frames: list[dict]
+) -> None:
+    """Persist the exact NDJSON frames a run emitted, in emission order.
+
+    Written once per frame batch from the stream loop rather than per frame:
+    the trace is read back only on session restore, so there is nothing to gain
+    from 40-odd individual writes, and the batch keeps the stream latency flat.
+    `seq` preserves order, which the trace relies on to rebuild the narrative.
+    """
+    if not frames:
+        return
+    async with _connect(database_path) as db:
+        await db.executemany(
+            "INSERT INTO run_trace_frames (run_id, seq, frame) VALUES (?, ?, ?)",
+            [(run_id, i, json.dumps(f, ensure_ascii=False)) for i, f in enumerate(frames)],
+        )
+        await db.commit()
+
+
+async def load_trace_frames(database_path: str, run_id: str) -> list[dict]:
+    """Read a run's frames back in emission order, skipping any corrupt row.
+
+    A single unreadable frame must not break replay of the whole run, so a
+    decode failure skips that row instead of propagating.
+    """
+    async with _connect(database_path) as db:
+        cur = await db.execute(
+            "SELECT frame FROM run_trace_frames WHERE run_id = ? ORDER BY seq ASC",
+            (run_id,),
+        )
+        rows = await cur.fetchall()
+    out: list[dict] = []
+    for (raw,) in rows:
+        try:
+            parsed = json.loads(raw)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(parsed, dict):
+            out.append(parsed)
+    return out
+
+
 async def save_evidence(database_path: str, run_id: str, search_results: list) -> None:
     """Evidence = the raw material claims were derived from (distinct from
     the rewritten claims): one row per source with its raw snippet."""
@@ -1036,6 +1094,10 @@ async def get_run_trace(database_path: str, run_id: str) -> dict | None:
             "sources": sources,
             "claims": claims,
             "events": events,
+            # The wire frames the UI's pipeline trace renders. Absent for runs
+            # persisted before this existed, and for purged traces; the
+            # frontend treats that as "no trace recorded" rather than an error.
+            "frames": await load_trace_frames(database_path, run_id),
             "critic_reviews": critic_reviews,
             "evidence": evidence,
             "decisions": decisions,
