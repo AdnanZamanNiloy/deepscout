@@ -181,20 +181,31 @@ function highlightQuotes(chunk: string, keyBase: string): ReactNode[] {
 /** A retrieved URL, set as a monospace path chip with a left accent bar. */
 function CodeChip({ chip }: { chip: TraceChip }) {
   const safe = /^https?:\/\//i.test(chip.url);
+  // The label sits in its own span because `text-overflow: ellipsis` only works
+  // on a block-ish box. On the flex pill it silently did nothing, so an
+  // over-long title was hard-clipped mid-word ("...Conflict · tavi") with no
+  // ellipsis and no width cap.
   const body = (
     <>
-      {chip.label}
-      {chip.meta ? <span className="apt-muted"> · {chip.meta}</span> : null}
+      <span className="apt-code-label">{chip.label}</span>
+      {chip.meta ? <span className="apt-chip-meta">{chip.meta}</span> : null}
     </>
   );
-  if (!safe) return <div className="apt-code">{body}</div>;
+  const full = chip.meta ? `${chip.label} — ${chip.meta}` : chip.label;
+  if (!safe) {
+    return (
+      <div className="apt-code" title={full}>
+        {body}
+      </div>
+    );
+  }
   return (
     <a
       className="apt-code"
       href={chip.url}
       target="_blank"
       rel="noreferrer noopener"
-      title={chip.url}
+      title={`${full}\n${chip.url}`}
     >
       {body}
     </a>
