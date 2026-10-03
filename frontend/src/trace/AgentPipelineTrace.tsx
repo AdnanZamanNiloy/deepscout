@@ -534,17 +534,6 @@ export default function AgentPipelineTrace({
             duration counts up on its own, so the badge was redundant, and the
             milestone filter was one more control competing with the text. */}
         <div className="apt-head-right">
-          {/* The stage the pipeline is actually in, read off the last real
-              frame. It gives a live run a visible sense of working instead of
-              a silent list that grows, and it cannot claim a stage the run
-              never reached. Hidden once finished — the elapsed time is the
-              useful summary then. */}
-          {running && stage ? (
-            <span className="apt-stage" data-stage={stage.id} key={stage.id}>
-              <span className="apt-stage-dot" aria-hidden="true" />
-              {stage.label}
-            </span>
-          ) : null}
           {elapsedMs !== null ? (
             <span
               className="apt-count"
@@ -606,6 +595,19 @@ export default function AgentPipelineTrace({
                 ))}
               </ol>
             )}
+
+            {/* The stage lives at the BOTTOM of the trace, as a status line
+                under the last row — where the eye already is while reading a
+                live run, and where it reads as "this is where it is now"
+                rather than competing with the elapsed time in the header.
+                Derived from the last real frame, so it cannot claim a stage
+                the run never reached. */}
+            {running && stage ? (
+              <p className="apt-stage" data-stage={stage.id} key={stage.id}>
+                <span className="apt-stage-dot" aria-hidden="true" />
+                {stage.label}
+              </p>
+            ) : null}
           </motion.div>
         ) : null}
       </AnimatePresence>
