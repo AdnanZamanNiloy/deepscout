@@ -205,7 +205,17 @@
   background: color-mix(in srgb, var(--apt-fg) 22%, transparent);
 }
 
-/* Tool rows carry an icon instead of a dot, sitting in the same gutter. */
+/* Tool rows carry an icon instead of a bar, in the same gutter. The gutter is
+   a zero-size positioning context: the marker inside is absolutely placed, so
+   the gutter itself must never contribute layout. */
+.apt-gutter {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
 .apt-icon {
   position: absolute;
   left: -25px;
