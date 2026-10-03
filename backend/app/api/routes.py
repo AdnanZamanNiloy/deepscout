@@ -516,6 +516,8 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
             emitted_route = False
             emitted_direct = False
             emitted_plan = False
+            emitted_search_queries: set = set()
+            emitted_search_seen: dict = {}
             emitted_findings = 0
             emitted_annotated = 0
             saved_facts = 0
@@ -716,6 +718,51 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                                 "search_progress",
                                 snippets=len(snapshot["search_results"]),
                             )
+
+                            # Per-query detail for the pipeline trace. The trace
+                            # needs to show WHAT was searched and WHAT came back
+                            # per query, not one opaque "N sources" counter, or it
+                            # has to invent that story. Emitted from the real
+                            # executed queries and their real results.
+                            #
+                            # Additive: a new event type that older clients
+                            # ignore. AGENTS.md 4.9 — the frontend gains a case
+                            # for it in the same change.
+                            # Re-emitted when a query's result count grows, so a
+                            # search first appears as "running" and its chips
+                            # arrive with them. Emitting once, on the first
+                            # snapshot that had any results at all, left 21 of
+                            # 22 queries chip-less: the other queries' rows had
+                            # not landed yet.
+                            for _q in (snapshot.get("executed_queries") or []):
+                                _qt = str(_q or "").strip()
+                                if not _qt:
+                                    continue
+                                _hits = [
+                                    {
+                                        "title": str(r.get("title", "") or "")[:160],
+                                        "url": str(r.get("url", "") or ""),
+                                        "source": str(
+                                            r.get("source") or r.get("provider") or ""
+                                        ),
+                                        "reliability": r.get("reliability_score"),
+                                    }
+                                    for r in snapshot.get("search_results") or []
+                                    if isinstance(r, dict)
+                                    and str(r.get("sub_question", "") or "").strip() == _qt
+                                    and str(r.get("url", "") or "").strip()
+                                ][:6]
+                                _key = (len(emitted_search_queries), len(_hits))
+                                if _qt in emitted_search_seen and emitted_search_seen[_qt] == len(_hits):
+                                    continue
+                                emitted_search_seen[_qt] = len(_hits)
+                                emitted_search_queries.add(_qt)
+                                yield event_line(
+                                    "search_query",
+                                    query=_qt,
+                                    results=_hits,
+                                    total_snippets=len(snapshot["search_results"]),
+                                )
                             # Incremental persistence: expansion passes add new
                             # sources — save only unseen URLs, never re-insert.
                             fresh_sources = [

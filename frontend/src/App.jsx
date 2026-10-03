@@ -3,7 +3,9 @@ import { fetchSession, fetchTrace, listSessions, resumeResearch, startResearch }
 import { MODE_META, applyTraceEntry, loadActiveSessionId, loadKnowledge, loadMissions, newSessionId, parseReport, removeKnowledgeItem, removeMission, saveActiveSessionId, saveKnowledgeItem, shouldAutoScroll, truncateFromMessage, updateMission, upsertMission } from "./lib";
 import Sidebar from "./components/Sidebar";
 import Composer from "./components/Composer";
-import { ErrorCard, MarsMessageShell, ThinkingSteps, TypingRow, UserMessage } from "./components/Thread";
+import { ErrorCard, MarsMessageShell, TypingRow, UserMessage } from "./components/Thread";
+import AgentPipelineTrace from "./trace/AgentPipelineTrace";
+import "./trace/trace.css";
 import AnswerCard, { ReplayAnswerCard } from "./components/AnswerCard";
 import ClaimDrawer from "./components/ClaimDrawer";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -481,6 +483,13 @@ export default function App() {
     // this, a buffered chunk could patch an orphaned run and even persist a
     // partial report after the interrupt.
     if (abortedRef.current.has(tempId)) return;
+    // Keep the raw frames: the pipeline trace is rendered from them, so the
+    // story it tells is the stream the backend actually sent.
+    setMessages((prev) => prev.map((m) =>
+      m.kind === "run" && m.run?.tempId === tempId
+        ? { ...m, traceEvents: [...(m.traceEvents || []), { ...evt, __ts: Date.now() }] }
+        : m
+    ));
     switch (evt.type) {
       case "progress":
         if (evt.request_id) {
@@ -1086,6 +1095,8 @@ function ThreadMessage({ message, running, onResume, onRegenerate, onAbort, edit
   // Every card renders only its own trace — never a shared/global log, so
   // a new message can't rewrite (or accumulate into) previous cards'.
   const stepList = message.steps || [];
+  const traceEvents = message.traceEvents || [];
+  const traceStatus = run?.error ? "error" : run?.done ? "done" : running ? "running" : "idle";
   if (message.kind === "user") {
     const isEditing = editingMessageId === message.id;
     return (
@@ -1112,7 +1123,7 @@ function ThreadMessage({ message, running, onResume, onRegenerate, onAbort, edit
         canRegenerate={run.done && !running && !run.error && run.query.length > 0}
         onRegenerate={() => onRegenerate(run.query)}
       >
-        <ThinkingSteps steps={stepList} />
+        <AgentPipelineTrace events={traceEvents} status={traceStatus} defaultOpen={false} />
         {run.aborted && !run.done ? (
           <div className="error-box" style={{ borderColor: "var(--line)", background: "var(--card)" }}>
             Mission aborted by user before completion.
@@ -1148,7 +1159,7 @@ function ThreadMessage({ message, running, onResume, onRegenerate, onAbort, edit
         canRegenerate={!running && message.query.length > 0}
         onRegenerate={() => onRegenerate(message.query)}
       >
-        <ThinkingSteps steps={stepList} />
+        <AgentPipelineTrace events={traceEvents} status={traceStatus} defaultOpen={false} />
         {trace.final_report ? (
           <ReplayAnswerCard trace={trace} />
         ) : (
