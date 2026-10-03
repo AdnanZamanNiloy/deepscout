@@ -764,59 +764,7 @@
   margin: 9px auto 0;
   max-width: 62ch;
 }
-.welcome-composer { margin-top: 20px; }
-.welcome-label {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
-  color: var(--t4);
-  margin: 22px 0 9px;
-}
-/* Real, tappable example questions — they teach the product by doing the
-   work the paragraph used to only describe. */
-.example-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.example-btn {
-  display: flex;
-  gap: 9px;
-  align-items: flex-start;
-  width: 100%;
-  text-align: left;
-  padding: 11px 13px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--card);
-  color: var(--t2);
-  font-size: 12.5px;
-  line-height: 1.5;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
-}
-.example-btn:hover { border-color: color-mix(in srgb, var(--mars) 45%, transparent); background: var(--card-2); color: var(--t1); }
-.example-btn svg { flex: none; margin-top: 1px; color: var(--mars); }
-.example-btn .ex-mode { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--t4); margin-top: 5px; }
-
-.welcome-facts {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px 0;
-  margin-top: 20px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line-soft);
-  font-size: 11px;
-  color: var(--t4);
-}
-.welcome-facts span { display: inline-flex; align-items: center; }
-.welcome-facts span + span::before {
-  content: "";
-  width: 3px; height: 3px;
-  border-radius: 50%;
-  background: var(--line-hover);
-  margin: 0 11px;
-  display: inline-block;
-}
-
+.welcome-composer { margin-top: 22px; }
 /* ============================================================
    REPLAY BANNER
    ============================================================ */
@@ -842,7 +790,6 @@
 }
 
 @media (max-width: 620px) {
-  .example-grid { grid-template-columns: 1fr; }
   .bubble { max-width: 88%; }
 }
 
