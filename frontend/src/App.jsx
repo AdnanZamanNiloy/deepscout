@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchSession, fetchTrace, listSessions, resumeResearch, startResearch } from "./api";
-import { MODE_META, applyTraceEntry, loadActiveSessionId, loadKnowledge, loadMissions, newSessionId, parseReport, removeKnowledgeItem, removeMission, saveActiveSessionId, saveKnowledgeItem, shouldAutoScroll, truncateFromMessage, updateMission, upsertMission } from "./lib";
+import { MODE_META, applyTraceEntry, loadActiveSessionId, loadKnowledge, loadMissions, newSessionId, parseReport, removeMission, saveActiveSessionId, saveKnowledgeItem, shouldAutoScroll, truncateFromMessage, updateMission, upsertMission } from "./lib";
 import Sidebar from "./components/Sidebar";
 import Composer from "./components/Composer";
 import { ErrorCard, MarsMessageShell, TypingRow, UserMessage } from "./components/Thread";
@@ -11,8 +11,6 @@ import ClaimDrawer from "./components/ClaimDrawer";
 import ErrorBoundary from "./components/ErrorBoundary";
 import IntelligencePanel from "./components/IntelligencePanel";
 import MissionsView from "./components/MissionsView";
-import EvidenceView from "./components/EvidenceView";
-import KnowledgeView from "./components/KnowledgeView";
 import AgentsView from "./components/AgentsView";
 import ModelControlsView from "./components/ModelControlsView";
 import Landing from "./components/Landing";
@@ -22,7 +20,7 @@ import { IconChevronDown, IconChevronLeft, IconMenu, IconPencil, IconPin, IconTr
 let seq = 1;
 const nid = () => `m${Date.now()}-${seq++}`;
 
-const VALID_VIEWS = ["landing", "workspace", "missions", "evidence", "knowledge", "agents", "model-controls", "docs"];
+const VALID_VIEWS = ["landing", "workspace", "missions", "agents", "model-controls", "docs"];
 /* Legacy route alias: old "#/providers" links/bookmarks still resolve to the
  * Model Controls view. Kept indefinitely — the route id was renamed to
  * "model-controls" but the URL had already shipped. */
@@ -915,14 +913,14 @@ export default function App() {
     return "";
   })();
 
-  /* Browser tab title follows the session: "query — DeepScout" while research
-   * is on screen, plain "DeepScout" everywhere else. Favicon stays put. */
+  /* Browser tab title follows the session: "query — MARS" while research
+   * is on screen, plain "MARS" everywhere else. Favicon stays put. */
   useEffect(() => {
     try {
       const q = (pageTitle && pageTitle !== "New Research" && view === "workspace")
         ? pageTitle
         : "";
-      document.title = q ? `${q} — DeepScout` : "DeepScout";
+      document.title = q ? `${q} — MARS` : "MARS";
     } catch {
       /* non-DOM environment */
     }
@@ -1008,14 +1006,6 @@ export default function App() {
                   onOpen={openReplay}
                   onRemove={(runId) => saveMissions(removeMission(runId))}
                   onNew={startNew}
-                />
-              ) : view === "evidence" ? (
-                <EvidenceView messages={messages} onInspect={setSelectedFinding} />
-              ) : view === "knowledge" ? (
-                <KnowledgeView
-                  items={knowledge}
-                  onRemove={(item) => setKnowledge(removeKnowledgeItem(item))}
-                  onInspect={setSelectedFinding}
                 />
               ) : view === "agents" ? (
                 <AgentsView />
@@ -1323,7 +1313,7 @@ function PageTitle({ title, mission, view, onRename, onTogglePin, onDelete }) {
 function WelcomeHero({ composer }) {
   return (
     <div className="welcome anim-rise">
-      <h1>What should <span className="welcome-accent">DeepScout</span> investigate?</h1>
+      <h1>What should <span className="welcome-accent">MARS</span> investigate?</h1>
       <p className="lede">
         Ask a question and watch the pipeline work: plan, search, extract, verify, critique,
         synthesize. Every claim in the final report stays tied to the source that produced it.

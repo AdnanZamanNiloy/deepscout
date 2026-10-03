@@ -274,16 +274,6 @@ export function saveKnowledgeItem(item) {
   return list.slice(0, MAX_SAVED);
 }
 
-export function removeKnowledgeItem(item) {
-  const key = `${item.claim || ""}||${item.source || ""}`;
-  const list = loadKnowledge().filter((k) => `${k.claim || ""}||${k.source || ""}` !== key);
-  try {
-    localStorage.setItem(KNOWLEDGE_KEY, JSON.stringify(list));
-  } catch {
-    /* ignore */
-  }
-  return list;
-}
 
 /* ---- Provider fallback chain helpers ---- */
 

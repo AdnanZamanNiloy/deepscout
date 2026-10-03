@@ -79,11 +79,13 @@ test("the Library dropdown is gone from the title bar", () => {
   assert.doesNotMatch(sidebar, /id: "evidence"/, "Evidence must not be in the nav");
   assert.doesNotMatch(sidebar, /id: "knowledge"/, "Knowledge must not be in the nav");
 
-  assert.match(
-    app,
-    /VALID_VIEWS = \[[^\]]*"evidence"/,
-    "the route still resolves so an old bookmark does not 404 to the landing page",
-  );
+  // Both views are now gone entirely — component, route and title — so an old
+  // "#/evidence" bookmark falls back to the landing page rather than rendering
+  // a page with no way to reach it.
+  assert.doesNotMatch(app, /VALID_VIEWS = \[[^\]]*"evidence"/, "evidence route must be gone");
+  assert.doesNotMatch(app, /VALID_VIEWS = \[[^\]]*"knowledge"/, "knowledge route must be gone");
+  assert.doesNotMatch(app, /EvidenceView/, "no evidence view import");
+  assert.doesNotMatch(app, /KnowledgeView/, "no knowledge view import");
 });
 
 test(".page-title-bar is the relative anchor for the header", () => {
