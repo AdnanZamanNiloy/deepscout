@@ -745,8 +745,9 @@
 .welcome {
   max-width: 720px;
   margin: 0 auto;
-  /* No extra top offset: the thread already pads 72px, and the empty state
-     anchors this block to the top of that padding. */
+  /* No top padding: this was 4vh, added when the hero also carried an example
+     grid and a facts strip. With only a heading and the composer left it just
+     pushed the input down the page. */
   padding: 0;
   text-align: center;
 }
