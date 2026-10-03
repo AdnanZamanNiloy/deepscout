@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -391,9 +392,63 @@ function Row({
   );
 }
 
+/** "2m 41s" / "45s" / "1h 5m". Zero-padded only where it aids scanning. */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  if (total < 60) return `${total}s`;
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  if (minutes < 60) return `${minutes}m ${seconds}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
+
+/**
+ * Wall-clock time the run has taken, from the first frame the client received
+ * to the latest.
+ *
+ * Measured from the frames' own arrival stamps rather than a start timestamp
+ * the stream never sends, so it reflects what the reader actually experienced.
+ * While the run is live the end is `now`, not the last frame — otherwise the
+ * figure would sit frozen between arrivals and read as stalled.
+ *
+ * Returns null until at least two frames exist: a single frame has no span,
+ * and showing "Worked for 0s" the instant the first event lands is noise.
+ */
+function useElapsed(
+  events: readonly WireEvent[],
+  running: boolean,
+): number | null {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!running) return undefined;
+    const id = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [running]);
+
+  let first: number | null = null;
+  let last: number | null = null;
+  let seen = 0;
+  for (const e of events) {
+    const t = e && typeof e.__ts === "number" ? e.__ts : null;
+    if (t === null) continue;
+    seen += 1;
+    if (first === null) first = t;
+    last = t;
+  }
+  // A single frame yields first === last, so the ordering check alone cannot
+  // reject it — the count has to. Without this the header reads "Worked for
+  // 0s" the instant the first event lands.
+  if (seen < 2 || first === null || last === null || last < first) return null;
+
+  // A backwards system clock must not render a negative duration.
+  const end = running ? Math.max(last, Date.now()) : last;
+  return Math.max(0, end - first);
+}
 
 export default function AgentPipelineTrace({
   events,
@@ -463,6 +518,7 @@ export default function AgentPipelineTrace({
   }, []);
 
   const running = status === "running";
+  const elapsedMs = useElapsed(events, running);
 
   return (
     <section className={`apt ${className ?? ""}`} data-status={status}>
@@ -480,9 +536,18 @@ export default function AgentPipelineTrace({
 
         <div className="apt-head-right">
           {running ? <span className="apt-live">live</span> : null}
-          <span className="apt-count">
-            {filtered.length} step{filtered.length === 1 ? "" : "s"}
-          </span>
+          {/* Elapsed time replaced the raw step count: "Worked for 2m 41s"
+              answers "how long did this take", which is what a reader opening
+              a finished run wants. The count is not lost — it stays in the
+              tooltip for anyone who does want it. */}
+          {elapsedMs !== null ? (
+            <span
+              className="apt-count"
+              title={`${filtered.length} step${filtered.length === 1 ? "" : "s"}`}
+            >
+              Worked for {formatDuration(elapsedMs)}
+            </span>
+          ) : null}
           {onKeyStepsOnlyChange ? (
             <button
               type="button"
