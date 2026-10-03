@@ -50,6 +50,13 @@ const CLAMP_CHARS = 320;
 function Icon({ kind }: { kind: StepKind }) {
   const common = {
     viewBox: "0 0 24 24",
+    // Width/height are set here as attributes, not only in CSS. An inline SVG
+    // carrying a viewBox and no intrinsic size stretches to fill its container,
+    // so a single missing CSS rule rendered a full-page magnifying glass. The
+    // class sizes and positions it; the attributes are the floor.
+    width: 15,
+    height: 15,
+    className: "apt-icon",
     fill: "none",
     stroke: "currentColor",
     strokeWidth: 1.6,

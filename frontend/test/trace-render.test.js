@@ -123,6 +123,25 @@ test("tool rows carry a monochrome icon, not a coloured status dot", async () =>
   assert.doesNotMatch(html, /class="apt-dot"/);
 });
 
+test("row icons carry an intrinsic size so they can never fill the card", async () => {
+  // Regression: the SVGs shipped with a viewBox but no className and no
+  // width/height, so the CSS size rule never applied and a viewBox-only SVG
+  // stretched to its container — a full-page magnifying glass over the trace.
+  // Both the class and the attributes are asserted, because either alone
+  // leaves a path back to that bug (CSS not loaded, or rule renamed).
+  const html = await render({ events: wireEvents(), status: "done" });
+  const svgs = html.match(/<svg[^>]*>/g) ?? [];
+  assert.ok(svgs.length > 0, "expected inline icons");
+  for (const tag of svgs) {
+    assert.match(tag, /class="apt-icon"/, `icon missing its class: ${tag}`);
+    assert.match(tag, /width="15"/, `icon has no intrinsic width: ${tag}`);
+    assert.match(tag, /height="15"/, `icon has no intrinsic height: ${tag}`);
+    assert.doesNotMatch(tag, /width="100%"/);
+  }
+  // The gutter must not contribute layout of its own.
+  assert.doesNotMatch(html, /class="apt-gutter"[^>]*>\s*<svg(?![^>]*class="apt-icon")/);
+});
+
 test("search results render as monospace path chips linking to the source", async () => {
   const html = await render({ events: wireEvents(), status: "done" });
   assert.match(html, /class="apt-code"/);
