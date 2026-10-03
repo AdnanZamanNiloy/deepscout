@@ -94,6 +94,35 @@
   gap: 10px;
 }
 
+/* Live stage: a quiet pulsing dot plus the label, so a streaming run reads as
+   working rather than as a list that silently grows. */
+.apt-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--apt-dim);
+  white-space: nowrap;
+  animation: apt-fade-in 0.32s ease both;
+}
+.apt-stage-dot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--act-line, var(--apt-fg));
+  animation: apt-throb 1.5s ease-in-out infinite;
+}
+
+@keyframes apt-fade-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes apt-throb {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50%      { opacity: 1; transform: scale(1); }
+}
+
 .apt-count {
   font-size: 11.5px;
   color: var(--apt-faint);
