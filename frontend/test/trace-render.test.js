@@ -163,10 +163,44 @@ test("chips sit in a wrapping flex row, not stacked full-width bars", async () =
   );
 });
 
-test("header reads 'Less steps' and reports the step count", async () => {
-  const html = await render({ events: wireEvents(), status: "done" });
+test("header reads 'Less steps' and reports elapsed working time", async () => {
+  // Elapsed time replaced the raw step count. The count survives in the
+  // tooltip, so this asserts the duration is present and the old inline
+  // "N steps" text is gone.
+  const events = wireEvents().map((e, i) => ({ ...e, __ts: 1_700_000_000_000 + i * 30_000 }));
+  const html = await render({ events, status: "done" });
   assert.match(html, /Less steps/);
-  assert.match(html, /\d+ steps?/);
+  assert.match(html, /Worked for 3m 30s/);
+  assert.doesNotMatch(html, />\d+ steps?<\//);
+  assert.match(html, /title="8 steps"/, "step count retained in the tooltip");
+});
+
+test("formatDuration covers seconds, minutes and hours", async () => {
+  const { formatDuration } = await loadComponent();
+  assert.equal(formatDuration(0), "0s");
+  assert.equal(formatDuration(45_000), "45s");
+  assert.equal(formatDuration(161_000), "2m 41s");
+  assert.equal(formatDuration(3_599_000), "59m 59s");
+  assert.equal(formatDuration(3_900_000), "1h 5m");
+  // A backwards clock must never render a negative duration.
+  assert.equal(formatDuration(-5_000), "0s");
+});
+
+test("no duration is claimed from a single frame", async () => {
+  // One frame has no span; "Worked for 0s" on the first event is noise.
+  const html = await render({
+    events: [{ type: "progress", message: "Query received", __ts: 1 }],
+    status: "done",
+  });
+  assert.doesNotMatch(html, /Worked for/);
+});
+
+test("frames without arrival stamps do not fabricate a duration", async () => {
+  const html = await render({
+    events: wireEvents().map(({ __ts, ...rest }) => rest),
+    status: "done",
+  });
+  assert.doesNotMatch(html, /Worked for/);
 });
 
 test("row markers never overlap their own label", async () => {
