@@ -72,10 +72,18 @@ test("the Library dropdown is gone from the title bar", () => {
   assert.doesNotMatch(app, /LibraryMenu/, "the component should be gone");
   assert.doesNotMatch(app, /showLibrary/, "and its prop with it");
 
-  // ...and the views it used to own are still reachable.
+  // Evidence and Knowledge are deliberately NOT surfaced anywhere in the nav:
+  // the Library dropdown went first, then their sidebar entries. The views
+  // still resolve from a deep link, so this pins the nav, not the routes.
   const sidebar = readFileSync(new URL("../src/components/Sidebar.jsx", import.meta.url), "utf8");
-  assert.match(sidebar, /id: "evidence"/, "Evidence must remain navigable");
-  assert.match(sidebar, /id: "knowledge"/, "Knowledge must remain navigable");
+  assert.doesNotMatch(sidebar, /id: "evidence"/, "Evidence must not be in the nav");
+  assert.doesNotMatch(sidebar, /id: "knowledge"/, "Knowledge must not be in the nav");
+
+  assert.match(
+    app,
+    /VALID_VIEWS = \[[^\]]*"evidence"/,
+    "the route still resolves so an old bookmark does not 404 to the landing page",
+  );
 });
 
 test(".page-title-bar is the relative anchor for the header", () => {
