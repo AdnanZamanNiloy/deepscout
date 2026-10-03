@@ -17,7 +17,7 @@ import AgentsView from "./components/AgentsView";
 import ModelControlsView from "./components/ModelControlsView";
 import Landing from "./components/Landing";
 import DocsView from "./components/DocsView";
-import { IconChevronDown, IconChevronLeft, IconDoc, IconFolder, IconLayers, IconMenu, IconPencil, IconPin, IconTrash } from "./components/icons";
+import { IconChevronDown, IconChevronLeft, IconMenu, IconPencil, IconPin, IconTrash } from "./components/icons";
 
 let seq = 1;
 const nid = () => `m${Date.now()}-${seq++}`;
@@ -27,63 +27,6 @@ const VALID_VIEWS = ["landing", "workspace", "missions", "evidence", "knowledge"
  * Model Controls view. Kept indefinitely — the route id was renamed to
  * "model-controls" but the URL had already shipped. */
 const VIEW_ALIASES = { providers: "model-controls" };
-
-const LIBRARY = [
-  { id: "evidence", label: "Evidence", icon: IconLayers },
-  { id: "knowledge", label: "Knowledge", icon: IconDoc },
-];
-
-/* Library dropdown in the title bar: the research library pages live here
- * instead of the sidebar. Opens on click, highlights the open page. */
-function LibraryMenu({ view, onNavigate }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
-    };
-    const onKey = (e) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open ]);
-
-  const active = LIBRARY.some((item) => item.id === view);
-  return (
-    <div className="title-menu-wrap library-menu-wrap" ref={wrapRef}>
-      <button
-        className={`library-btn${active ? " active" : ""}`}
-        onClick={() => setOpen((o) => !o)}
-        aria-label="Library"
-        aria-expanded={open}
-        aria-haspopup="menu"
-      >
-        <IconFolder size={15} /> Library
-        <IconChevronDown size={14} className={`nav-chev${open ? " open" : ""}`} />
-      </button>
-      {open ? (
-        <div className="title-menu library-menu" role="menu">
-          {LIBRARY.map((item) => (
-            <button
-              key={item.id}
-              className={`title-menu-item${view === item.id ? " active" : ""}`}
-              onClick={() => { onNavigate(item.id); setOpen(false); }}
-            >
-              <item.icon size={15} /> {item.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 /* The view name is the first path segment; anything after it is the view's
  * own state. The Providers sub-page tab rides there ("#/model-controls?tab=chains")
@@ -1047,7 +990,6 @@ export default function App() {
             mission={view === "workspace" ? activeMission : null}
             view={view}
             onNavigate={go}
-            showLibrary={view === "workspace" && messages.some((m) => m.kind === "run" || m.query || m.run?.query)}
             onRename={renameMission}
             onTogglePin={toggleMissionPin}
             onDelete={deleteMission}
@@ -1272,7 +1214,7 @@ function ThreadMessage({
   return null;
 }
 
-function PageTitle({ title, mission, view, onNavigate, showLibrary, onRename, onTogglePin, onDelete }) {
+function PageTitle({ title, mission, view, onRename, onTogglePin, onDelete }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -1329,7 +1271,6 @@ function PageTitle({ title, mission, view, onNavigate, showLibrary, onRename, on
     return (
       <div className="page-title-bar">
         <span className="page-title-text" title={title}>{title}</span>
-        {showLibrary ? <LibraryMenu view={view} onNavigate={onNavigate} /> : null}
       </div>
     );
   }
@@ -1370,7 +1311,6 @@ function PageTitle({ title, mission, view, onNavigate, showLibrary, onRename, on
             </div>
           ) : null}
       </div>
-      {showLibrary ? <LibraryMenu view={view} onNavigate={onNavigate} /> : null}
     </div>
   );
 }
