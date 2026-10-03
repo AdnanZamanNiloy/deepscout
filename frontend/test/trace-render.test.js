@@ -407,6 +407,80 @@ test("the trace paints no surface of its own, so backgrounds stay unified", asyn
   assert.doesNotMatch(css, /--apt-bg/, "the separate background token is gone");
 });
 
+test("the header names the stage the run is really in", async () => {
+  // Derived from the last real frame, so it cannot claim a stage never reached.
+  const stage = async (frames) => {
+    const html = await render({ events: frames, status: "running" });
+    const m = /class="apt-stage" data-stage="([a-z]+)"/.exec(html);
+    return m ? m[1] : null;
+  };
+  assert.equal(await stage([{ type: "progress", message: "x", __ts: 1 }]), "thinking");
+  assert.equal(await stage([{ type: "plan", items: ["a"], __ts: 1 }]), "planning");
+  assert.equal(await stage([{ type: "search_query", query: "q", __ts: 1 }]), "searching");
+  assert.equal(await stage([{ type: "findings", items: [{ claim: "c" }], __ts: 1 }]), "reading");
+  assert.equal(await stage([{ type: "critic", iteration: 1, __ts: 1 }]), "critiquing");
+  assert.equal(await stage([{ type: "final_report", report: "x", __ts: 1 }]), "writing");
+  // The LAST frame wins, so a run mid-critique reads as critiquing.
+  assert.equal(
+    await stage([
+      { type: "search_query", query: "q", __ts: 1 },
+      { type: "critic", iteration: 2, __ts: 2 },
+    ]),
+    "critiquing",
+  );
+});
+
+test("no stage is claimed for an empty or unknown stream", async () => {
+  const empty = await render({ events: [], status: "running" });
+  assert.doesNotMatch(empty, /class="apt-stage"/);
+  const unknown = await render({
+    events: [{ type: "brand_new_event", x: 1 }],
+    status: "running",
+  });
+  assert.doesNotMatch(unknown, /class="apt-stage"/);
+});
+
+test("the stage is hidden once the run is finished", async () => {
+  const html = await render({ events: wireEvents(), status: "done" });
+  assert.doesNotMatch(html, /class="apt-stage"/);
+});
+
+test("the panel never animates its height, which caused the blank flash", async () => {
+  // `overflow: hidden` is needed to clip a height animation, so while the
+  // animated height lagged the real content, arriving frames were clipped and
+  // the trace flashed blank — worst when frames arrived fastest. With no fixed
+  // height to animate, the body must not animate height at all.
+  const src = await readFile(new URL("../src/trace/AgentPipelineTrace.tsx", import.meta.url), "utf8");
+  const body = src.match(/className="apt-body"[\s\S]*?>/);
+  assert.ok(body, "expected the apt-body motion element");
+  assert.doesNotMatch(body[0], /height:/, "the body must not animate height");
+  assert.match(body[0], /opacity/, "it should still fade in");
+});
+
+test("row stagger runs from the newest row backwards", async () => {
+  // Delaying by absolute index made a row arriving at position 40 wait 0.56s
+  // before it was even visible, so bursts read as a blank gap then a pop.
+  const src = await readFile(new URL("../src/trace/AgentPipelineTrace.tsx", import.meta.url), "utf8");
+  assert.match(
+    src,
+    /total - 1 - index/,
+    "the stagger must be relative to the newest row",
+  );
+  assert.doesNotMatch(
+    src,
+    /Math\.min\(index, \d+\) \* STAGGER/,
+    "absolute-index stagger must be gone",
+  );
+});
+
+test("chips arriving on an already-open row still animate", async () => {
+  // The backend re-emits a search as its results land, on a row that is
+  // already open — keyed only on "chips" nothing re-animated, so sources
+  // appeared with no transition.
+  const src = await readFile(new URL("../src/trace/AgentPipelineTrace.tsx", import.meta.url), "utf8");
+  assert.match(src, /key=\{`chips-\$\{step\.chips\.length\}`\}/);
+});
+
 test("the duration stops counting once the run is aborted", async () => {
   // An aborted run is done=false with no error, so it previously reported
   // status "running" and the header timer advanced forever after the user had

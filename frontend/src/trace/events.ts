@@ -540,6 +540,49 @@ export function hostOf(url: string): string {
   return m[1].replace(/^www\./i, "");
 }
 
+/** The agent stage a run is in, derived from the frames themselves. */
+export type TraceStage = {
+  id: string;
+  label: string;
+};
+
+/**
+ * Which stage the pipeline is in, read off the most recent frame.
+ *
+ * Derived strictly from real event types — no timers, no guessing — so the
+ * label cannot claim work that did not happen. Scans backwards for the last
+ * frame the build understands and returns null for an empty or wholly
+ * unrecognised stream, rather than defaulting to a reassuring "Thinking".
+ */
+export function currentStage(frames: readonly WireFrame[]): TraceStage | null {
+  if (!Array.isArray(frames)) return null;
+  for (let i = frames.length - 1; i >= 0; i -= 1) {
+    const frame = frames[i];
+    if (!frame || !isKnownFrame(frame)) continue;
+    switch (frame.type) {
+      case "progress":
+      case "intent":
+        return { id: "thinking", label: "Thinking" };
+      case "route":
+      case "plan":
+        return { id: "planning", label: "Planning the research" };
+      case "search_progress":
+      case "search_query":
+        return { id: "searching", label: "Searching sources" };
+      case "findings":
+        return { id: "reading", label: "Reading sources" };
+      case "critic":
+        return { id: "critiquing", label: "Checking the evidence" };
+      case "direct_answer":
+      case "final_report":
+        return { id: "writing", label: "Writing the answer" };
+      case "error":
+        return { id: "stopped", label: "Stopped" };
+    }
+  }
+  return null;
+}
+
 /** "Less steps" keeps milestones and drops intermediate reasoning. */
 export function summarize(steps: readonly TraceStep[]): TraceStep[] {
   const keep = steps.filter((s) => !s.minor);

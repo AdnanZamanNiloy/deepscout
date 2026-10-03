@@ -9,6 +9,7 @@ import {
 
 import {
   buildTrace,
+  currentStage,
   type StepKind,
   type StepStatus,
   type TraceChip,
@@ -215,12 +216,15 @@ function Row({
   open,
   onToggle,
   index,
+  total,
   renderContent,
 }: {
   step: TraceStep;
   open: boolean;
   onToggle: (id: string) => void;
   index: number;
+  /** Sibling count, so the stagger can run from the newest row backwards. */
+  total: number;
   renderContent?: (s: TraceStep) => ReactNode;
 }) {
   const prose = isProse(step.kind) || step.kind === "evidence";
@@ -261,8 +265,12 @@ function Row({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{
-        duration: 0.26,
-        delay: Math.min(index, 14) * STAGGER,
+        duration: 0.3,
+        // Staggered from the NEWEST row backwards. Delaying by absolute index
+        // meant a row arriving at position 40 waited 0.56s before it was even
+        // visible, so a burst of frames looked like a blank gap and then an
+        // instant pop. Now the newest row leads and the ones above it cascade.
+        delay: Math.min(Math.max(0, total - 1 - index), 5) * STAGGER,
         ease: [0.22, 1, 0.36, 1],
       }}
     >
@@ -339,10 +347,15 @@ function Row({
 
         {step.error ? <p className="apt-prose">{step.error}</p> : null}
 
+        {/* Keyed on the chip count too: the backend re-emits a search as its
+            results land, and those chips arrive on a row that is ALREADY open.
+            Without the count in the key the block never re-animated, so sources
+            appeared with no transition at all — the "sometimes nothing
+            animates" symptom. */}
         <AnimatePresence initial={false}>
           {open && step.chips?.length ? (
             <motion.div
-              key="chips"
+              key={`chips-${step.chips.length}`}
               className="apt-chips"
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
@@ -375,6 +388,7 @@ function Row({
                   open
                   onToggle={onToggle}
                   index={i}
+                  total={(step.children ?? []).length}
                   renderContent={renderContent}
                 />
               ))}
@@ -499,6 +513,7 @@ export default function AgentPipelineTrace({
 
   const running = status === "running";
   const elapsedMs = useElapsed(events, running);
+  const stage = useMemo(() => currentStage(events), [events]);
 
   return (
     <section className={`apt ${className ?? ""}`} data-status={status}>
@@ -519,6 +534,17 @@ export default function AgentPipelineTrace({
             duration counts up on its own, so the badge was redundant, and the
             milestone filter was one more control competing with the text. */}
         <div className="apt-head-right">
+          {/* The stage the pipeline is actually in, read off the last real
+              frame. It gives a live run a visible sense of working instead of
+              a silent list that grows, and it cannot claim a stage the run
+              never reached. Hidden once finished — the elapsed time is the
+              useful summary then. */}
+          {running && stage ? (
+            <span className="apt-stage" data-stage={stage.id} key={stage.id}>
+              <span className="apt-stage-dot" aria-hidden="true" />
+              {stage.label}
+            </span>
+          ) : null}
           {elapsedMs !== null ? (
             <span
               className="apt-count"
@@ -530,16 +556,23 @@ export default function AgentPipelineTrace({
         </div>
       </header>
 
+      {/* No height animation on the body. `overflow: hidden` is required to
+          clip such an animation, so while the animated height lagged the real
+          content, arriving frames were clipped away and the panel flashed
+          blank — worst exactly when frames arrived fastest. The body is no
+          longer a fixed-height scroller, so animating its height bought
+          nothing. Opacity plus a small offset reveals it without ever hiding
+          rows. */}
       <AnimatePresence initial={false}>
         {expanded ? (
           <motion.div
             id="apt-body"
             key="body"
             className="apt-body"
-            initial={reduce ? false : { height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
-            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            initial={reduce ? false : { opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           >
             {hidden > 0 ? (
               <p className="apt-hidden-note">
@@ -567,6 +600,7 @@ export default function AgentPipelineTrace({
                     open={isOpen(s.id)}
                     onToggle={toggleStep}
                     index={i}
+                    total={steps.length}
                     renderContent={renderContent}
                   />
                 ))}
