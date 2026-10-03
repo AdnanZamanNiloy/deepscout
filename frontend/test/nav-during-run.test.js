@@ -101,3 +101,43 @@ test("returning to the streaming chat restores it live, not stale", () => {
   // ...otherwise fall through to a server fetch.
   assert.match(openReplay[0], /await fetchSession\(targetSessionId\)/);
 });
+
+/* The composer during a live run.
+ *
+ * The textarea used to be `disabled={running}`, so a user watching a run could
+ * not draft a follow-up — they could only wait. The requirement is narrower:
+ * the field must accept text, while SENDING stays gated so a draft cannot
+ * silently queue behind the active run.
+ */
+test("the composer accepts text while a run streams", async () => {
+  const composer = await readFile(new URL("../src/components/Composer.jsx", import.meta.url), "utf8");
+  const area = composer.match(/<textarea[\s\S]*?\/>/);
+  assert.ok(area, "expected the textarea");
+  assert.doesNotMatch(area[0], /disabled/, "the field must not be disabled during a run");
+  assert.doesNotMatch(area[0], /readOnly/, "nor read-only");
+});
+
+test("sending stays blocked while a run streams", async () => {
+  const composer = await readFile(new URL("../src/components/Composer.jsx", import.meta.url), "utf8");
+  // canSend gates the button, submit gates Enter and clicks.
+  assert.match(composer, /const canSend = value\.trim\(\)\.length >= 5 && !running;/);
+  assert.match(composer, /if \(v\.length < 5 \|\| running\) return;/);
+  // While running, Enter must fall through to a newline rather than being
+  // preventDefault'd into doing nothing at all.
+  assert.match(composer, /if \(running\) return;\s*\n\s*e\.preventDefault\(\);/);
+});
+
+test("a queued draft says why it cannot be sent", async () => {
+  const composer = await readFile(new URL("../src/components/Composer.jsx", import.meta.url), "utf8");
+  assert.match(
+    composer,
+    /running && value\.trim\(\)\.length >= 5/,
+    "the hint appears once there is something to send",
+  );
+  assert.match(composer, /Stop the current run to send this question\./);
+  assert.match(
+    composer,
+    /stop the run to send/,
+    "and the placeholder explains it before typing starts",
+  );
+});
