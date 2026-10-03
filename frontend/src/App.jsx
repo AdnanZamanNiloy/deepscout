@@ -1089,14 +1089,27 @@ export default function App() {
   );
 }
 
-function ThreadMessage({ message, running, onResume, onRegenerate, onAbort, editingMessageId, onEditMessage }) {
+function ThreadMessage({
+  message, running, onResume, onAcceptPlan, onRegenerate, onAbort,
+  editingMessageId, onEditMessage,
+}) {
   // Steps live ON the message: live runs stream into message.steps via
   // pushTrace(tempId, …), restored replays carry their persisted trail.
   // Every card renders only its own trace — never a shared/global log, so
   // a new message can't rewrite (or accumulate into) previous cards'.
   const stepList = message.steps || [];
   const traceEvents = message.traceEvents || [];
-  const traceStatus = run?.error ? "error" : run?.done ? "done" : running ? "running" : "idle";
+  // `run` is destructured further down, inside the run-message branch only.
+  // Reading it here referenced an undefined binding and blew up the whole
+  // message list. message.run is the right source at this scope.
+  const traceRun = message.kind === "run" ? message.run : null;
+  const traceStatus = traceRun?.error
+    ? "error"
+    : traceRun?.done
+      ? "done"
+      : traceRun
+        ? "running"
+        : "idle";
   if (message.kind === "user") {
     const isEditing = editingMessageId === message.id;
     return (

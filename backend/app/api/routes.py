@@ -30,15 +30,15 @@ from app.db.sqlite import (
     record_event,
     save_agent_tasks,
     save_citations,
+    save_evidence,
     save_claims,
     save_contradictions,
     save_critic_review,
     save_decisions,
-    save_evidence,
     save_final_report,
     save_report,
-    save_sources,
     save_verification_results,
+    save_sources,
     start_research_run,
     touch_session,
 )
@@ -516,8 +516,8 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
             emitted_route = False
             emitted_direct = False
             emitted_plan = False
-            emitted_search_queries: set = set()
             emitted_search_seen: dict = {}
+            last_issued_queries: int = -1
             emitted_findings = 0
             emitted_annotated = 0
             saved_facts = 0
@@ -728,41 +728,60 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                             # Additive: a new event type that older clients
                             # ignore. AGENTS.md 4.9 — the frontend gains a case
                             # for it in the same change.
-                            # Re-emitted when a query's result count grows, so a
-                            # search first appears as "running" and its chips
-                            # arrive with them. Emitting once, on the first
-                            # snapshot that had any results at all, left 21 of
-                            # 22 queries chip-less: the other queries' rows had
-                            # not landed yet.
-                            for _q in (snapshot.get("executed_queries") or []):
-                                _qt = str(_q or "").strip()
-                                if not _qt:
+                            # Keyed on the sub_question the results are
+                            # ACTUALLY tagged with, not on executed_queries.
+                            # Those two sets do not line up — executed_queries
+                            # accumulates follow-ups the search layer never
+                            # tagged results with — so matching on it left 19 of
+                            # 20 searches showing no chips while the run was in
+                            # fact returning plenty of evidence. The sub_question
+                            # on a result is ground truth for which query
+                            # produced it, so this cannot drift.
+                            seen_sub: dict = {}
+                            for _r in snapshot.get("search_results") or []:
+                                if not isinstance(_r, dict):
                                     continue
-                                _hits = [
-                                    {
-                                        "title": str(r.get("title", "") or "")[:160],
-                                        "url": str(r.get("url", "") or ""),
-                                        "source": str(
-                                            r.get("source") or r.get("provider") or ""
-                                        ),
-                                        "reliability": r.get("reliability_score"),
-                                    }
-                                    for r in snapshot.get("search_results") or []
-                                    if isinstance(r, dict)
-                                    and str(r.get("sub_question", "") or "").strip() == _qt
-                                    and str(r.get("url", "") or "").strip()
-                                ][:6]
-                                _key = (len(emitted_search_queries), len(_hits))
-                                if _qt in emitted_search_seen and emitted_search_seen[_qt] == len(_hits):
+                                _url = str(_r.get("url", "") or "").strip()
+                                if not _url:
                                     continue
-                                emitted_search_seen[_qt] = len(_hits)
-                                emitted_search_queries.add(_qt)
+                                _sq = str(_r.get("sub_question", "") or "").strip()
+                                if not _sq:
+                                    continue
+                                seen_sub.setdefault(_sq, []).append({
+                                    "title": str(_r.get("title", "") or "")[:160],
+                                    "url": _url,
+                                    "source": str(
+                                        _r.get("source") or _r.get("provider") or ""
+                                    ),
+                                    "reliability": _r.get("reliability_score"),
+                                })
+
+                            for _sq, _hits in seen_sub.items():
+                                _short = _hits[:6]
+                                if emitted_search_seen.get(_sq) == len(_short):
+                                    continue
+                                emitted_search_seen[_sq] = len(_short)
                                 yield event_line(
                                     "search_query",
-                                    query=_qt,
-                                    results=_hits,
+                                    query=_sq,
+                                    results=_short,
                                     total_snippets=len(snapshot["search_results"]),
                                 )
+
+                            # How many queries actually ran, so the reader can
+                            # see searches that returned nothing — the honest
+                            # version of "we tried more than we kept".
+                            _issued = len(snapshot.get("executed_queries") or [])
+                            if _issued != last_issued_queries:
+                                last_issued_queries = _issued
+                                yield event_line(
+                                    "search_query",
+                                    query="",
+                                    results=[],
+                                    total_snippets=len(snapshot["search_results"]),
+                                    issued=_issued,
+                                )
+
                             # Incremental persistence: expansion passes add new
                             # sources — save only unseen URLs, never re-insert.
                             fresh_sources = [
