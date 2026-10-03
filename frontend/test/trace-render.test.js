@@ -531,20 +531,62 @@ test("opens automatically when a run starts streaming", async () => {
   // a useState initialiser never re-reads a prop. The component watches the
   // idle -> running edge instead.
   const src = await readFile(new URL("../src/trace/AgentPipelineTrace.tsx", import.meta.url), "utf8");
+  assert.match(src, /autoOpenStep\(wasLive\.current, status\)/, "must use the edge helper");
+  assert.match(src, /wasLive\.current = next/, "and store the next edge value");
+  // Regression: seeded with `status === "running"`, the ref claimed the
+  // transition had already been handled. The run card mounts while the run is
+  // ALREADY live, so the trace never opened — the exact case this exists for.
   assert.match(
     src,
-    /status === "running" && !wasLive\.current/,
-    "must expand on the idle -> running transition",
+    /const wasLive = useRef\(false\)/,
+    "wasLive must start false, or a trace mounted mid-run never auto-opens",
   );
-  assert.match(src, /wasLive\.current = status === "running"/, "and track the edge");
-  assert.match(src, /const wasLive = useRef\(status === "running"\)/);
+  assert.doesNotMatch(
+    src,
+    /useRef\(status === "running"\)/,
+    "seeding from the current status defeats the edge detection",
+  );
+});
+
+test("auto-open fires on the exact mount case that was broken", async () => {
+  // Behavioural table, not source-reading: the run card mounts while its run
+  // is ALREADY live, so the very first evaluation must expand.
+  const { autoOpenStep } = await loadComponent();
+
+  // The bug: a trace mounted mid-run stayed collapsed forever.
+  assert.deepEqual(
+    autoOpenStep(false, "running"),
+    { expand: true, wasLive: true },
+    "a trace mounted into a live run must expand",
+  );
+
+  // Already open and still live: must not re-fire (would fight the toggle).
+  assert.equal(autoOpenStep(true, "running").expand, false);
+
+  // Idle -> live is the normal path.
+  const idle = autoOpenStep(false, "idle");
+  assert.equal(idle.expand, false);
+  assert.equal(idle.wasLive, false);
+  assert.equal(autoOpenStep(idle.wasLive, "running").expand, true);
+
+  // A finished or restored trace must stay shut.
+  assert.equal(autoOpenStep(false, "done").expand, false);
+  assert.equal(autoOpenStep(true, "done").expand, false);
+  assert.equal(autoOpenStep(false, "idle").expand, false);
+  assert.equal(autoOpenStep(false, "error").expand, false);
 });
 
 test("a restored run does not unroll itself into the thread", async () => {
   // Replaying a finished session should not auto-expand a long trace.
   const src = await readFile(new URL("../src/trace/AgentPipelineTrace.tsx", import.meta.url), "utf8");
-  const effect = src.match(/if \(status === "running" && !wasLive\.current\) setExpanded\(true\)/);
-  assert.ok(effect, "auto-open is gated on the running transition only");
+  // Gating now lives in the extracted helper; the behavioural table above
+  // proves it expands only for a live run.
+  assert.match(src, /export function autoOpenStep/, "the edge logic is extracted");
+  assert.match(
+    src,
+    /const live = status === "running";/,
+    "and is gated on the running status alone",
+  );
   // Both call sites keep defaultOpen false, so a replayed message starts shut.
   const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
   const calls = app.match(/<AgentPipelineTrace[\s\S]*?\/>/g) ?? [];

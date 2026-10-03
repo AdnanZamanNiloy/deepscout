@@ -412,6 +412,26 @@ export function formatDuration(ms: number): string {
   return `${hours}h ${minutes % 60}m`;
 }
 
+/**
+ * Advance the auto-open edge one tick.
+ *
+ * Extracted so the transition is testable without a DOM: effects do not run
+ * during server rendering, so the behaviour could otherwise only be asserted
+ * by reading the source.
+ *
+ * `wasLive` must be seeded `false`, meaning "no transition handled yet". The
+ * run card mounts while its run is ALREADY live, so seeding it from the current
+ * status made the component believe it had already handled the edge and the
+ * trace stayed collapsed for precisely the case auto-open exists to cover.
+ */
+export function autoOpenStep(
+  wasLive: boolean,
+  status: string,
+): { expand: boolean; wasLive: boolean } {
+  const live = status === "running";
+  return { expand: live && !wasLive, wasLive: live };
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -474,7 +494,13 @@ export default function AgentPipelineTrace({
   className,
 }: AgentPipelineTraceProps) {
   const [expanded, setExpanded] = useState(defaultOpen);
-  const wasLive = useRef(status === "running");
+  // Starts FALSE, not `status === "running"`. The run card is created and
+  // mounted while the run is already live, so seeding this with the current
+  // status made the component believe it had already handled the transition
+  // and the auto-open below could never fire — the trace stayed collapsed for
+  // exactly the case it was written for. `false` means "no transition handled
+  // yet", so the first observation of a live run opens it.
+  const wasLive = useRef(false);
   const [openOverride, setOpenOverride] = useState<Record<string, boolean>>({});
   const reduce = useReducedMotion();
 
@@ -488,8 +514,9 @@ export default function AgentPipelineTrace({
   // Deliberately NOT applied to a restored session — replaying a finished run
   // should not unroll a long trace into the thread unasked.
   useEffect(() => {
-    if (status === "running" && !wasLive.current) setExpanded(true);
-    wasLive.current = status === "running";
+    const { expand, wasLive: next } = autoOpenStep(wasLive.current, status);
+    if (expand) setExpanded(true);
+    wasLive.current = next;
   }, [status]);
 
   const all = useMemo(() => buildTrace(events), [events]);
