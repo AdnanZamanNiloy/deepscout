@@ -2,7 +2,7 @@ import { useState } from "react";
 import { formatTime } from "../lib";
 import { IconCheck, IconChevronDown, IconCopy, IconInfo, IconPencil, IconRefresh } from "./icons";
 
-/* Chat thread: right-aligned user bubbles, MARS responses, working action row. */
+/* Chat thread: right-aligned user bubbles, DeepScout responses, working action row. */
 
 export function UserMessage({
   text, time, onEdit, editing, onCancelEdit, onSubmitEdit, disabled,

@@ -1,5 +1,5 @@
 /* ============================================================================
-   MARS Documentation — runtime.
+   DeepScout Documentation — runtime.
    Renders the navigation, pages, client-side search, scroll-spy, theme
    toggle and copy buttons from the MARS_DOCS content model.
    ========================================================================== */

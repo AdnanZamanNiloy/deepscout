@@ -1,4 +1,4 @@
-/* MARS landing — a working front door.
+/* DeepScout landing — a working front door.
  *
  * Design direction: the landing does the same job as the console's welcome
  * screen, at full width. Instead of a stock AI-marketing composition (three
@@ -64,7 +64,7 @@ const CAPABILITIES = [
   {
     icon: IconFlask,
     title: "Contradiction handling",
-    desc: "When credible sources disagree, MARS surfaces the conflict and what it turns on — scope, timeframe, method — instead of silently averaging it into a false single figure.",
+    desc: "When credible sources disagree, DeepScout surfaces the conflict and what it turns on — scope, timeframe, method — instead of silently averaging it into a false single figure.",
   },
   {
     icon: IconCompass,
@@ -109,11 +109,11 @@ export default function Landing({ onStart, onDocs }) {
           className="landing-brand"
           href="#/"
           onClick={(e) => e.preventDefault()}
-          aria-label="MARS — Multi-Agent Research System"
+          aria-label="DeepScout — Multi-Agent Research System"
         >
           <Planet size={36} />
           <span className="brand-copy">
-            <span className="brand-name">MARS</span>
+            <span className="brand-name">DeepScout</span>
             <span className="brand-sub">Multi-Agent Research System</span>
           </span>
         </a>
@@ -152,7 +152,7 @@ export default function Landing({ onStart, onDocs }) {
             Answers you can <em>audit</em>, not just answers you can read.
           </h1>
           <p className="landing-desc">
-            MARS decomposes a hard question, dispatches it across a coordinated team of
+            DeepScout decomposes a hard question, dispatches it across a coordinated team of
             specialist agents, verifies every claim against the source that produced it, and
             red-teams its own conclusions before writing a cited report — live, to your console.
           </p>
@@ -182,7 +182,7 @@ export default function Landing({ onStart, onDocs }) {
 
         {/* The evidence panel: the real pipeline, then what verification
             actually outputs. This is the product, shown. */}
-        <div className="landing-panel" aria-label="How a MARS run is structured">
+        <div className="landing-panel" aria-label="How a DeepScout run is structured">
           <div className="landing-panel-head">
             <div>
               <div className="t">Run structure</div>
@@ -225,7 +225,7 @@ export default function Landing({ onStart, onDocs }) {
             </h2>
             <p className="landing-section-desc">
               Each stage exists because a language model on its own will hallucinate a
-              confident answer. MARS adds the machinery that makes an answer checkable.
+              confident answer. DeepScout adds the machinery that makes an answer checkable.
             </p>
           </header>
           <div className="landing-grid">
@@ -253,7 +253,7 @@ export default function Landing({ onStart, onDocs }) {
                 Answers you can audit
               </h2>
               <p className="landing-section-desc">
-                MARS separates the answer a reader wants from the provenance a reviewer
+                DeepScout separates the answer a reader wants from the provenance a reviewer
                 needs. The report states the conclusion and its citations; the audit layer
                 carries every measured score, conflict and evidence gap behind it.
               </p>
@@ -340,7 +340,7 @@ export default function Landing({ onStart, onDocs }) {
           <div className="landing-footer-brand">
             <span className="landing-footer-mark">
               <Planet size={28} />
-              <span className="landing-footer-name">MARS</span>
+              <span className="landing-footer-name">DeepScout</span>
             </span>
             <p className="landing-footer-tag">
               Multi-Agent Research System — cited, verified, auditable answers from a

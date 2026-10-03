@@ -209,7 +209,7 @@ def _is_blocked(url: str) -> bool:
 
 # Wikimedia (and many publishers) 403 script default UAs. Contact-style string
 # per https://meta.wikimedia.org/wiki/User-Agent_policy.
-_WIKI_USER_AGENT = "MARS-research/1.0 (personal research assistant)"
+_WIKI_USER_AGENT = "DeepScout/1.0 (personal research assistant)"
 
 # Generic page fetch uses a browser UA: many publishers block identifying/script
 # UAs on article pages (the MediaWiki API above is the exception — it explicitly
