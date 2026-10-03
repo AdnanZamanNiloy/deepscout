@@ -19,6 +19,7 @@ from app.core.degradation import (
     take_fallbacks,
 )
 from app.db.sqlite import (
+    save_trace_frames,
     complete_research_run,
     ensure_session,
     get_run_trace,
@@ -399,6 +400,51 @@ async def research_trace(run_id: str, request: Request) -> Dict[str, Any]:
     if trace is None:
         raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
     return trace
+
+
+def _with_trace_capture(
+    source: AsyncGenerator[str, None],
+    database_url: str,
+    run_id: str,
+) -> AsyncGenerator[str, None]:
+    """Pass the NDJSON stream through untouched while recording its frames.
+
+    Capturing at the single consumption point means the 29 `event_line` call
+    sites stay unaware of persistence, and every event type is recorded by
+    construction — a frame cannot be added to the stream without also being
+    recorded, which is the failure mode that would silently lose replay again.
+
+    Frames are written once the stream finishes, so persistence cost never
+    lands in the middle of a live run. A run cut off by a client disconnect
+    keeps whatever had already been emitted rather than nothing.
+    """
+    captured: list[dict] = []
+
+    async def _tee() -> AsyncGenerator[str, None]:
+        try:
+            async for line in source:
+                stripped = line.strip()
+                if stripped:
+                    try:
+                        parsed = json.loads(stripped)
+                    except ValueError:
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        captured.append(parsed)
+                yield line
+        finally:
+            # Best effort: a failed replay write must not break a run that has
+            # already produced its answer.
+            try:
+                await save_trace_frames(database_url, run_id, captured)
+            except Exception as exc:  # noqa: BLE001 - replay is non-critical
+                logger.warning(
+                    "[trace] could not persist frames for run %s: %s",
+                    run_id, exc,
+                    exc_info=exc,
+                )
+
+    return _tee()
 
 
 @router.get("/research/{run_id}/export/{fmt}")
@@ -988,7 +1034,10 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
             clear_run_usage()
             unbind_request_context()
 
-    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+    return StreamingResponse(
+        _with_trace_capture(event_stream(), settings.database_url, request_id),
+        media_type="application/x-ndjson",
+    )
 
 
 @router.post("/research/{run_id}/resume")
@@ -1197,7 +1246,10 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
             clear_fallbacks()
             unbind_request_context()
 
-    return StreamingResponse(resume_stream(), media_type="application/x-ndjson")
+    return StreamingResponse(
+        _with_trace_capture(resume_stream(), settings.database_url, run_id),
+        media_type="application/x-ndjson",
+    )
 
 
 async def _persist_save(db: str, run_id: str, facts: list) -> None:

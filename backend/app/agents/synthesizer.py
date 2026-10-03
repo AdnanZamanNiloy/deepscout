@@ -590,6 +590,9 @@ nuclear route…", "the renewables-first route…"), not by internal labels.
    word, and define it on first use when the reader may not know it.
 8. LENGTH: follow the length instruction in the prompt exactly. It is a hard
    limit, not a target. A report trimmed by machine loses its last paragraphs.
+9. NO thematic breaks. Never write `---`, `***` or `___` rules between
+   sections — a blank line and the heading already separate them, and a rule
+   under every heading reads as machine scaffolding.
 
 ━━━ CITATION RULES (non-negotiable) ━━━
 

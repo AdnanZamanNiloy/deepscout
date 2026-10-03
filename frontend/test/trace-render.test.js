@@ -169,6 +169,46 @@ test("header reads 'Less steps' and reports the step count", async () => {
   assert.match(html, /\d+ steps?/);
 });
 
+test("row markers never overlap their own label", async () => {
+  // Regression: nested rows had 14px of indent while the 15px icon was placed
+  // at left:-9px, so it spanned 5..20px against a label starting at 16px and
+  // printed over the text. Asserted as geometry, since the collision is
+  // invisible to every DOM-level check.
+  const css = await readFile(new URL("../src/trace/trace.css", import.meta.url), "utf8");
+  const px = (block, prop) => {
+    const m = block.match(new RegExp(`${prop}:\\s*(-?\\d+(?:\\.\\d+)?)px`));
+    return m ? Number(m[1]) : null;
+  };
+  // Two `.apt-nested` rules exist: a shared list reset with no indent, and the
+  // positioning rule that sets it. Select the one carrying the indent.
+  const nestedBlocks = [...css.matchAll(/\.apt-nested \{([\s\S]*?)\n\}/g)]
+    .map((m) => m[1])
+    .filter((b) => /padding-left/.test(b));
+  assert.equal(nestedBlocks.length, 1, "expected exactly one indenting .apt-nested rule");
+  const indent = px(nestedBlocks[0], "padding-left");
+  assert.ok(indent != null, "nested rows need an indent");
+
+  const iconRule = css.match(/\.apt-icon \{([\s\S]*?)\n\}/);
+  const iconW = px(iconRule[1], "width");
+  assert.ok(iconW != null, "expected an icon width");
+
+  const offsets = css.match(/\.apt-nested \.apt-icon,[\s\S]*?\{ left:\s*(-?\d+(?:\.\d+)?)px; \}/);
+  assert.ok(offsets, "expected a nested icon offset");
+  const offset = Number(offsets[1]);
+
+  const rowPad = px(css.match(/\.apt-nested \.apt-row \{([^}]*)\}/)?.[1] ?? "", "padding-left") ?? 0;
+  const labelStart = indent + rowPad;
+  const iconStart = indent + offset;
+  const iconEnd = iconStart + iconW;
+
+  assert.ok(
+    iconEnd <= labelStart,
+    `nested icon ends at ${iconEnd}px but the label starts at ${labelStart}px — ` +
+      `they overlap by ${(iconEnd - labelStart).toFixed(1)}px`,
+  );
+  assert.ok(iconStart >= 0, `nested icon starts off-canvas at ${iconStart}px`);
+});
+
 test("a long source title truncates instead of stretching the pill", async () => {
   // Two things had to be true at once. The stylesheet capped the pill's width,
   // and the text sat in its own block-ish span — `text-overflow` on a flex

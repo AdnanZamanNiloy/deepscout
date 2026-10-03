@@ -222,7 +222,10 @@ async function buildReplayMessages(session, signal) {
         confidence: meta.confidence,
         claims: [],
         sources: [],
-            events: [],
+        events: [],
+        // Empty, not missing: the trace reads frames from here, and a missing
+        // key is indistinguishable from an older server that cannot provide one.
+        frames: [],
         final_report: meta.report
           ? { report_markdown: meta.report, confidence: meta.confidence }
           : null,
@@ -243,6 +246,10 @@ async function buildReplayMessages(session, signal) {
         kind: e.event_type === "end" ? "done" : "active",
         text: `${e.node} · ${e.event_type}`,
       })),
+      // The pipeline trace renders the run's real NDJSON frames. Without these
+      // a restored session showed "0 steps" — the history looked erased the
+      // moment you navigated away, because only the node trail had survived.
+      traceEvents: trace.frames || [],
     };
   }));
 }

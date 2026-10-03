@@ -19,6 +19,7 @@ from app.agents.synthesizer import (
     _reduce_redundant_audit_language,
 )
 from app.core.decision import build_decision_layer
+from app.agents.sources import clean_writer_prose
 
 
 # --- 1. decision layer hidden from the answer surface ------------------------
@@ -58,8 +59,14 @@ def test_decision_options_are_not_rendered_into_the_primary_answer():
     }
     options = build_decision_layer(state)
     report = wf.build_markdown_report(state, decision_options=options)
-    # The primary answer is exactly the synthesized prose — no option rows.
-    assert report.strip() == state["synthesized_answer"].strip()
+    # The primary answer is the synthesized prose — no option rows, and no
+    # rewriting beyond the documented marker/rule cleanup.
+    assert report.strip() == clean_writer_prose(state["synthesized_answer"]).strip()
+    # "Verbatim" now means verbatim-minus-scaffolding: citation markers and
+    # thematic breaks are presentation noise, not content.
+    import re
+
+    assert not re.search(r"\[\d", report), "inline citation markers must not ship"
     assert "Option A" not in report
     assert "RECOMMENDED" not in report
 

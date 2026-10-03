@@ -358,12 +358,16 @@ a.apt-inline:hover { background: color-mix(in srgb, var(--apt-fg) 12%, transpare
 .apt-nested {
   position: relative;
   margin: 2px 0 8px;
-  padding-left: 14px;
+  /* Must clear the marker: 24px of indent places the label at 26px, and the
+     15px icon then occupies 8..23px. At the previous 14px the icon spanned
+     5..20px against a label starting at 16px, so it printed on top of the
+     text. Geometry is asserted in trace-render.test.js. */
+  padding-left: 24px;
 }
 .apt-nested::before {
   content: "";
   position: absolute;
-  left: 0;
+  left: 2px;
   top: 4px;
   bottom: 4px;
   width: 1px;
@@ -371,7 +375,7 @@ a.apt-inline:hover { background: color-mix(in srgb, var(--apt-fg) 12%, transpare
 }
 .apt-nested .apt-row { padding-left: 2px; }
 .apt-nested .apt-icon,
-.apt-nested .apt-gutter::before { left: -9px; }
+.apt-nested .apt-gutter::before { left: -16px; }
 .apt-nested .apt-prose { font-size: 12.5px; color: var(--apt-dim); }
 
 /* --- motion -------------------------------------------------------------- */

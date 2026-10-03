@@ -1,6 +1,7 @@
 """Answer Quality Optimizer: the pre-delivery gate (five-axis 0-100 scoring)."""
 
 from app.agents.answer_quality import evaluate_answer
+from app.agents.sources import clean_writer_prose
 
 INTENT_ML = {
     "ambiguity": False, "explanation_level": "practical",
@@ -309,5 +310,7 @@ async def test_quality_gate_retries_once_and_ships_better_draft(monkeypatch):
     assert final["synthesized_answer"].startswith("RAG retrieves documents")
     assert final["quality"]["passed"] is True
     # The measured quality score lives in the audit layer, not the answer.
-    assert final["final_report"] == final["synthesized_answer"]
+    # Scoring reads the citations, so the markers must survive until AFTER it
+    # has run — this asserts the report is the cleaned synthesis, not the raw.
+    assert final["final_report"] == clean_writer_prose(final["synthesized_answer"])
     assert "Answer quality" in final["final_audit"]

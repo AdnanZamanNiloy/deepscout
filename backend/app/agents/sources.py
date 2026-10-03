@@ -708,3 +708,36 @@ def strip_machine_sections(text: str) -> str:
         if match and match.start() < cut:
             cut = match.start()
     return body[:cut]
+
+
+# Inline citation markers as the writer emits them: [3], [1][6], [4, 7].
+_INLINE_CITE_RE = re.compile(r"\s*\[\d+(?:\s*,\s*\d+)*\](?=\s*\[\d+)|\s*\[\d+(?:\s*,\s*\d+)*\]")
+# A thematic break on its own line: ---, ***, ___.
+_HR_RE = re.compile(r"(?m)^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$")
+
+
+def clean_writer_prose(text: str) -> str:
+    """Strip presentation noise from the WRITER'S prose only.
+
+    Two things the model emits that read as machine output rather than an
+    answer, and that the reader should not have to see:
+
+    1. Inline citation markers (`[4]`, `[1][6]`). These are load-bearing
+       DURING the run — citation density is scored from them, and the evidence
+       ledger enumerates by the same numbers — so they are removed here, after
+       scoring, and only from prose. The ledger keeps its numbering.
+    2. Thematic breaks (`---`). Headings already delimit sections, so a rule
+       under every heading is redundant scaffolding.
+
+    Both are applied to the writer's body only: `strip_machine_sections` runs
+    first so the audit sections (source ledger, confidence panel) are never
+    touched. Machine sections legitimately use rules to separate themselves.
+    """
+    body = strip_machine_sections(text or "")
+    body = _INLINE_CITE_RE.sub("", body)
+    body = _HR_RE.sub("", body)
+    # Collapse the blank-line runs the removals leave behind, and any run of
+    # three or more newlines, without touching single paragraph breaks.
+    body = re.sub(r"[ \t]+\n", "\n", body)
+    body = re.sub(r"\n{3,}", "\n\n", body)
+    return body.strip()

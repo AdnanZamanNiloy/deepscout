@@ -23,6 +23,7 @@ import re
 import app.graph.workflow as wf
 from app.agents.outline import build_blueprint, build_outline
 from app.agents.synthesizer import synthesize, synthesizer_agent
+from app.agents.sources import clean_writer_prose
 
 # The historical universal headings. Any of these appearing unrequested in a
 # broad adaptive answer is the regression.
@@ -201,7 +202,10 @@ def test_answer_and_audit_are_separate_documents():
     audit = wf.build_answer_audit(state)
     # The answer is exactly the synthesizer's text: no quality panel, no
     # confidence float, no evidence accounting.
-    assert answer == state["synthesized_answer"]
+    # Adaptive structure chooses the SHAPE; the report builder still only
+    # applies the documented cleanup, so the answer must equal the synthesis
+    # with markers/rules removed and nothing else changed.
+    assert answer == clean_writer_prose(state["synthesized_answer"])
     assert "# Answer Quality" not in answer
     assert "# Confidence Score" not in answer
     assert "Evidence & Confidence" not in answer

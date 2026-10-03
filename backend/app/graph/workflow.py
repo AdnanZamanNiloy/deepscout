@@ -939,7 +939,14 @@ def build_markdown_report(
     """
     synthesized = str(state.get("synthesized_answer", "")).strip()
     if synthesized:
-        return synthesized
+        # Strip inline citation markers and thematic breaks HERE, after
+        # `evaluate_answer` has scored citation density from them (line ~2172)
+        # and only from the writer's prose. Doing it earlier would zero the
+        # density signal; doing it later would leave the delivered answer
+        # carrying scoring scaffolding the reader never asked for.
+        from app.agents.sources import clean_writer_prose
+
+        return clean_writer_prose(synthesized)
     # Empty synthesis: a short, honest fallback — never a report skeleton with
     # placeholder sections. `build_answer_audit` still carries the measured
     # reason and the evidence, so the failure stays auditable.
