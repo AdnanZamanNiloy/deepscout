@@ -1018,7 +1018,6 @@ export default function App() {
                 <ModelControlsView />
               ) : messages.length === 0 ? (
                 <WelcomeHero
-                  onSubmit={submitQuery}
                   composer={
                     <Composer
                       value={composer}

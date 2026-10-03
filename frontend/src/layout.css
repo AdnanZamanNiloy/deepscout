@@ -436,8 +436,14 @@
   color: var(--t3);
 }
 
-.thread-center { display: flex; align-items: center; justify-content: center; }
-.thread-center .thread-inner { width: 100%; padding-bottom: 6vh; }
+/* Empty-thread state: the welcome block is anchored to the TOP, not centred.
+   It used to be `align-items: center`, which was right when the first screen
+   carried four example cards and a facts strip. With those gone the block is
+   short, so centring dropped the composer into the lower half of the viewport
+   with a large empty band beneath it. The thread's own 72px top padding is
+   enough offset now. */
+.thread-center { display: flex; align-items: flex-start; justify-content: center; }
+.thread-center .thread-inner { width: 100%; padding-bottom: 0; }
 
 .composer-zone {
   flex: none;
