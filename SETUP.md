@@ -1,6 +1,6 @@
 # Setup Guide
 
-Everything needed to run DeepScout on a fresh machine. Target profile: any
+Everything needed to run MARS on a fresh machine. Target profile: any
 Linux/macOS/Windows host with **Python 3.10+**, **Node 18+**, 8 GB RAM and
 internet access. No GPU, no local models, no paid services required.
 

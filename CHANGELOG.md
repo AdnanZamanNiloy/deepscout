@@ -2,7 +2,7 @@
 
 ## v2.4 — Question-Driven Coverage & Research (Phase 10)
 
-Measured finding: DeepScout could rank evidence by relevance (v2.3 §1), but a broad
+Measured finding: MARS could rank evidence by relevance (v2.3 §1), but a broad
 question was still researched and answered through whatever the first retrieval
 returned — required dimensions the search never covered simply vanished from the
 plan, so partial coverage was presented as the whole landscape.
@@ -152,7 +152,7 @@ architectural stages, not prompt hopes.
 - Deterministic fallback (same contract as every agent): curated homonym
   hints + the orchestrator's lexical classifiers, including self-resolution
   when the user already disambiguated ("python snake feeding habits").
-- DeepScout never blocks on a clarifying question: `recommended_action` decides
+- MARS never blocks on a clarifying question: `recommended_action` decides
   whether research targets the dominant sense or structures both, and the
   answer itself opens with the disambiguation.
 - The grounding search on the raw query moved into the intent node and is

@@ -1,5 +1,5 @@
 /* ============================================================================
-   DeepScout Documentation — content model.
+   MARS Documentation — content model.
    Every claim below is grounded in this repository's source, README.md,
    ARCHITECTURE.md, BENCHMARK_RESULTS.md and CHANGELOG.md.
    ========================================================================== */
@@ -97,7 +97,7 @@
     '<div class="hero">',
       '<p class="eyebrow">Multi-Agent Research System · v2.1</p>',
       '<h1>Research beyond the obvious.</h1>',
-      '<p class="lede">DeepScout is an autonomous research intelligence platform. It decomposes a complex question, plans a research strategy, dispatches specialized agents in parallel, verifies every claim against its cited source, challenges its own conclusions, and delivers a cited report with an honest, evidence-derived confidence score.</p>',
+      '<p class="lede">MARS is an autonomous research intelligence platform. It decomposes a complex question, plans a research strategy, dispatches specialized agents in parallel, verifies every claim against its cited source, challenges its own conclusions, and delivers a cited report with an honest, evidence-derived confidence score.</p>',
       '<div class="hero-cta">',
         '<a class="btn primary" href="#quickstart">', I.bolt, " Quick start</a>",
         '<a class="btn" href="#architecture">', I.flow, " Architecture</a>",
@@ -111,14 +111,14 @@
       "</div>",
     "</div>",
 
-    "<h2 id=\"what-is-mars\">What DeepScout is</h2>",
-    "<p>DeepScout is not a chatbot wrapped around a search API. It behaves like a research organization assembled for one question: it understands the question before it searches, plans a strategy, delegates work to specialist agents, runs independent investigations, verifies evidence deterministically, attacks its own findings, and synthesizes a decision-ready answer with traceable citations.</p>",
+    "<h2 id=\"what-is-mars\">What MARS is</h2>",
+    "<p>MARS is not a chatbot wrapped around a search API. It behaves like a research organization assembled for one question: it understands the question before it searches, plans a strategy, delegates work to specialist agents, runs independent investigations, verifies evidence deterministically, attacks its own findings, and synthesizes a decision-ready answer with traceable citations.</p>",
     "<p>The pipeline is a <strong>LangGraph state machine</strong> driving bounded, asynchronous agents. Generation runs on remote LLM APIs — Groq primary, HuggingFace fallback, plus any OpenAI-compatible endpoint you add. Every run persists its full timeline to SQLite, so it can be replayed, audited, or resumed after a failure.</p>",
 
     '<div class="callout">',
       '<span class="c-ico">', I.info, "</span>",
       '<div class="c-body"><div class="c-title">Built for modest hardware</div>',
-      "<p>DeepScout targets an 8&nbsp;GB RAM host with no GPU and no local model inference. Concurrency is bounded everywhere — <code>MAX_PARALLEL_SEARCH=2</code>, <code>MAX_PARALLEL_LLM=2</code>, <code>MAX_PARALLEL_AGENTS=3</code> — and raw page content is released from memory after verification. These are real constraints, not aspirations.</p></div>",
+      "<p>MARS targets an 8&nbsp;GB RAM host with no GPU and no local model inference. Concurrency is bounded everywhere — <code>MAX_PARALLEL_SEARCH=2</code>, <code>MAX_PARALLEL_LLM=2</code>, <code>MAX_PARALLEL_AGENTS=3</code> — and raw page content is released from memory after verification. These are real constraints, not aspirations.</p></div>",
     "</div>",
 
     "<h2 id=\"design-philosophy\">Design philosophy</h2>",
@@ -134,7 +134,7 @@
   /* ============================ Capabilities ============================ */
   C.capabilities = [
     '<p class="eyebrow">Capabilities</p>',
-    '<h2 id="capabilities">What separates DeepScout</h2>',
+    '<h2 id="capabilities">What separates MARS</h2>',
     '<p class="lede">Each capability below maps to a specific module, threshold and measured result — not a marketing bullet.</p>',
 
     '<h3 id="cap-intent">Understand before searching</h3>',
@@ -408,7 +408,7 @@
   C.agents = [
     '<p class="eyebrow">Agents</p>',
     '<h2 id="agents">Agent roster</h2>',
-    '<p class="lede">DeepScout operates as a temporary research organization. Each agent has one job, a deterministic fallback, and a specific module.</p>',
+    '<p class="lede">MARS operates as a temporary research organization. Each agent has one job, a deterministic fallback, and a specific module.</p>',
     '<div class="grid cols-2">',
       '<div class="feature"><div class="f-ico">', I.target, "</div><h4>Intent classifier</h4><p><code>agents/intent.py</code> — resolves meaning before research. Ranked senses, domain, explanation level, deterministic homonym fallback.</p></div>",
       '<div class="feature"><div class="f-ico">', I.brain, "</div><h4>Orchestrator</h4><p><code>agents/orchestrator.py</code> — LLM-free complexity scoring, target agents, required axes, mode recommendation and budget multiplier.</p></div>",
@@ -525,7 +525,7 @@
   C.contradictions = [
     '<p class="eyebrow">Evidence &amp; Verification</p>',
     '<h2 id="contradictions">Contradiction detection</h2>',
-    '<p class="lede">DeepScout does not blend disagreement into an average. It surfaces the conflict, names the values, and feeds a resolution follow-up back into research.</p>',
+    '<p class="lede">MARS does not blend disagreement into an average. It surfaces the conflict, names the values, and feeds a resolution follow-up back into research.</p>',
     "<p>Three detectors share one semantic engine and emit one output shape. They run in a deliberate order:</p>",
     '<div class="pipeline">',
       '<div class="pipe-node"><div class="pn-ico">1</div><div class="pn-body"><div class="pn-title">Polarity</div><div class="pn-desc">Checked first, outside the similarity band. Fires when both claims carry non-zero, opposing polarity. Fixed severity 0.55.</div></div></div>', ARROW,
@@ -645,7 +645,7 @@
   C.stopping = [
     '<p class="eyebrow">Operations</p>',
     '<h2 id="stopping">Depth &amp; stopping</h2>',
-    '<p class="lede">DeepScout must know when to stop. The depth controller is pure and stateless, and decides expand versus finalize from measured state — never from a model’s optimism.</p>',
+    '<p class="lede">MARS must know when to stop. The depth controller is pure and stateless, and decides expand versus finalize from measured state — never from a model’s optimism.</p>',
     '<h3 id="stop-order">Decision order</h3>',
     "<ol>",
       "<li><strong>Hard walls first.</strong> Budget exhausted or iteration ceiling reached → finalize immediately.</li>",

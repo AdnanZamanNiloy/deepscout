@@ -165,7 +165,7 @@ export default function Sidebar({
       <button type="button" className="brand" onClick={() => go("workspace")} title="Back to the research console">
         <Planet size={38} />
         <span className="brand-copy">
-          <span className="brand-name">DeepScout</span>
+          <span className="brand-name">MARS</span>
           <span className="brand-sub">Multi-Agent Research System</span>
         </span>
       </button>
@@ -217,7 +217,7 @@ export default function Sidebar({
       </div>
 
       <div className="side-foot">
-        <span className="ver">DeepScout console · v2.1</span>
+        <span className="ver">MARS console · v2.1</span>
         <ThemeToggle />
       </div>
     </aside>

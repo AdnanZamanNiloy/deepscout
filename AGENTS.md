@@ -3,7 +3,7 @@
 This file is the persistent rulebook for any AI coding agent (opencode or otherwise) working in this repository. It applies to **every** task. Read it once at the start of a session and hold yourself to it for every change you make.
 
 One companion document gives context this file doesn't repeat:
-- `DeepScout-vision-v2.md` — what the system should eventually do and why (feature rationale, UI mockups, data model).
+- `MARS-vision-v2.md` — what the system should eventually do and why (feature rationale, UI mockups, data model).
 
 This file exists because the codebase already shipped real, silent bugs that a bit more discipline would have caught — see Section 2. Its job is to stop that from happening again, not to describe features.
 
@@ -282,7 +282,7 @@ If you find a new instance of any of these patterns anywhere in the codebase whi
    documented.
 
 6. If a task requires an architecture-level decision not covered by
-   DeepScout-vision-v2.md (e.g. changing the DB engine,
+   MARS-vision-v2.md (e.g. changing the DB engine,
    removing an existing working code path, changing the public API
    contract in a breaking way), stop and surface the question instead
    of deciding unilaterally. Small implementation choices within a
@@ -447,9 +447,9 @@ If any box can't be checked, the task isn't done — say so explicitly rather th
 ## 7. When unsure
 
 ```text
-- Feature intent/rationale unclear -> check DeepScout-vision-v2.md first.
+- Feature intent/rationale unclear -> check MARS-vision-v2.md first.
 - Whether something counts as "done" for a specific feature -> check
-  DeepScout-vision-v2.md's acceptance criteria — several features (Feature
+  MARS-vision-v2.md's acceptance criteria — several features (Feature
   02/03, Feature 06, Feature 14) have explicit rules about not being
   marked complete on a partial implementation.
 - Still unclear, or the question is architectural rather than

@@ -1,10 +1,10 @@
-# DeepScout — Multi-Agent Research System
+# MARS — Multi-Agent Research System
 
 > **Autonomous Research Intelligence for Complex Questions and High-Stakes Decisions**
 
-DeepScout is an AI-powered research intelligence platform that decomposes complex questions, intelligently delegates research to specialized agents, runs investigations in parallel, verifies evidence, challenges conclusions, preserves research state, and produces decision-ready outputs with traceable evidence.
+MARS is an AI-powered research intelligence platform that decomposes complex questions, intelligently delegates research to specialized agents, runs investigations in parallel, verifies evidence, challenges conclusions, preserves research state, and produces decision-ready outputs with traceable evidence.
 
-The current DeepScout already provides autonomous planning, bounded asynchronous search, iterative critique, streaming research events, SQLite persistence, provider fallback, and a LangGraph workflow.
+The current MARS already provides autonomous planning, bounded asynchronous search, iterative critique, streaming research events, SQLite persistence, provider fallback, and a LangGraph workflow.
 
 The top-tier version evolves that foundation into a **research operating system**.
 
@@ -81,7 +81,7 @@ Section 0 below is a candid feasibility check against a solo developer running t
 
 ## Core Principle
 
-DeepScout should not behave like:
+MARS should not behave like:
 
 ```text
 User → Chatbot → Answer
@@ -115,7 +115,7 @@ User receives an auditable answer
 
 ## Product Promise
 
-> **Ask a difficult question. DeepScout builds the research team, investigates the problem, verifies the evidence, and explains the conclusion.**
+> **Ask a difficult question. MARS builds the research team, investigates the problem, verifies the evidence, and explains the conclusion.**
 
 ---
 
@@ -128,7 +128,7 @@ User receives an auditable answer
                                └──────────┬──────────┘
                                           ↓
                                ┌─────────────────────┐
-                               │ DeepScout ORCHESTRATOR   │
+                               │ MARS ORCHESTRATOR   │
                                │                     │
                                │ Complexity Analysis │
                                │ Strategy Planning   │
@@ -208,7 +208,7 @@ User receives an auditable answer
 
 # 3. Feature Fingerprint
 
-The following features define the **top-tier DeepScout fingerprint**.
+The following features define the **top-tier MARS fingerprint**.
 
 | #  | Feature                     | What it does                                         | Why it matters                              |
 | -- | --------------------------- | ---------------------------------------------------- | ------------------------------------------- |
@@ -238,7 +238,7 @@ The following features define the **top-tier DeepScout fingerprint**.
 
 ## Purpose
 
-The Orchestrator is the **brain of DeepScout**.
+The Orchestrator is the **brain of MARS**.
 
 Instead of always using the same number of agents, it first determines how difficult the research problem is.
 
@@ -270,7 +270,7 @@ Execution plan
 "What is the latest version of Python?"
 ```
 
-DeepScout:
+MARS:
 
 ```text
 Complexity: Low
@@ -287,7 +287,7 @@ Budget: Low
 over the next 20 years?"
 ```
 
-DeepScout:
+MARS:
 
 ```text
 Complexity: Very High
@@ -319,7 +319,7 @@ before dispatch.
 
 # 5. Feature 02 — Specialized Agent Workforce
 
-DeepScout should operate as an **AI research organization**.
+MARS should operate as an **AI research organization**.
 
 ## Core Agents
 
@@ -379,7 +379,7 @@ Agent B → finish
 Agent C → finish
 ```
 
-DeepScout executes:
+MARS executes:
 
 ```text
 Agent A ────────┐
@@ -389,7 +389,7 @@ Agent D ────────┤
 Agent E ────────┘
 ```
 
-The current DeepScout already uses bounded asynchronous search and a configurable concurrency limit.
+The current MARS already uses bounded asynchronous search and a configurable concurrency limit.
 
 The top-tier version extends this from **parallel searches** to **parallel agent missions**.
 
@@ -474,9 +474,9 @@ This prevents agents from duplicating one another.
 
 # 9. Feature 06 — Research Memory
 
-Current DeepScout persists completed reports in SQLite with the query, report, confidence, and timestamp.
+Current MARS persists completed reports in SQLite with the query, report, confidence, and timestamp.
 
-Top-tier DeepScout should persist **the entire research mission**.
+Top-tier MARS should persist **the entire research mission**.
 
 ## Research Memory Model
 
@@ -496,7 +496,7 @@ Project
  └── Final report
 ```
 
-This makes DeepScout resumable.
+This makes MARS resumable.
 
 ---
 
@@ -580,7 +580,7 @@ Updated conclusion
 
 # 12. Feature 09 — Contradiction Engine
 
-DeepScout should explicitly surface disagreement.
+MARS should explicitly surface disagreement.
 
 ```text
 SOURCE A
@@ -593,7 +593,7 @@ SOURCE C
 Market growth: 7%
 ```
 
-Instead of hiding this, DeepScout reports:
+Instead of hiding this, MARS reports:
 
 ```text
 ⚠ CONTRADICTION DETECTED
@@ -650,7 +650,7 @@ OVERALL CONFIDENCE      87%
 
 # 14. Feature 11 — Dynamic Research Depth
 
-DeepScout should know when to stop.
+MARS should know when to stop.
 
 ```text
 Initial research
@@ -679,7 +679,7 @@ Maximum depth reached
 
 # 15. Feature 12 — Cost & Token Governor
 
-Top-tier DeepScout must understand economics.
+Top-tier MARS must understand economics.
 
 Every research mission gets a budget.
 
@@ -693,7 +693,7 @@ Spent:     $1.21
 Remaining: $0.63
 ```
 
-DeepScout can decide:
+MARS can decide:
 
 ```text
 Use another agent?
@@ -708,7 +708,7 @@ This prevents runaway research. Given that generation runs entirely on paid LLM 
 
 # 16. Feature 13 — Durable Execution
 
-If an agent fails at step 45 of a long research mission, DeepScout should not restart from step 1.
+If an agent fails at step 45 of a long research mission, MARS should not restart from step 1.
 
 Use checkpoints:
 
@@ -811,12 +811,12 @@ Demonstrations
 
 # 19. Feature 16 — Evaluation Lab
 
-DeepScout should evaluate itself.
+MARS should evaluate itself.
 
 ## Evaluation Dashboard
 
 ```text
-DeepScout Evaluation Lab
+MARS Evaluation Lab
 
 Test Questions               100
 
@@ -830,7 +830,7 @@ Average Cost                  $1.42
 Average Runtime               2m 14s
 ```
 
-Use representative research questions and compare DeepScout against simpler baselines.
+Use representative research questions and compare MARS against simpler baselines.
 
 ---
 
@@ -840,7 +840,7 @@ Research should not stop at:
 
 > “Here is what is happening.”
 
-DeepScout should answer:
+MARS should answer:
 
 > “What happens next?”
 
@@ -923,7 +923,7 @@ Lower downside while preserving upside.
 
 # 22. Feature 19 — Self-Diagnosis
 
-An advanced DeepScout can improve its own research process.
+An advanced MARS can improve its own research process.
 
 The system should inspect:
 
@@ -976,7 +976,7 @@ The interface should have **five major surfaces**.
 The home screen.
 
 ```text
-DeepScout
+MARS
 Research Intelligence
 
 What decision are you trying to make?
@@ -1009,7 +1009,7 @@ Agent Library
 This is the most visually impressive screen.
 
 ```text
-DeepScout / MISSION CONTROL
+MARS / MISSION CONTROL
 
 EV BATTERY SUPPLY CHAIN 2030
 
@@ -1087,7 +1087,7 @@ CONFIDENCE
 The final result should look closer to a premium strategy report than a chatbot conversation.
 
 ```text
-DeepScout INTELLIGENCE REPORT
+MARS INTELLIGENCE REPORT
 
 Research Question
 
@@ -1120,7 +1120,7 @@ Research Trace
 
 # 27. Agent Library
 
-Allow users to inspect the DeepScout workforce.
+Allow users to inspect the MARS workforce.
 
 ```text
 AGENT LIBRARY
@@ -1163,7 +1163,7 @@ Success rate
 
 # 28. Research Modes
 
-DeepScout should provide explicit modes.
+MARS should provide explicit modes.
 
 | Mode      | Use                              | Agents | Output           |
 | --------- | --------------------------------- | -----: | ---------------- |
@@ -1178,7 +1178,7 @@ Note: "Deep" and "Executive" modes exceed the default `MAX_PARALLEL_AGENTS` guar
 
 ---
 
-# 29. Updated DeepScout Data Model
+# 29. Updated MARS Data Model
 
 The system should grow beyond a single `research_reports` table.
 
@@ -1244,14 +1244,14 @@ GET    /api/evaluations
 
 # 31. Top-Tier Research Lifecycle
 
-The canonical DeepScout lifecycle should be:
+The canonical MARS lifecycle should be:
 
 ```text
 01  RECEIVE
     User submits research objective
 
 02  UNDERSTAND
-    DeepScout determines intent and constraints
+    MARS determines intent and constraints
 
 03  SCORE
     Complexity and research depth calculated
@@ -1298,7 +1298,7 @@ The canonical DeepScout lifecycle should be:
 
 ---
 
-# 32. Example: A Complete DeepScout Mission
+# 32. Example: A Complete MARS Mission
 
 ## User
 
@@ -1339,7 +1339,7 @@ All independent agents investigate their assignments.
 
 ## Step 4 — Evidence Collection
 
-DeepScout records:
+MARS records:
 
 ```text
 72 sources
@@ -1368,7 +1368,7 @@ The Critic finds:
 
 ## Step 7 — Synthesis
 
-DeepScout produces:
+MARS produces:
 
 ```text
 Recommended investment:
@@ -1404,9 +1404,9 @@ Full research trace
 
 ---
 
-# 33. What Makes DeepScout Top-Tier
+# 33. What Makes MARS Top-Tier
 
-DeepScout becomes genuinely differentiated when these capabilities work together:
+MARS becomes genuinely differentiated when these capabilities work together:
 
 ```text
 ADAPTIVE
@@ -1428,7 +1428,7 @@ DECISION-ORIENTED
 
 The strongest product identity is:
 
-> **DeepScout does not simply generate answers. It constructs and manages a temporary AI research organization around each difficult question.**
+> **MARS does not simply generate answers. It constructs and manages a temporary AI research organization around each difficult question.**
 
 ---
 
@@ -1501,11 +1501,11 @@ Multi-tenant users/projects, org-wide knowledge memory
 
 ---
 
-# 35. DeepScout Final Product Identity
+# 35. MARS Final Product Identity
 
 ## Name
 
-**DeepScout**
+**MARS**
 
 ### Multi-Agent Research System
 
@@ -1519,7 +1519,7 @@ Alternative:
 
 ## Positioning
 
-> **DeepScout is an autonomous research intelligence platform that orchestrates specialized AI agents to investigate complex questions, verify evidence, challenge assumptions, and transform research into decision-ready intelligence.**
+> **MARS is an autonomous research intelligence platform that orchestrates specialized AI agents to investigate complex questions, verify evidence, challenge assumptions, and transform research into decision-ready intelligence.**
 
 ## Core Loop
 
@@ -1550,7 +1550,7 @@ DECIDE
 04  Executive Decision Intelligence
 ```
 
-These four features should define the DeepScout brand, architecture, and UI rather than simply adding more agents for the sake of complexity.
+These four features should define the MARS brand, architecture, and UI rather than simply adding more agents for the sake of complexity.
 
 ---
 
@@ -1587,4 +1587,4 @@ The interface should communicate one message immediately:
 
 > **Something intelligent is happening behind the screen.**
 
-That is the design goal for the top-tier DeepScout experience — once there's a reliable system behind it to represent.
+That is the design goal for the top-tier MARS experience — once there's a reliable system behind it to represent.

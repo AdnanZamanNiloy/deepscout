@@ -35,7 +35,7 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 _CHECK_CONCURRENCY = 6
-_UA = "DeepScout/2.0 (+citation-health-check)"
+_UA = "MARS-Research/2.0 (+citation-health-check)"
 
 
 async def _probe_url(url: str, timeout: float) -> Dict[str, Any]:
