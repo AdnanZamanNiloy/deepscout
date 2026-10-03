@@ -2,9 +2,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -457,8 +455,6 @@ export default function AgentPipelineTrace({
   const [expanded, setExpanded] = useState(defaultOpen);
   const [openOverride, setOpenOverride] = useState<Record<string, boolean>>({});
   const reduce = useReducedMotion();
-  const listRef = useRef<HTMLOListElement | null>(null);
-  const pinnedRef = useRef(true);
 
   const all = useMemo(() => buildTrace(events), [events]);
   const steps = useMemo(() => all.slice(-maxSteps), [all, maxSteps]);
@@ -494,18 +490,6 @@ export default function AgentPipelineTrace({
     (id: string) => (id in openOverride ? openOverride[id] : defaultOpenFor(id)),
     [openOverride, defaultOpenFor],
   );
-
-  useLayoutEffect(() => {
-    const el = listRef.current;
-    if (!el || !pinnedRef.current || !expanded) return;
-    el.scrollTop = el.scrollHeight;
-  }, [steps.length, expanded]);
-
-  const onScroll = useCallback(() => {
-    const el = listRef.current;
-    if (!el) return;
-    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-  }, []);
 
   const running = status === "running";
   const elapsedMs = useElapsed(events, running);
@@ -566,8 +550,6 @@ export default function AgentPipelineTrace({
             ) : (
               <ol
                 className="apt-flow"
-                ref={listRef}
-                onScroll={onScroll}
                 aria-live="polite"
                 aria-relevant="additions"
                 aria-label="Agent pipeline steps"

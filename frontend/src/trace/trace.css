@@ -144,13 +144,15 @@
 
 /* --- the flow ------------------------------------------------------------ */
 
+/* Grows with its content — no internal scroller, no fixed height.
+   The trace used to cap at 560px and scroll inside its own box, which put a
+   second scrollbar inside a page that already scrolls, hid the tail of a run
+   behind an inner scroll gesture, and made the panel a fixed slab regardless
+   of how much had happened. `overflow: hidden` is retained only so the
+   collapse/expand height animation has something to clip against. */
 .apt-body {
   overflow: hidden;
-  max-height: 560px;
-  overflow-y: auto;
   padding: 4px 18px 16px 20px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--apt-line) transparent;
 }
 
 .apt-empty,
@@ -393,7 +395,7 @@ a.apt-inline:hover { background: color-mix(in srgb, var(--apt-fg) 12%, transpare
 /* --- responsive ---------------------------------------------------------- */
 
 @media (max-width: 640px) {
-  .apt-body { max-height: 62vh; padding-left: 16px; }
+  .apt-body { padding-left: 16px; }
   /* Narrower viewport, so the base type steps down rather than up — the old
      override made mobile chips LARGER than desktop, undoing the compaction. */
   .apt { font-size: 12.5px; }

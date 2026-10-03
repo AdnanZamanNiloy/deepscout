@@ -203,6 +203,24 @@ test("frames without arrival stamps do not fabricate a duration", async () => {
   assert.doesNotMatch(html, /Worked for/);
 });
 
+test("the trace grows with its content: no fixed height, no inner scroller", async () => {
+  // The panel used to cap at 560px and scroll inside itself, which put a second
+  // scrollbar inside an already-scrolling page and hid the end of a run behind
+  // an inner gesture. The trace must be as tall as its content.
+  const css = await readFile(new URL("../src/trace/trace.css", import.meta.url), "utf8");
+  const body = css.match(/\.apt-body \{([\s\S]*?)\n\}/);
+  assert.ok(body, "expected an .apt-body rule");
+  assert.doesNotMatch(body[1], /max-height/, "the trace must not have a fixed height");
+  assert.doesNotMatch(body[1], /overflow-y/, "the trace must not scroll inside itself");
+  assert.doesNotMatch(css, /\.apt-body \{[^}]*62vh/);
+
+  // The auto-follow machinery existed only to pin the bottom of that scroller.
+  const src = await readFile(new URL("../src/trace/AgentPipelineTrace.tsx", import.meta.url), "utf8");
+  for (const dead of ["listRef", "pinnedRef", "onScroll"]) {
+    assert.doesNotMatch(src, new RegExp(dead), `${dead} only served the removed scroller`);
+  }
+});
+
 test("row markers never overlap their own label", async () => {
   // Regression: nested rows had 14px of indent while the 15px icon was placed
   // at left:-9px, so it spanned 5..20px against a label starting at 16px and
