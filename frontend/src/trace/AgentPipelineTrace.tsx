@@ -419,10 +419,6 @@ export default function AgentPipelineTrace({
   const steps = useMemo(() => filtered.slice(-maxSteps), [filtered, maxSteps]);
   const hidden = filtered.length - steps.length;
 
-  const toggleStep = useCallback((id: string) => {
-    setOpenOverride((prev) => ({ ...prev, [id]: !defaultOpenFor(id) }));
-  }, [all]);
-
   // Open-ness is DERIVED during render rather than seeded by an effect. An
   // effect only runs in the browser, so server-rendered and first-paint markup
   // came out collapsed and every source chip flashed shut before appearing.
@@ -437,6 +433,16 @@ export default function AgentPipelineTrace({
       return Boolean(s.chips?.length);
     },
     [all],
+  );
+
+  // Declared after defaultOpenFor and dependent on it: reading a const before
+  // its declaration is a temporal-dead-zone hazard, and leaving it out of the
+  // deps let the toggle act on a stale default.
+  const toggleStep = useCallback(
+    (id: string) => {
+      setOpenOverride((prev) => ({ ...prev, [id]: !defaultOpenFor(id) }));
+    },
+    [defaultOpenFor],
   );
 
   const isOpen = useCallback(
