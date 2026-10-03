@@ -44,7 +44,7 @@
   color: var(--apt-fg);
   border: 1px solid var(--apt-line);
   border-radius: var(--apt-radius);
-  font-size: 13.5px;
+  font-size: 13px;
   line-height: 1.7;
   overflow: hidden;
   contain: content;
@@ -290,27 +290,27 @@
 .apt-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px 6px;
-  margin: 1px 0 9px;
+  gap: 4px 5px;
+  margin: 1px 0 8px;
   align-items: center;
 }
 
 .apt-code {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   /* Bounded so one long title cannot stretch a pill across the whole card.
      The pill sizes to its content up to this ceiling, then truncates. */
-  max-width: min(300px, 100%);
+  max-width: min(210px, 100%);
   min-width: 0;
-  padding: 1px 9px;
+  padding: 0 7px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--apt-fg) 7%, transparent);
   background: color-mix(in srgb, var(--apt-fg) 5%, transparent);
-  color: color-mix(in srgb, var(--apt-fg) 70%, transparent);
+  color: color-mix(in srgb, var(--apt-fg) 68%, transparent);
   font-family: var(--apt-mono);
-  font-size: 10.5px;
-  line-height: 1.65;
+  font-size: 9.5px;
+  line-height: 1.75;
   text-decoration: none;
   transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
 }
@@ -326,8 +326,8 @@
 /* Provider stays legible: it never competes for the truncated space. */
 .apt-chip-meta {
   flex: none;
-  color: color-mix(in srgb, var(--apt-fg) 34%, transparent);
-  font-size: 9.5px;
+  color: color-mix(in srgb, var(--apt-fg) 32%, transparent);
+  font-size: 8.5px;
   letter-spacing: 0.01em;
 }
 a.apt-code:hover {
@@ -386,8 +386,10 @@ a.apt-inline:hover { background: color-mix(in srgb, var(--apt-fg) 12%, transpare
 
 @media (max-width: 640px) {
   .apt-body { max-height: 62vh; padding-left: 16px; }
-  .apt { font-size: 13px; }
-  .apt-code { font-size: 11px; }
+  /* Narrower viewport, so the base type steps down rather than up — the old
+     override made mobile chips LARGER than desktop, undoing the compaction. */
+  .apt { font-size: 12.5px; }
+  .apt-code { font-size: 9px; }
 }
 
 @media (max-width: 420px) {

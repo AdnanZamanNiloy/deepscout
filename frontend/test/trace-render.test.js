@@ -180,6 +180,28 @@ test("a long source title truncates instead of stretching the pill", async () =>
   assert.match(pill[1], /max-width:\s*min\(/, "chip width must be capped, not 100%");
   assert.doesNotMatch(pill[1], /max-width:\s*100%/);
 
+  // Density guard. These are a deliberate compactness budget: chips are
+  // metadata around the narrative, not the content, and were reading as
+  // large enough to compete with the prose above them.
+  const px = (rule, prop) => {
+    const m = rule.match(new RegExp(`${prop}:\\s*(\\d+(?:\\.\\d+)?)px`));
+    return m ? Number(m[1]) : null;
+  };
+  const cap = Number(/min\((\d+)px/.exec(pill[1])?.[1]);
+  assert.ok(cap && cap <= 240, `chip max-width should stay compact, got ${cap}px`);
+  assert.ok(px(pill[1], "font-size") <= 10, "chip font-size should stay at 10px or below");
+
+  // The mobile override must not exceed the desktop size, or phones render
+  // bigger chips than desktop and the compaction is undone where it matters.
+  const mobile = css.match(/@media \(max-width: 640px\) \{([\s\S]*?)\n\}/);
+  assert.ok(mobile, "expected a mobile media query");
+  const mobileChip = mobile[1].match(/\.apt-code \{[^}]*font-size:\s*(\d+(?:\.\d+)?)px/);
+  assert.ok(mobileChip, "expected a chip font-size in the mobile query");
+  assert.ok(
+    Number(mobileChip[1]) <= px(pill[1], "font-size"),
+    `mobile chip font (${mobileChip[1]}px) must not exceed desktop (${px(pill[1], "font-size")}px)`,
+  );
+
   const label = css.match(/\.apt-code-label \{([\s\S]*?)\n\}/);
   assert.ok(label, "expected a .apt-code-label rule");
   assert.match(label[1], /text-overflow:\s*ellipsis/);
