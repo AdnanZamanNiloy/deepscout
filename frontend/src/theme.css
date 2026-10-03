@@ -61,13 +61,18 @@
   --mars-wash: rgba(240, 130, 77, 0.09);
   --ink-on-accent: #1c1009;
 
-  /* --- semantic status: REAL hues in dark mode (previously greys) --- */
-  --mint: #5fd0a0;
+  /* --- semantic status: REAL hues in dark mode (previously greys) ---
+   * The green is deliberately desaturated (27% vs 54%). On the old cool-grey
+   * ramp a saturated mint read as intentional; against the neutral #191919
+   * ground it read as terminal-green sitting on top of the UI rather than
+   * belonging to it. Muted sage keeps the "good / serving" signal and its
+   * 6.8:1 legibility while harmonising with the greys. */
+  --mint: #86b89f;
   --amber: #e0b34e;
   --red: #e87a6c;
   --blue: #7aa7e8;
 
-  --green-wash: rgba(95, 208, 160, 0.12);
+  --green-wash: rgba(134, 184, 159, 0.1);
   --amber-wash: rgba(224, 179, 78, 0.12);
   --red-wash: rgba(232, 122, 108, 0.11);
   --blue-wash: rgba(122, 167, 232, 0.12);

@@ -85,6 +85,38 @@ test("depth planes stay visually distinct", () => {
   }
 });
 
+test("semantic status colours stay legible on the lightest plane", () => {
+  // Status hues are used as text (a "Serving" label, a tone-good tag), so each
+  // must clear AA on the plane it is most likely to sit on. A palette swap is
+  // exactly what leaves a vivid hue stranded on a neutral ground.
+  const lightest = SURFACES
+    .map((k) => T[k])
+    .filter(Boolean)
+    .reduce((a, b) => (luminance(a) >= luminance(b) ? a : b));
+  for (const name of ["mint", "amber", "red", "blue"]) {
+    assert.ok(T[name], `--${name} missing from theme.css`);
+    const ratio = contrast(T[name], lightest);
+    assert.ok(
+      ratio >= 4.5,
+      `--${name} ${T[name]} is ${ratio.toFixed(2)}:1 on ${lightest}, needs 4.5:1`,
+    );
+  }
+});
+
+test("the status green is not left stranded at terminal saturation", () => {
+  // Guards the reason the green was changed: a 54%-saturation mint on a fully
+  // neutral surface ramp reads as a foreign colour rather than part of the UI.
+  const hex = T.mint.replace("#", "");
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  const saturation = mx === 0 ? 0 : (mx - mn) / mx;
+  assert.ok(
+    saturation <= 0.35,
+    `--mint saturation ${(saturation * 100).toFixed(0)}% is too vivid for the neutral ramp`,
+  );
+});
+
 test("borders read as edges against the planes they divide", () => {
   assert.ok(contrast(T.line, T.bg) >= 1.15, `--line is too faint on --bg`);
   assert.ok(contrast(T.line, T.card) >= 1.10, `--line is too faint on --card`);
