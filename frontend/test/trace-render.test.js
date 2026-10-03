@@ -188,8 +188,11 @@ test("a long source title truncates instead of stretching the pill", async () =>
     return m ? Number(m[1]) : null;
   };
   const cap = Number(/min\((\d+)px/.exec(pill[1])?.[1]);
-  assert.ok(cap && cap <= 240, `chip max-width should stay compact, got ${cap}px`);
-  assert.ok(px(pill[1], "font-size") <= 10, "chip font-size should stay at 10px or below");
+  assert.ok(cap && cap <= 260, `chip max-width should stay compact, got ${cap}px`);
+  assert.ok(px(pill[1], "font-size") <= 10.5, "chip font-size should stay near 10px");
+  // Monospace is much wider per character, which clipped titles to a few
+  // characters while the pill still read as oversized.
+  assert.match(pill[1], /font-family:\s*inherit/, "chips should use the proportional UI font");
 
   // The mobile override must not exceed the desktop size, or phones render
   // bigger chips than desktop and the compaction is undone where it matters.
