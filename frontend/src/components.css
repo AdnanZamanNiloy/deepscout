@@ -462,10 +462,13 @@
 .pill-btn:hover:not(:disabled) { border-color: var(--line-hover); color: var(--t1); }
 .pill-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* Rounded-square, matching the reference: a 30px control at --r-sm read as a
+   small chip, while the send action is the composer's primary target and wants
+   the larger radius and a touch more presence. */
 .send-btn {
-  width: 30px; height: 30px; flex: none;
+  width: 32px; height: 32px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
-  border-radius: var(--r-sm);
+  border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--mars) 70%, #000 30%);
   background: var(--mars);
   color: var(--ink-on-accent);
@@ -475,7 +478,7 @@
 .send-btn:hover:not(:disabled) { filter: brightness(1.1); }
 .send-btn:active:not(:disabled) { transform: translateY(1px); }
 .send-btn:disabled { opacity: 0.38; cursor: not-allowed; }
-.send-btn.is-abort { background: var(--chip); border-color: var(--line); color: var(--t2); }
+.send-btn.is-abort { background: var(--chip); border-color: var(--line); color: var(--t2); border-radius: 10px; }
 .send-btn.is-abort:hover { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, transparent); background: var(--red-wash); }
 
 .mode-wrap { position: relative; flex: none; }
