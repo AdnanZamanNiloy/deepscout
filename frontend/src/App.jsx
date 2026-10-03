@@ -1077,6 +1077,20 @@ export default function App() {
         ) : null}
       </div>
 
+      {/* Claim inspector — CURRENTLY UNREACHABLE.
+       *
+       * `selectedFinding` was only ever set by the Evidence and Knowledge
+       * views, and both were removed. The drawer still renders (it renders
+       * nothing when `finding` is null), so this is dormant rather than broken,
+       * and the knowledge store behind it — `saveKnowledgeItem`, persisted to
+       * localStorage — still works.
+       *
+       * Deliberately NOT deleted: "save this claim to knowledge" is a working,
+       * persisted capability, and removing it was not part of removing those two
+       * views. To restore the flow, render the claims somewhere clickable and
+       * call `setSelectedFinding(claim)` — AnswerCard already parses
+       * `run.findings` but shows no list to hang it on, so that is new UI rather
+       * than a rewiring. */}
       <ClaimDrawer
         finding={selectedFinding}
         onClose={() => setSelectedFinding(null)}

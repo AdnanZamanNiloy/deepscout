@@ -92,3 +92,18 @@ test(".page-title-bar is the relative anchor for the header", () => {
   const body = ruleBody(".page-title-bar");
   assert.match(body, /position\s*:\s*relative/, "header must be a positioned anchor");
 });
+
+test("the claim drawer is documented as dormant, not silently orphaned", () => {
+  // Removing Evidence and Knowledge removed the only callers of
+  // setSelectedFinding, so ClaimDrawer can no longer open. That is a real
+  // consequence and it must stay visible in the source rather than looking
+  // like working code.
+  const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+  const drawer = app.match(/\/\* Claim inspector[\s\S]*?<ClaimDrawer/);
+  assert.ok(drawer, "expected the ClaimDrawer call site");
+  assert.match(drawer[0], /CURRENTLY UNREACHABLE/, "must be flagged at the call site");
+  assert.match(drawer[0], /saveKnowledgeItem/, "and note the store behind it still works");
+
+  // The knowledge store must remain wired, so restoring a list is enough.
+  assert.match(app, /import \{[^}]*saveKnowledgeItem[^}]*\} from "\.\/lib"/);
+});
