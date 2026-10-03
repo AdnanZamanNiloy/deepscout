@@ -90,14 +90,30 @@ export default function Composer({
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
+            // While a run is streaming the draft cannot be sent, so Enter must
+            // not be swallowed — it inserts a newline and the draft keeps
+            // building. Only intercept it when a send will actually happen.
+            if (running) return;
             e.preventDefault();
             submit();
           }
         }}
-        placeholder={placeholder || "Ask a research question…"}
-        disabled={running}
+        placeholder={
+          running
+            ? "Type your next question… stop the run to send"
+            : placeholder || "Ask a research question…"
+        }
+        /* Editable while a run streams. Disabling the field stopped the user
+           drafting a follow-up while waiting — they could only watch. Sending
+           is still gated (canSend / submit), so a draft cannot jump the queue
+           and silently queue behind the active run. */
         aria-label="Research question"
       />
+      {running && value.trim().length >= 5 ? (
+        <p className="composer-hint" role="status">
+          Stop the current run to send this question.
+        </p>
+      ) : null}
       <div className="composer-toolbar">
         <div className="mode-wrap" ref={menuRef}>
           <button

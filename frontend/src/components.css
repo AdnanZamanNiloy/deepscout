@@ -481,6 +481,14 @@
 .send-btn.is-abort { background: var(--chip); border-color: var(--line); color: var(--t2); border-radius: 10px; }
 .send-btn.is-abort:hover { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, transparent); background: var(--red-wash); }
 
+/* Shown when a draft is waiting behind an active run: the field accepts text,
+   so the only honest thing to do is say why it cannot be sent yet. */
+.composer-hint {
+  margin: 6px 2px 0;
+  font-size: 11.5px;
+  color: var(--t4);
+}
+
 .mode-wrap { position: relative; flex: none; }
 /* Research Mode popup: opens DOWNWARD from the selector by default, with a
    small gap. When the Composer measures insufficient space below (selector
