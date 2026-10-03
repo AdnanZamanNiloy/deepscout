@@ -42,6 +42,9 @@ const STAGGER = 0.04;
 /** Prose longer than this is clamped behind a toggle. */
 const CLAMP_CHARS = 320;
 
+/** Claims shown before the "show all" toggle appears on an evidence row. */
+const COLLAPSED_CLAIMS = 4;
+
 // ---------------------------------------------------------------------------
 // Icons — monochrome, 24-grid, sized by CSS. One per row kind so a reader can
 // scan the rail and know what kind of action happened without reading labels.
@@ -240,7 +243,19 @@ function Row({
     [step.content, isFinal],
   );
   const tooLong = step.content.length > CLAMP_CHARS;
-  const clamped = tooLong && !open;
+
+  // Evidence arrives as one claim per line, and a deep run produces dozens.
+  // Rendering all of them inline turned the trace into a wall of paragraphs
+  // that buried the rest of the run. Collapsed, show a short preview of the
+  // first few, each clipped to two lines; expanding is an explicit act.
+  const isEvidence = step.kind === "evidence";
+  const bulk = isEvidence && paragraphs.length > COLLAPSED_CLAIMS;
+  const visible = bulk && !open ? paragraphs.slice(0, COLLAPSED_CLAIMS) : paragraphs;
+  const clipEach = bulk && !open;
+
+  // Character clamping does not apply to evidence: it would merge separate
+  // claims into one run-on paragraph and duplicate the claims toggle.
+  const clamped = tooLong && !open && !isEvidence;
   const shown = clamped ? `${step.content.slice(0, CLAMP_CHARS).trimEnd()}…` : step.content;
 
   return (
@@ -294,15 +309,36 @@ function Row({
           renderContent(step)
         ) : isFinal && !open ? null : paragraphs.length ? (
           <div>
-            {(clamped ? [shown] : paragraphs).map((p, i) => (
+            {(clamped ? [shown] : visible).map((p, i) => (
               <p
-                className={isFinal ? "apt-prose apt-pre" : "apt-prose"}
+                className={
+                  isFinal
+                    ? "apt-prose apt-pre"
+                    : clipEach
+                      ? "apt-prose apt-claim"
+                      : "apt-prose"
+                }
                 key={`${step.id}-p${i}`}
               >
                 <Prose text={p} />
               </p>
             ))}
-            {tooLong ? (
+            {bulk ? (
+              <button
+                type="button"
+                className="apt-row-toggle"
+                onClick={() => onToggle(step.id)}
+                aria-expanded={open}
+              >
+                <span className="apt-muted">
+                  {open
+                    ? "Show fewer claims"
+                    : `Show all ${paragraphs.length} claims`}
+                </span>
+              </button>
+            ) : null}
+
+            {tooLong && !isEvidence ? (
               <button
                 type="button"
                 className="apt-row-toggle"
@@ -404,7 +440,9 @@ export default function AgentPipelineTrace({
   const defaultOpenFor = useCallback(
     (id: string) => {
       const s = all.find((x) => x.id === id);
-      if (!s || s.kind === "final") return false;
+      // The final report and bulk evidence both stay collapsed by default: one
+      // duplicates the answer card, the other is dozens of claims.
+      if (!s || s.kind === "final" || s.kind === "evidence") return false;
       return Boolean(s.chips?.length) || s.content.length > CLAMP_CHARS;
     },
     [all],
