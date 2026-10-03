@@ -121,3 +121,46 @@ test("borders read as edges against the planes they divide", () => {
   assert.ok(contrast(T.line, T.bg) >= 1.15, `--line is too faint on --bg`);
   assert.ok(contrast(T.line, T.card) >= 1.10, `--line is too faint on --card`);
 });
+
+test("selection is expressed as luminance, not as a status hue", async () => {
+  // A selected surface used to be painted with the status green, so a chosen
+  // model also looked verified — two different facts sharing one colour.
+  // Green must stay reserved for genuine runtime status.
+  const css = await readFile(new URL("../src/components/model-controls.css", import.meta.url), "utf8");
+  const stateful = [
+    ".pv-summary-item.on",
+    ".pv-serving-card.active",
+    ".pv-serving-card.active .pv-radio",
+    ".pv-radio-dot",
+    ".pv-serving-option-meta.serving",
+  ];
+  for (const sel of stateful) {
+    const rule = css.match(
+      new RegExp(`${sel.replace(/[.[\]]/g, "\\$&")}\\s*\\{([^}]*)\\}`),
+    );
+    assert.ok(rule, `expected a rule for ${sel}`);
+    assert.doesNotMatch(
+      rule[1],
+      /probe-ok|mint|green-wash/,
+      `${sel} still signals selection with a status hue`,
+    );
+  }
+  // Selection needs a visible cue: white alone on a dark plane is too quiet,
+  // hence the accent bar plus an edge, not just a brighter hairline.
+  assert.match(css, /\.pv-serving-card\.active::before/, "selected card needs its accent bar");
+  assert.match(css, /var\(--act-line\)/, "selected card must reference the neutral ladder");
+});
+
+test("the Serving pill is distinguishable from the Reachable pill", async () => {
+  // Both used class tone-good, so the UI asserted a chosen model was verified.
+  const src = await readFile(
+    new URL("../src/components/ModelControlsView.jsx", import.meta.url),
+    "utf8",
+  );
+  const serving = src.match(/<span className="pv-status ([a-z-]+)"><span className="pv-status-dot" \/>Serving/);
+  const reachable = src.match(/<span className="pv-status ([a-z-]+)"><span className="pv-status-dot" \/>Reachable/);
+  assert.ok(serving, "expected a Serving pill");
+  assert.ok(reachable, "expected a Reachable pill");
+  assert.equal(serving[1], "tone-active", "Serving is selection, so it must be neutral");
+  assert.equal(reachable[1], "tone-good", "Reachable is health, so it keeps the status hue");
+});

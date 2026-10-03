@@ -84,6 +84,22 @@
   --dot-idle: #555555;
   --probe-ok: var(--mint);
 
+  /* --- selection, expressed as luminance rather than hue ---
+   * A selected surface used to be painted with the status green, which on a
+   * large card read as "this model is healthy" rather than "this card is
+   * chosen" — selection and status are different facts and were sharing one
+   * colour. Selection is now a neutral luminance step, so green stays reserved
+   * for genuine runtime status (reachable, done, live).
+   *
+   * The card needed a redesign to accept white: a bare white hairline on a
+   * #262626 plane is too quiet to read as chosen. It gets a brighter edge, a
+   * faint white surface lift, and a solid accent bar instead of a colour flood. */
+  --act-line: color-mix(in srgb, var(--t1) 46%, transparent);
+  --act-edge: color-mix(in srgb, var(--t1) 20%, transparent);
+  --act-surface: color-mix(in srgb, var(--t1) 6%, transparent);
+  --act-surface-2: color-mix(in srgb, var(--t1) 3%, transparent);
+  --act-text: var(--t1);
+
   /* --- radii: tighter than before; 16px felt consumer-app --- */
   --r-xs: 6px;
   --r-sm: 8px;
@@ -235,6 +251,15 @@
   --blue-wash: rgba(44, 91, 158, 0.1);
 
   --dot-idle: #a09a93;
+
+  /* Inverted ladder: on paper, "selected" must be DARKER, since a white edge
+     cannot signal anything against a near-white surface. */
+  --act-line: #16181c;
+  --act-edge: rgba(22, 24, 28, 0.22);
+  --act-surface: rgba(22, 24, 28, 0.05);
+  --act-surface-2: rgba(22, 24, 28, 0.025);
+  --act-text: #16181c;
+
   --shadow-card: 0 8px 24px rgba(40, 30, 20, 0.07);
   --shadow-pop: 0 18px 46px rgba(40, 30, 20, 0.16);
 

@@ -8,7 +8,7 @@
 .pv-view-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap}
 .pv-summary{display:flex;gap:10px;flex:none}
 .pv-summary-item{display:flex;align-items:baseline;gap:8px;padding:6px 13px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
-.pv-summary-item.on{border-color:color-mix(in srgb,var(--probe-ok) 40%,transparent);background:var(--green-wash)}
+.pv-summary-item.on{border-color:var(--act-line);background:var(--act-surface)}
 .pv-summary-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:650;color:var(--t4)}
 .pv-summary-value{font-size:13px;font-weight:650;color:var(--t1)}
 .pv-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-top:18px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
@@ -44,6 +44,8 @@
 .pv-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:620;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--t3);background:var(--panel);white-space:nowrap}
 .pv-chip.tone-muted{color:var(--t3)}
 .pv-chip.tone-good{color:var(--mars);border-color:color-mix(in srgb,var(--mars) 40%,transparent);background:var(--mars-wash)}
+/* Selection chip: neutral, matching the selected card and radio. */
+.pv-chip.tone-active{color:var(--act-text);border-color:var(--act-line);background:var(--act-surface)}
 .pv-chip.tone-warn{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 40%,transparent);background:var(--amber-wash)}
 .pv-field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}
 .pv-span-2{grid-column:1 / -1}
@@ -66,6 +68,8 @@
 .pv-empty p{margin:0;font-size:12.5px}
 .pv-status{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:640;padding:2px 8px 2px 7px;border-radius:999px;border:1px solid var(--line);color:var(--t3);background:var(--panel);white-space:nowrap}
 .pv-status.tone-good{color:var(--probe-ok);border-color:color-mix(in srgb,var(--probe-ok) 40%,transparent);background:var(--green-wash)}
+/* Selection, not health: white so it cannot be misread as a status signal. */
+.pv-status.tone-active{color:var(--act-text);border-color:var(--act-line);background:var(--act-surface)}
 .pv-status.tone-bad{color:var(--red);border-color:color-mix(in srgb,var(--red) 40%,transparent);background:var(--red-wash)}
 .pv-status-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
 .pv-status-dot.spin{animation:pv-pulse 1s ease-in-out infinite}
@@ -115,21 +119,27 @@
 .pv-picker-model{font-size:11px;color:var(--t4);font-family:var(--mono)}
 .pv-serving-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .pv-serving-card{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:15px;transition:border-color .15s ease,background .15s ease}
-.pv-serving-card.active{border-color:color-mix(in srgb,var(--probe-ok) 45%,transparent)}
+/* A big card cannot signal selection with a hue alone — white on #262626 is
+   too quiet — so the chosen state is built from three neutral cues: a brighter
+   edge, a faint white lift, and a solid accent bar down the leading edge. The
+   bar is what actually makes it read as chosen at a glance. */
+.pv-serving-card{position:relative;overflow:hidden}
+.pv-serving-card.active{border-color:var(--act-line);background:var(--act-surface-2);box-shadow:inset 0 0 0 1px var(--act-edge)}
+.pv-serving-card.active::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--act-line)}
 .pv-serving-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
 .pv-serving-title{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:680;color:var(--t1)}
 .pv-radio{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--line-hover);display:grid;place-items:center;flex:none}
-.pv-serving-card.active .pv-radio{border-color:var(--probe-ok)}
-.pv-radio-dot{width:8px;height:8px;border-radius:50%;background:var(--probe-ok)}
+.pv-serving-card.active .pv-radio{border-color:var(--act-text)}
+.pv-radio-dot{width:8px;height:8px;border-radius:50%;background:var(--act-text)}
 .pv-serving-desc{font-size:12px;color:var(--t3);margin:0 0 12px;line-height:1.55}
 .pv-serving-picker{display:flex;flex-direction:column;gap:7px}
 .pv-serving-option{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--t2);cursor:pointer;font-size:12.5px;text-align:left;transition:border-color .13s ease,color .13s ease,background .13s ease}
 .pv-serving-option:hover:not(:disabled){border-color:color-mix(in srgb,var(--mars) 45%,transparent);color:var(--t1)}
-.pv-serving-option.picked{border-color:var(--mars);background:var(--mars-wash);color:var(--t1)}
+.pv-serving-option.picked{border-color:var(--act-edge);background:var(--act-surface);color:var(--t1)}
 .pv-serving-option:disabled{opacity:.55;cursor:not-allowed}
 .pv-serving-option-name{font-weight:620;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pv-serving-option-meta{flex:none;font-size:11px;color:var(--t3)}
-.pv-serving-option-meta.serving{color:var(--probe-ok);font-weight:640}
+.pv-serving-option-meta.serving{color:var(--act-text);font-weight:640}
 .pv-serving-foot{margin-top:13px}
 .pv-hint{font-size:11.5px;color:var(--t4)}
 .pv-field-grid,.pv-serving-grid{grid-template-columns:1fr}
