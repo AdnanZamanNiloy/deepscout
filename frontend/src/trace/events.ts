@@ -33,8 +33,11 @@ export type Finding = {
   confidence?: number | null;
 };
 
-/** Any frame may carry the client's own arrival stamp. */
-type Base = { __ts?: number };
+/** Any frame carries the server's emission stamp (`ts`, epoch ms). The client
+ *  additionally stamps its own arrival time as `__ts`, which is more accurate
+ *  for a live run; `__ts` is absent from persisted frames because it is added
+ *  in the browser, so `ts` is what makes a restored session measurable. */
+type Base = { __ts?: number; ts?: number };
 
 export type ProgressEvent = Base & {
   type: "progress";

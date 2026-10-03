@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 import json
+import time
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict
 
@@ -522,7 +523,13 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
     session_id = str(payload.session_id).strip() if payload.session_id else str(uuid.uuid4())
 
     def event_line(event_type: str, **data: Any) -> str:
-        payload_data = {"type": event_type, **data}
+        # Every frame carries an emission timestamp. The client's arrival stamp
+        # (__ts) is more accurate for a LIVE run, but it is added in the browser
+        # and therefore never reaches the persisted frames — a restored session
+        # replayed frames with no time at all and the trace header rendered no
+        # duration. The server stamp is the one that survives persistence, so
+        # the UI can fall back to it and a replayed run still shows its length.
+        payload_data = {"type": event_type, "ts": int(time.time() * 1000), **data}
         return json.dumps(payload_data, ensure_ascii=True) + "\n"
 
     def plan_items_for_event(raw_items: Any) -> list[str]:
@@ -1077,7 +1084,10 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
     resume_session_id = state.get("session_id") or ""
 
     def event_line(event_type: str, **data: Any) -> str:
-        return json.dumps({"type": event_type, **data}, ensure_ascii=True) + "\n"
+        return json.dumps(
+            {"type": event_type, "ts": int(time.time() * 1000), **data},
+            ensure_ascii=True,
+        ) + "\n"
 
     async def resume_stream() -> AsyncGenerator[str, None]:
         bind_request_context(request_id=request_id, resumed=True)
