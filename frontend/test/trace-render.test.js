@@ -525,6 +525,35 @@ test("the duration stops counting once the run is aborted", async () => {
   );
 });
 
+test("opens automatically when a run starts streaming", async () => {
+  // The trace mounts with its message, before any frame arrives, so the run is
+  // idle at mount and `defaultOpen` cannot express "open when the run starts" —
+  // a useState initialiser never re-reads a prop. The component watches the
+  // idle -> running edge instead.
+  const src = await readFile(new URL("../src/trace/AgentPipelineTrace.tsx", import.meta.url), "utf8");
+  assert.match(
+    src,
+    /status === "running" && !wasLive\.current/,
+    "must expand on the idle -> running transition",
+  );
+  assert.match(src, /wasLive\.current = status === "running"/, "and track the edge");
+  assert.match(src, /const wasLive = useRef\(status === "running"\)/);
+});
+
+test("a restored run does not unroll itself into the thread", async () => {
+  // Replaying a finished session should not auto-expand a long trace.
+  const src = await readFile(new URL("../src/trace/AgentPipelineTrace.tsx", import.meta.url), "utf8");
+  const effect = src.match(/if \(status === "running" && !wasLive\.current\) setExpanded\(true\)/);
+  assert.ok(effect, "auto-open is gated on the running transition only");
+  // Both call sites keep defaultOpen false, so a replayed message starts shut.
+  const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+  const calls = app.match(/<AgentPipelineTrace[\s\S]*?\/>/g) ?? [];
+  assert.ok(calls.length >= 1, "expected AgentPipelineTrace call sites");
+  for (const call of calls) {
+    assert.match(call, /defaultOpen=\{false\}/, "replay must stay collapsed");
+  }
+});
+
 test("stays collapsed when defaultOpen is false", async () => {
   const html = await render({ events: wireEvents(), status: "done", defaultOpen: false });
   assert.match(html, /aria-expanded="false"/);
