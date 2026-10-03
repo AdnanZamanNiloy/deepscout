@@ -1,4 +1,4 @@
-/* MARS design system — tokens, base, shared controls.
+/* DeepScout design system — tokens, base, shared controls.
  *
  * DIRECTION: "mission control, not marketing".
  * A dense, quiet, instrument-panel console for repeated daily use. Three
@@ -10,7 +10,7 @@
  *
  * Memorable detail: the mission spine — the numbered, connector-linked
  * pipeline used in the sidebar/intel rail/agents view, which mirrors the
- * real 7-agent MARS pipeline instead of decorating it.
+ * real 7-agent DeepScout pipeline instead of decorating it.
  *
  * No webfont dependency: system stack only.
  */

@@ -1,4 +1,4 @@
-/* MARS components — thread, answer, intel widgets, composer, views, landing. */
+/* DeepScout components — thread, answer, intel widgets, composer, views, landing. */
 
 /* ============================================================
    PLANET — CSS art, themeable via tokens
@@ -345,10 +345,10 @@
 .bar > div.green { background: var(--bar-green); }
 .bar > div.blue { background: var(--bar-blue); }
 .bar > div.amber { background: var(--amber); }
-/* Confidence breakdown bars use the MARS orange accent; other .bar users
+/* Confidence breakdown bars use the DeepScout orange accent; other .bar users
    (e.g. the budget meter) keep the neutral --bar fill. */
 .confidence-breakdown .bar > div { background: var(--mars); }
-/* Budget utilization bar also uses the MARS orange accent for consistency. */
+/* Budget utilization bar also uses the DeepScout orange accent for consistency. */
 .budget-util-bar > div { background: var(--mars); }
 
 .health-row { display: flex; align-items: center; gap: 10px; padding: 5.5px 2px; }
@@ -362,7 +362,7 @@
 .budget-sub.note strong { color: var(--t2); }
 
 /* Pipeline spine — the memorable detail: numbered, connector-linked nodes
-   that mirror the real MARS agent order used everywhere in the app. */
+   that mirror the real DeepScout agent order used everywhere in the app. */
 .spine { list-style: none; margin: 0; padding: 0; position: relative; }
 .spine::before {
   content: "";

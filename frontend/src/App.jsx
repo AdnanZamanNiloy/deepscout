@@ -915,14 +915,14 @@ export default function App() {
     return "";
   })();
 
-  /* Browser tab title follows the session: "query — MARS" while research
-   * is on screen, plain "MARS" everywhere else. Favicon stays put. */
+  /* Browser tab title follows the session: "query — DeepScout" while research
+   * is on screen, plain "DeepScout" everywhere else. Favicon stays put. */
   useEffect(() => {
     try {
       const q = (pageTitle && pageTitle !== "New Research" && view === "workspace")
         ? pageTitle
         : "";
-      document.title = q ? `${q} — MARS` : "MARS";
+      document.title = q ? `${q} — DeepScout` : "DeepScout";
     } catch {
       /* non-DOM environment */
     }
@@ -1323,7 +1323,7 @@ function PageTitle({ title, mission, view, onRename, onTogglePin, onDelete }) {
 function WelcomeHero({ composer }) {
   return (
     <div className="welcome anim-rise">
-      <h1>What should <span className="welcome-accent">MARS</span> investigate?</h1>
+      <h1>What should <span className="welcome-accent">DeepScout</span> investigate?</h1>
       <p className="lede">
         Ask a question and watch the pipeline work: plan, search, extract, verify, critique,
         synthesize. Every claim in the final report stays tied to the source that produced it.
