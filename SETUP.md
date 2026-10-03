@@ -136,7 +136,7 @@ Live (spends real free-tier quota — one research run per query):
 ```bash
 cd backend
 python bench/run_live.py
-MARS_LIVE_QUERIES="question one|question two" python bench/run_live.py
+DEEPSCOUT_LIVE_QUERIES="question one|question two" python bench/run_live.py
 ```
 
 ---

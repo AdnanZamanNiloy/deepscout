@@ -19,7 +19,7 @@ evidence.
 Everything here is pure, offline, and dependency-free: no network, no LLM.
 `evidence_utils.source_reliability_score` delegates to `authority_score`,
 and every score the old function returned for a given URL is preserved
-(see tests_mars_v3/test_sources.py::test_legacy_scores_preserved) so
+(see tests/test_agents_facade.py) so
 existing thresholds elsewhere in the pipeline keep their meaning.
 """
 from __future__ import annotations

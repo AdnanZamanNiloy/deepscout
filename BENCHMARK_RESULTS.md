@@ -1,6 +1,6 @@
 # DeepScout-AI Benchmark Results
 
-*Suite: mars-offline-benchmarks v2.0 — generated 2026-09-12T11:08:35Z*
+*Suite: deepscout-offline-benchmarks v2.0 — generated 2026-09-12T11:08:35Z*
 
 Deterministic, network-free measurement of the intelligence and performance
 properties of the upgraded pipeline. All metrics run on hand-labeled

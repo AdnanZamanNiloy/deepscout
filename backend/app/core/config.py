@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     custom_llm_model: str = ""
     # At-rest encryption for user-added provider keys (Providers tab).
     # Any string works (hashed into key shape); unset falls back to a
-    # backend/.mars_secret file created once with 0600 permissions.
+    # backend/.deepscout_secret file created once with 0600 permissions.
     # Whether a FAILING UI-selected active provider falls through to the
     # env chain (Groq/HF) instead of degrading the run. Strict exclusivity
     # (False) never spends another provider's key without your say-so.
@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     # with no chain enabled, resolution changes nothing.
     provider_chains_enabled: bool = True
 
-    mars_secret_key: str = ""
+    deepscout_secret_key: str = ""
 
     # Persistence
     database_url: str = "./research.db"

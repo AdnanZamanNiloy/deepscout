@@ -115,7 +115,7 @@ export function confidenceLabel(value) {
   return "low";
 }
 
-const MISSIONS_KEY = "mars.missions.v1";
+const MISSIONS_KEY = "deepscout.missions.v1";
 const MAX_MISSIONS = 30;
 
 /* Interrupt-and-edit: drop the edited user turn and everything after it, so
@@ -162,7 +162,7 @@ export function applyTraceEntry(steps, entry) {
 /* The active chat's stable session id. One chat = one id, reused for every
  * follow-up question; only "New Chat" mints a fresh one. Kept in its own key
  * so an interrupted write to the session list can't lose the active chat. */
-const ACTIVE_SESSION_KEY = "mars.activeSession.v1";
+const ACTIVE_SESSION_KEY = "deepscout.activeSession.v1";
 
 export function newSessionId() {
   try {
@@ -248,7 +248,7 @@ export function updateMission(sessionId, patch) {
   return list.slice(0, MAX_MISSIONS);
 }
 
-const KNOWLEDGE_KEY = "mars.knowledge.v1";
+const KNOWLEDGE_KEY = "deepscout.knowledge.v1";
 const MAX_SAVED = 100;
 
 export function loadKnowledge() {

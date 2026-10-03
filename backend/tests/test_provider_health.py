@@ -16,7 +16,7 @@ ACTIVE_URL = "https://llm.example.com/v1/chat/completions"
 
 @pytest.fixture
 def _secret(monkeypatch):
-    monkeypatch.setenv("MARS_SECRET_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv("DEEPSCOUT_SECRET_KEY", Fernet.generate_key().decode("utf-8"))
 
 
 @pytest.fixture

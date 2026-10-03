@@ -115,11 +115,11 @@ async def _run(settings: Settings) -> dict:
 
 
 def main() -> int:
-    tmp = tempfile.mkdtemp(prefix="mars-perf-")
+    tmp = tempfile.mkdtemp(prefix="deepscout-perf-")
     settings = Settings(
         groq_api_key="bench-key", database_url=f"{tmp}/perf.db", _env_file=None
     )
-    report = {"suite": "mars-perf-benchmark", "version": "1.0", **_run_sync(settings)}
+    report = {"suite": "deepscout-perf-benchmark", "version": "1.0", **_run_sync(settings)}
     report["retrieval_health"] = _retrieval_health()
     print(json.dumps(report, indent=2, default=str))
     return 0

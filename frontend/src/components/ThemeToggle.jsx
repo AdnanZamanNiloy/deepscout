@@ -1,5 +1,5 @@
 /* Global theme toggle. Flips `data-theme` on <html> and persists to the
- * shared `mars-docs-theme` key, so the choice survives reloads and is picked
+ * shared `deepscout-docs-theme` key, so the choice survives reloads and is picked
  * up by the docs iframe (which reads the same key on boot).
  *
  * Mounted in BOTH the landing nav and the console sidebar footer — previously

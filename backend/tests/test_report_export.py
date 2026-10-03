@@ -186,7 +186,7 @@ def test_unsupported_format_rejected():
 
 def test_safe_filename_slugifies_query():
     _, _, filename = render_report(_trace(), "pdf")
-    assert filename.startswith("mars-report-compare-solid-state")
+    assert filename.startswith("deepscout-report-compare-solid-state")
     assert filename.endswith(".pdf")
     assert " " not in filename
 

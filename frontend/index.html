@@ -20,10 +20,10 @@
     <script>
       (function () {
         try {
-          // Same key as src/theme.js (mars-docs-theme) so the boot paint and
+          // Same key as src/theme.js (deepscout-docs-theme) so the boot paint and
           // the React state can never disagree. A stored choice wins; otherwise
           // fall back to the OS preference instead of hardcoding dark.
-          var stored = localStorage.getItem("mars-docs-theme");
+          var stored = localStorage.getItem("deepscout-docs-theme");
           var theme =
             stored === "light" || stored === "dark"
               ? stored

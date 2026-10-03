@@ -14,7 +14,7 @@ venv/
 .env
 .env.local
 .env.example
-.mars_secret
+.deepscout_secret
 
 # Local databases and artifacts
 *.db
@@ -39,7 +39,7 @@ frontend/.vite/
 gpt-researcher/
 
 # Vendor bundle for the v3 agent integration (kept local, not versioned)
-mars-deep-research-v3.zip
+deepscout-deep-research-v3.zip
 gitstat_tmp.txt
 
 # Local verification screenshots (scratch)

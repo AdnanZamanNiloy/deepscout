@@ -16,7 +16,7 @@ export default function DocsView() {
       if (!frame || !frame.contentWindow) return;
       const mode = document.documentElement.getAttribute("data-theme")
         || getStoredTheme();
-      frame.contentWindow.postMessage({ type: "mars-theme", mode }, "*");
+      frame.contentWindow.postMessage({ type: "deepscout-theme", mode }, "*");
     };
 
     push();
@@ -40,7 +40,7 @@ export default function DocsView() {
           if (!frame || !frame.contentWindow) return;
           const mode = document.documentElement.getAttribute("data-theme")
             || getStoredTheme();
-          frame.contentWindow.postMessage({ type: "mars-theme", mode }, "*");
+          frame.contentWindow.postMessage({ type: "deepscout-theme", mode }, "*");
         }}
       />
     </div>

@@ -113,7 +113,7 @@ export async function downloadReport(runId, format) {
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") || "";
   const match = /filename="?([^";]+)"?/.exec(disposition);
-  const filename = match ? match[1] : `mars-report.${format}`;
+  const filename = match ? match[1] : `deepscout-report.${format}`;
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;

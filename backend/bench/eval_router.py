@@ -100,7 +100,7 @@ def evaluate() -> Dict[str, Any]:
     ]
 
     result = {
-        "suite": "mars-router-eval",
+        "suite": "deepscout-router-eval",
         "version": "v1",
         "ran_at": datetime.now(timezone.utc).isoformat(),
         "cases": rows,

@@ -19,7 +19,7 @@ import {
   IconShieldCheck, IconSpark, IconTarget,
 } from "./icons";
 
-const GITHUB_URL = "https://github.com/AdnanZamanNiloy/mars-ai";
+const GITHUB_URL = "https://github.com/AdnanZamanNiloy/deepscout-ai";
 
 const PIPELINE = [
   { name: "Orchestrator", desc: "Scores complexity, sets agent count and iteration caps" },

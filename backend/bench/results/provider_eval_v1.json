@@ -1,8 +1,8 @@
 {
-  "suite": "mars-golden-provider-eval",
+  "suite": "deepscout-golden-provider-eval",
   "version": "v1",
   "ran_at": "2026-09-16T10:41:28.279088+00:00",
-  "thresholds_path": "/home/adnan-zaman/Desktop/mars-ai/backend/bench/golden/thresholds_provider_v1.json",
+  "thresholds_path": "/home/adnan-zaman/Desktop/deepscout-ai/backend/bench/golden/thresholds_provider_v1.json",
   "aggregate": {
     "cases_total": 6,
     "cases_passed": 6,
