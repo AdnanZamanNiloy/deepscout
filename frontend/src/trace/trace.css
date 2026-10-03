@@ -288,33 +288,42 @@
 .apt-code {
   display: inline-flex;
   align-items: center;
-  max-width: 100%;
+  gap: 6px;
+  /* Bounded so one long title cannot stretch a pill across the whole card.
+     The pill sizes to its content up to this ceiling, then truncates. */
+  max-width: min(300px, 100%);
   min-width: 0;
-  padding: 2px 10px;
+  padding: 1px 9px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--apt-fg) 8%, transparent);
-  background: color-mix(in srgb, var(--apt-fg) 6%, transparent);
-  color: color-mix(in srgb, var(--apt-fg) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--apt-fg) 7%, transparent);
+  background: color-mix(in srgb, var(--apt-fg) 5%, transparent);
+  color: color-mix(in srgb, var(--apt-fg) 70%, transparent);
   font-family: var(--apt-mono);
-  font-size: 11.5px;
-  line-height: 1.6;
+  font-size: 10.5px;
+  line-height: 1.65;
   text-decoration: none;
-  white-space: nowrap;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+
+/* The truncating box. Must be the element holding the text, not the pill. */
+.apt-code-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+  white-space: nowrap;
+}
+
+/* Provider stays legible: it never competes for the truncated space. */
+.apt-chip-meta {
+  flex: none;
+  color: color-mix(in srgb, var(--apt-fg) 34%, transparent);
+  font-size: 9.5px;
+  letter-spacing: 0.01em;
 }
 a.apt-code:hover {
   background: color-mix(in srgb, var(--apt-fg) 11%, transparent);
   border-color: color-mix(in srgb, var(--apt-fg) 16%, transparent);
   color: var(--apt-fg);
-}
-
-/* Provider tag, kept quiet so provenance stays available without competing
-   with the page title for attention. */
-.apt-code .apt-muted {
-  color: color-mix(in srgb, var(--apt-fg) 38%, transparent);
-  font-size: 10.5px;
 }
 
 /* Inline highlight for a URL or quoted query inside prose. */

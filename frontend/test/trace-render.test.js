@@ -169,6 +169,26 @@ test("header reads 'Less steps' and reports the step count", async () => {
   assert.match(html, /\d+ steps?/);
 });
 
+test("a long source title truncates instead of stretching the pill", async () => {
+  // Two things had to be true at once. The stylesheet capped the pill's width,
+  // and the text sat in its own block-ish span — `text-overflow` on a flex
+  // container does nothing, so an over-long title was hard-clipped mid-word
+  // with no ellipsis while the pill itself spanned the whole card.
+  const css = await readFile(new URL("../src/trace/trace.css", import.meta.url), "utf8");
+  const pill = css.match(/\.apt-code \{([\s\S]*?)\n\}/);
+  assert.ok(pill, "expected a .apt-code rule");
+  assert.match(pill[1], /max-width:\s*min\(/, "chip width must be capped, not 100%");
+  assert.doesNotMatch(pill[1], /max-width:\s*100%/);
+
+  const label = css.match(/\.apt-code-label \{([\s\S]*?)\n\}/);
+  assert.ok(label, "expected a .apt-code-label rule");
+  assert.match(label[1], /text-overflow:\s*ellipsis/);
+  assert.match(label[1], /overflow:\s*hidden/);
+
+  const html = await render({ events: wireEvents(), status: "done" });
+  assert.match(html, /class="apt-code-label"/, "title text needs its own truncating box");
+});
+
 test("the trace paints no surface of its own, so backgrounds stay unified", async () => {
   // The trace used to fill itself with --card while the page used --bg, which
   // read as a second theme dropped inside the page. Asserted against the
