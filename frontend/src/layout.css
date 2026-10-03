@@ -414,7 +414,7 @@
   background: var(--surface-2, rgba(127, 127, 127, 0.1));
 }
 .page-title-btn:focus-visible {
-  outline: 2px solid var(--accent, #6ea8fe);
+  outline: 2px solid var(--accent, #e0b34e);
   outline-offset: 2px;
 }
 .page-title-btn .nav-chev {

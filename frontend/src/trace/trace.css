@@ -25,7 +25,7 @@
   background: transparent;
 
   /* Text: four steps of quiet, brightest for prose. */
-  --apt-fg: var(--t1, #e6e6e9);
+  --apt-fg: var(--t1, #f0efea);
   --apt-prose: color-mix(in srgb, var(--apt-fg) 82%, transparent);
   --apt-dim: color-mix(in srgb, var(--apt-fg) 58%, transparent);
   --apt-faint: color-mix(in srgb, var(--apt-fg) 40%, transparent);
