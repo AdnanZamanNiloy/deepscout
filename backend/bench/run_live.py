@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MARS live benchmark: real providers, real searches, real latency.
+"""DeepScout live benchmark: real providers, real searches, real latency.
 
 The offline suite (run_offline.py) measures the deterministic intelligence
 components. This script measures what only a live run can: planner quality,
@@ -123,7 +123,7 @@ async def _main_async() -> int:
 
     queries = _load_queries()
     print("=" * 62)
-    print(f"MARS live benchmark — {len(queries)} query(ies), real providers")
+    print(f"DeepScout live benchmark — {len(queries)} query(ies), real providers")
     print("=" * 62)
 
     runs: List[Dict[str, Any]] = []

@@ -21,7 +21,7 @@ refinement layer here is the correction — a repeat is TRANSFORMED, never
 silently dropped.
 
 GPT Researcher avoids this differently (a single writer over compressed
-context); MARS writes section-wise for provider-size reasons, so the fix has
+context); DeepScout writes section-wise for provider-size reasons, so the fix has
 to be explicit cross-section bookkeeping. This module is that bookkeeping,
 and it is deterministic — no LLM, no network, no new model. It does not touch
 retrieval, grading, corroboration or contradiction; it only decides how

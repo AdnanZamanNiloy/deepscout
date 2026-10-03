@@ -699,7 +699,7 @@ def test_already_refined_sentence_is_not_refined_twice():
 # ---------------------------------------------------------------------------
 # Bug 2 regression — off-topic source bleed into Limitations/evidence
 # ---------------------------------------------------------------------------
-# Live pilot evidence: MARS's Limitations list carried unrelated items (Iran
+# Live pilot evidence: DeepScout's Limitations list carried unrelated items (Iran
 # nuclear, NBER clientelism, Shell PLC, SpaceX) on a "What is a transformer?"
 # query. Limitations and evidence scoring must draw only from the query's own
 # evidence pool.

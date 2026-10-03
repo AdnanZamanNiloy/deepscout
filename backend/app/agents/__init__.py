@@ -1,4 +1,4 @@
-"""MARS upgraded agents package.
+"""DeepScout upgraded agents package.
 
 Deliberately lazy: importing `app.agents` costs nothing, and each name pulls
 in only the module that defines it. That matters in the host application,

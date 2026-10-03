@@ -12,7 +12,7 @@ by ranking each subtopic's context against that subtopic's *query* with
 embeddings and handing the writer only the top chunks (`ContextCompressor`,
 `gpt_researcher/context/compression.py`).
 
-MARS has no embeddings endpoint (see AGENTS.md: "no local embedding models",
+DeepScout has no embeddings endpoint (see AGENTS.md: "no local embedding models",
 remote LLM APIs only), so the ranking here is built on the EXISTING TF-IDF
 hybrid engine (`app.core.semantic`) — the same engine the dedup, contradiction
 and citation-support paths already trust. That is deliberate: no new model,

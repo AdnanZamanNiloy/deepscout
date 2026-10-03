@@ -1,6 +1,6 @@
 """CPU-light hybrid semantic similarity engine.
 
-MARS scores text-to-text affinity in five places (fact dedup, contradiction
+DeepScout scores text-to-text affinity in five places (fact dedup, contradiction
 banding, citation support, verifier polarity checks, summarizer relevance).
 The legacy implementation blended char-ratio + token-Jaccard, which misses
 paraphrases ("renewable capacity doubled" vs "wind and solar grew 2x") and

@@ -371,7 +371,7 @@ def main() -> int:
     out_dir = Path(args.out) if args.out else RESULTS_DIR
     json_path = write_json(report, out_dir)
     print("=" * 62)
-    print("MARS retrieval-health evaluation (v1)")
+    print("DeepScout retrieval-health evaluation (v1)")
     print("=" * 62)
     for key in AGGREGATE_KEYS:
         print(f"  {key:<36} {report['aggregate']['metrics'].get(key)}")

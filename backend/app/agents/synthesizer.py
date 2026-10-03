@@ -498,7 +498,7 @@ def _format_guidance(query: str, intent: Dict[str, Any] | None) -> str:
 
 
 SYNTHESIZER_SYSTEM_PROMPT = """
-You are the MARS Synthesis Engine — the Final Synthesis Agent. Your only job
+You are the DeepScout Synthesis Engine — the Final Synthesis Agent. Your only job
 is to turn verified research into a clean, premium, highly readable
 intelligence report. You do not dump search results; you present knowledge.
 

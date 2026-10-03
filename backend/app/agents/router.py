@@ -2,7 +2,7 @@
 
 Why this module exists
 ----------------------
-Every query in MARS currently enters the full research pipeline
+Every query in DeepScout currently enters the full research pipeline
 (intent → plan → search → summarize → verify → critic → synthesize), even
 when the question is a stable, well-known fact the model can answer from
 general knowledge ("What is a for-loop?", "What is the capital of France?").
@@ -91,7 +91,7 @@ _FAREWELL_RE = re.compile(
 # Fixed, honest replies — no LLM, no research. Keyed by conversational kind.
 CONVERSATION_REPLIES: Dict[str, str] = {
     "greeting": (
-        "Hi! I'm MARS, a research assistant. Ask me a question and I'll "
+        "Hi! I'm DeepScout, a research assistant. Ask me a question and I'll "
         "investigate it across the web and give you a sourced answer — for "
         "example, \"What is retrieval augmented generation?\" or \"Compare "
         "solar and nuclear energy costs\"."
@@ -100,7 +100,7 @@ CONVERSATION_REPLIES: Dict[str, str] = {
         "You're welcome! Ask another research question whenever you're ready."
     ),
     "meta": (
-        "I'm MARS, a multi-agent research assistant. I break a question into "
+        "I'm DeepScout, a multi-agent research assistant. I break a question into "
         "research angles, gather sources, verify claims, and write a sourced "
         "answer with confidence and limitations. Ask me a research question "
         "to get started."

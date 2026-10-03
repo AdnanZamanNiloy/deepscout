@@ -4,9 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="theme-color" content="#191919" />
-<meta name="description" content="MARS — Multi-Agent Research System. Architecture, research workflow, agents, evidence verification, confidence and citations." />
-<title>MARS — Documentation</title>
-<link rel="icon" type="image/svg+xml" href="/mars.svg?v=3" />
+<meta name="description" content="DeepScout — Multi-Agent Research System. Architecture, research workflow, agents, evidence verification, confidence and citations." />
+<title>DeepScout — Documentation</title>
+<link rel="icon" type="image/svg+xml" href="/deepscout.svg?v=3" />
 <link rel="apple-touch-icon" sizes="180x180" href="/mars-180.png" />
 <script>
   (function () {
@@ -18,7 +18,7 @@
 </script>
 <style>
 /* ============================================================
-   MARS Documentation — design system.
+   DeepScout Documentation — design system.
    Tokens mirror the product console (theme.css) and extend it
    with a documentation typographic + layout scale.
    ============================================================ */
@@ -41,11 +41,11 @@
   --t3: #9a9a9a;
   --t4: #8e8e8e;
 
-  --mars: #f0824d;
-  --mars-soft: #f09c72;
-  --mars-deep: #b85c38;
-  --mars-glow: rgba(240, 130, 77, 0.28);
-  --mars-wash: rgba(240, 130, 77, 0.09);
+  --deepscout: #f0824d;
+  --deepscout-soft: #f09c72;
+  --deepscout-deep: #b85c38;
+  --deepscout-glow: rgba(240, 130, 77, 0.28);
+  --deepscout-wash: rgba(240, 130, 77, 0.09);
   --mint: #86b89f;
   --amber: #e0b34e;
   --red: #e87a6c;
@@ -101,11 +101,11 @@
   --t3: #575d66;
   --t4: #5b616a;
 
-  --mars: #ad4517;
-  --mars-soft: #96400f;
-  --mars-deep: #7d3410;
-  --mars-glow: rgba(194, 82, 31, 0.22);
-  --mars-wash: rgba(194, 82, 31, 0.08);
+  --deepscout: #ad4517;
+  --deepscout-soft: #96400f;
+  --deepscout-deep: #7d3410;
+  --deepscout-glow: rgba(194, 82, 31, 0.22);
+  --deepscout-wash: rgba(194, 82, 31, 0.08);
   --mint: #1f7a53;
   --amber: #8a5e08;
   --red: #b03a2c;
@@ -148,12 +148,12 @@ body {
   text-rendering: optimizeLegibility;
 }
 ::selection { background: var(--sel); }
-a { color: var(--mars-soft); text-decoration: none; }
+a { color: var(--deepscout-soft); text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 2px; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-track { background: transparent; }
-:focus-visible { outline: 2px solid var(--mars); outline-offset: 2px; border-radius: 4px; }
+:focus-visible { outline: 2px solid var(--deepscout); outline-offset: 2px; border-radius: 4px; }
 
 /* ============================ top bar ============================ */
 .topbar {
@@ -165,29 +165,21 @@ a:hover { text-decoration: underline; text-underline-offset: 2px; }
   -webkit-backdrop-filter: saturate(140%) blur(14px);
   border-bottom: 1px solid var(--line-soft);
 }
-.topbar .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
-.topbar .brand-planet {
-  position: relative; flex: none;
-  width: 30px; height: 30px; border-radius: 50%;
-  background:
-    radial-gradient(ellipse 20% 14% at 62% 30%, rgba(70, 20, 8, 0.55), transparent 70%),
-    radial-gradient(ellipse 24% 16% at 42% 66%, rgba(70, 20, 8, 0.5), transparent 70%),
-    radial-gradient(ellipse 13% 10% at 72% 60%, rgba(70, 20, 8, 0.45), transparent 70%),
-    radial-gradient(ellipse 30% 24% at 38% 34%, rgba(255, 196, 156, 0.22), transparent 70%),
-    radial-gradient(circle at 35% 30%, #f0a276 0%, #E8794F 22%, #c05a35 45%, #8f3f27 66%, #5c291b 85%, #3a1911 100%);
-  box-shadow:
-    inset -6px -8px 16px rgba(0, 0, 0, 0.62),
-    inset 3px 4px 9px rgba(255, 200, 160, 0.16),
-    0 3px 12px rgba(0, 0, 0, 0.5),
-    0 0 18px rgba(232, 121, 79, 0.18);
+.brand-lockup { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.brand-mark { flex: none; display: block; }
+/* The disc is the page showing through, so it follows the theme. */
+.brand-mark-disc { fill: var(--bg); }
+:root[data-theme="light"] .brand-mark-disc { fill: #ffffff; }
+.brand-name {
+  display: inline-flex; align-items: baseline; font-weight: 700; line-height: 1;
+  letter-spacing: -0.015em; font-size: 17px; white-space: nowrap;
 }
-.topbar .brand-planet::after {
-  content: ""; position: absolute; inset: 0; border-radius: 50%;
-  background: radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.16), transparent 46%);
+.brand-name-deep { color: var(--t1); }
+.brand-name-scout {
+  background-image: linear-gradient(103deg, #fda46a 0%, #ee7c50 46%, #d2461f 100%);
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent; -webkit-text-fill-color: transparent;
 }
-.topbar .brand-word { display: flex; flex-direction: column; min-width: 0; }
-.topbar .brand-name { font-weight: 800; letter-spacing: 5px; font-size: 15px; color: #E8794F; }
-.topbar .brand-sub { color: var(--t3); font-size: 10px; line-height: 1.5; font-weight: 500; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topbar .spacer { flex: 1; }
 
 .tb-btn {
@@ -211,7 +203,7 @@ a:hover { text-decoration: underline; text-underline-offset: 2px; }
   transition: border-color .15s, background .15s, box-shadow .15s;
 }
 .search-input::placeholder { color: var(--t4); }
-.search-input:focus { outline: none; border-color: var(--mars-deep); background: var(--surface); box-shadow: 0 0 0 3px var(--mars-wash); }
+.search-input:focus { outline: none; border-color: var(--deepscout-deep); background: var(--surface); box-shadow: 0 0 0 3px var(--deepscout-wash); }
 .search-wrap .s-ico { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--t4); pointer-events: none; }
 .search-wrap .s-ico svg { width: 15px; height: 15px; display: block; }
 .search-wrap .s-key {
@@ -228,7 +220,7 @@ a:hover { text-decoration: underline; text-underline-offset: 2px; }
 .search-results.open { display: block; }
 .sr-item { display: block; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); cursor: pointer; }
 .sr-item:last-child { border-bottom: 0; }
-.sr-item:hover, .sr-item.active { background: var(--mars-wash); }
+.sr-item:hover, .sr-item.active { background: var(--deepscout-wash); }
 .sr-title { font-size: 13.5px; font-weight: 600; color: var(--t1); }
 .sr-path { font-size: 11.5px; color: var(--t3); margin-top: 2px; }
 .sr-empty { padding: 16px 14px; color: var(--t3); font-size: 13px; }
@@ -262,13 +254,13 @@ a:hover { text-decoration: underline; text-underline-offset: 2px; }
   border: 1px solid transparent; transition: color .13s, background .13s;
 }
 .nav-link:hover { color: var(--t1); background: var(--surface-2); text-decoration: none; }
-.nav-link.active { color: var(--t1); background: var(--mars-wash); }
+.nav-link.active { color: var(--t1); background: var(--deepscout-wash); }
 .nav-link.active::before {
   content: ""; position: absolute; left: -14px; top: 6px; bottom: 6px; width: 2px;
-  background: var(--mars); border-radius: 2px;
+  background: var(--deepscout); border-radius: 2px;
 }
 .nav-link .n-ico { color: var(--t4); display: flex; }
-.nav-link.active .n-ico { color: var(--mars); }
+.nav-link.active .n-ico { color: var(--deepscout); }
 .nav-link .n-ico svg { width: 15px; height: 15px; }
 .nav-foot { padding: 14px 12px 0; margin-top: 6px; border-top: 1px solid var(--line-soft); font-size: 11.5px; color: var(--t4); line-height: 1.7; }
 .nav-foot code { font-size: 11px; }
@@ -283,9 +275,9 @@ p { margin: 0 0 15px; color: var(--t2); }
 p strong, li strong { color: var(--t1); font-weight: 640; }
 ul, ol { margin: 0 0 16px; padding-left: 22px; color: var(--t2); }
 li { margin: 5px 0; }
-li::marker { color: var(--mars); }
+li::marker { color: var(--deepscout); }
 hr { border: 0; border-top: 1px solid var(--line-soft); margin: 44px 0; }
-.eyebrow { font-size: 11.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--mars); margin: 0 0 12px; }
+.eyebrow { font-size: 11.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--deepscout); margin: 0 0 12px; }
 .lede { font-size: 18px; line-height: 1.62; color: var(--t2); margin-bottom: 26px; max-width: 66ch; }
 .muted { color: var(--t3); }
 .small { font-size: 13px; }
@@ -298,7 +290,7 @@ hr { border: 0; border-top: 1px solid var(--line-soft); margin: 44px 0; }
 code {
   font-family: var(--mono); font-size: 0.86em;
   background: var(--code-bg); border: 1px solid var(--code-line);
-  padding: 1.5px 6px; border-radius: 6px; color: var(--mars-soft);
+  padding: 1.5px 6px; border-radius: 6px; color: var(--deepscout-soft);
   white-space: nowrap;
 }
 a code { color: inherit; }
@@ -334,7 +326,7 @@ kbd {
 }
 .btn:hover { background: var(--surface-3); text-decoration: none; }
 .btn:active { transform: translateY(1px); }
-.btn.primary { background: var(--mars); border-color: rgba(0,0,0,.2); color: #1c1009; box-shadow: 0 6px 18px rgba(0,0,0,.3); }
+.btn.primary { background: var(--deepscout); border-color: rgba(0,0,0,.2); color: #1c1009; box-shadow: 0 6px 18px rgba(0,0,0,.3); }
 .btn.primary:hover { filter: brightness(.94); }
 .btn svg { width: 15px; height: 15px; }
 
@@ -362,7 +354,7 @@ kbd {
 .feature:hover { border-color: var(--line-strong); background: var(--surface-2); transform: translateY(-2px); }
 .feature .f-ico {
   width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center;
-  background: var(--mars-wash); border: 1px solid rgba(232,121,79,.25); color: var(--mars); margin-bottom: 12px;
+  background: var(--deepscout-wash); border: 1px solid rgba(232,121,79,.25); color: var(--deepscout); margin-bottom: 12px;
 }
 .feature .f-ico svg { width: 17px; height: 17px; }
 .feature h4 { margin: 0 0 6px; font-size: 14.5px; }
@@ -370,10 +362,10 @@ kbd {
 
 .callout {
   display: flex; gap: 13px; padding: 15px 17px; border-radius: var(--r-md);
-  border: 1px solid var(--line); border-left: 3px solid var(--mars);
+  border: 1px solid var(--line); border-left: 3px solid var(--deepscout);
   background: var(--surface-2); margin: 20px 0; font-size: 14px;
 }
-.callout .c-ico { flex: none; color: var(--mars); margin-top: 1px; }
+.callout .c-ico { flex: none; color: var(--deepscout); margin-top: 1px; }
 .callout .c-ico svg { width: 17px; height: 17px; display: block; }
 .callout .c-body { min-width: 0; }
 .callout .c-body p:last-child { margin-bottom: 0; }
@@ -402,7 +394,7 @@ kbd {
 .term-dots { display: inline-flex; gap: 5px; }
 .term-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); display: block; }
 .tok-c { color: var(--t4); }
-.tok-g { color: var(--mars); }
+.tok-g { color: var(--deepscout); }
 .tok-a { color: var(--mint); }
 .tok-b { color: var(--blue); }
 .tok-y { color: var(--amber); }
@@ -432,7 +424,7 @@ tbody td code { font-size: 12px; }
 .pipe-node:hover { border-color: var(--line-strong); background: var(--surface-2); }
 .pipe-node .pn-ico {
   flex: none; width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
-  background: var(--mars-wash); border: 1px solid rgba(232,121,79,.25); color: var(--mars); font: 700 12px var(--mono);
+  background: var(--deepscout-wash); border: 1px solid rgba(232,121,79,.25); color: var(--deepscout); font: 700 12px var(--mono);
 }
 .pipe-node .pn-body { min-width: 0; }
 .pipe-node .pn-title { font-weight: 640; font-size: 14.5px; color: var(--t1); }
@@ -447,25 +439,25 @@ tbody td code { font-size: 12px; }
   border: 1px solid var(--line); background: var(--surface-2); color: var(--t2);
   font: 600 11.5px/1.5 var(--font); white-space: nowrap;
 }
-.pill.mars { color: var(--mars); border-color: rgba(232,121,79,.35); background: var(--mars-wash); }
+.pill.mars { color: var(--deepscout); border-color: rgba(232,121,79,.35); background: var(--deepscout-wash); }
 .pill.mint { color: var(--mint); border-color: color-mix(in srgb, var(--mint) 40%, transparent); }
 .pill.amber { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 40%, transparent); }
 .pill.bad { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, transparent); }
 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
-.dot.live { background: var(--mars); box-shadow: 0 0 10px var(--mars-glow); animation: pulse 1.6s ease-in-out infinite; }
+.dot.live { background: var(--deepscout); box-shadow: 0 0 10px var(--deepscout-glow); animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
 
 /* ============================ confidence meter ============================ */
 .signal-row { display: grid; grid-template-columns: 200px 1fr 58px; gap: 12px; align-items: center; padding: 7px 0; }
 .signal-row .s-label { font-size: 13px; color: var(--t2); }
 .signal-row .s-bar { height: 6px; border-radius: 999px; background: var(--track); overflow: hidden; }
-.signal-row .s-fill { height: 100%; border-radius: 999px; background: var(--mars); }
+.signal-row .s-fill { height: 100%; border-radius: 999px; background: var(--deepscout); }
 .signal-row .s-val { font: 600 12.5px var(--mono); color: var(--t2); text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 640px) { .signal-row { grid-template-columns: 1fr 56px; } .signal-row .s-bar { grid-column: 1 / -1; } }
 
 .metric-card { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); padding: 16px 18px; }
 .metric-card .m-val { font-size: 27px; font-weight: 760; letter-spacing: -.02em; color: var(--t1); font-variant-numeric: tabular-nums; }
-.metric-card .m-val.acc { color: var(--mars); }
+.metric-card .m-val.acc { color: var(--deepscout); }
 .metric-card .m-lab { font-size: 12.5px; color: var(--t3); margin-top: 2px; }
 .metric-card .m-sub { font-size: 11.5px; color: var(--t4); margin-top: 7px; }
 
@@ -483,7 +475,7 @@ tbody td code { font-size: 12px; }
 
 .event-row { display: grid; grid-template-columns: 150px 1fr; gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--line-soft); }
 .event-row:last-child { border-bottom: 0; }
-.event-row .e-name { font: 600 12.5px var(--mono); color: var(--mars); }
+.event-row .e-name { font: 600 12.5px var(--mono); color: var(--deepscout); }
 .event-row .e-desc { font-size: 13.5px; color: var(--t2); }
 @media (max-width: 640px) { .event-row { grid-template-columns: 1fr; gap: 3px; } }
 
@@ -526,12 +518,18 @@ tbody td code { font-size: 12px; }
   <button class="tb-btn icon menu-toggle" id="menuToggle" aria-label="Open navigation">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
   </button>
-  <span class="brand">
-    <span class="brand-planet" aria-hidden="true"></span>
-    <span class="brand-word">
-      <span class="brand-name">MARS</span>
-      <span class="brand-sub">Multi-Agent Research System</span>
-    </span>
+  <span class="brand-lockup">
+    <svg class="brand-mark" width="30" height="30" viewBox="0 0 1024 1024" role="img" aria-label="DeepScout">
+      <defs>
+        <linearGradient id="dsDocs" gradientUnits="userSpaceOnUse" x1="240" y1="90" x2="880" y2="960">
+          <stop offset="0" stop-color="#FDA46A"/><stop offset="0.5" stop-color="#EE7C50"/><stop offset="1" stop-color="#D2461F"/>
+        </linearGradient>
+      </defs>
+      <circle cx="512" cy="512" r="471" class="brand-mark-disc"/>
+      <g fill="url(#dsDocs)" stroke="url(#dsDocs)" stroke-width="18" stroke-linejoin="round"><path d="M517.0 49.0L279.0 461.3L144.9 229.0A463.5 463.5 0 0 1 517.0 49.0Z"/><path d="M915.5 284.8L439.4 284.9L573.5 52.6A463.5 463.5 0 0 1 915.5 284.8Z"/><path d="M910.5 747.8L672.4 335.6L940.6 335.6A463.5 463.5 0 0 1 910.5 747.8Z"/><path d="M507.0 975.0L745.0 562.7L879.1 795.0A463.5 463.5 0 0 1 507.0 975.0Z"/><path d="M108.5 739.2L584.6 739.1L450.5 971.4A463.5 463.5 0 0 1 108.5 739.2Z"/><path d="M113.5 276.2L351.6 688.4L83.4 688.4A463.5 463.5 0 0 1 113.5 276.2Z"/><path d="M590.5 512.0L551.2 580.0L472.8 580.0L433.5 512.0L472.7 444.0L551.2 444.0Z"/></g>
+    </svg>
+    <span class="brand-name" aria-label="DeepScout"><span class="brand-name-deep" aria-hidden="true">Deep</span><span class="brand-name-scout" aria-hidden="true">Scout</span></span>
+  </span>
   </span>
   <div class="spacer"></div>
   <div class="search-wrap">
@@ -540,7 +538,7 @@ tbody td code { font-size: 12px; }
     <span class="s-key">/</span>
     <div class="search-results" id="searchResults" role="listbox"></div>
   </div>
-  <a class="tb-btn" href="/#/" target="_top" title="Back to the MARS console">
+  <a class="tb-btn" href="/#/" target="_top" title="Back to the DeepScout console">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
     <span class="tb-label">Console</span>
   </a>

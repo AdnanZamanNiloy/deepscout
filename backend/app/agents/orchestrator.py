@@ -391,7 +391,7 @@ def scaled_max_iterations(mode: str, target_agents: int) -> int:
 
 
 def recommend_mode(complexity: ComplexityScore) -> str:
-    """Mode MARS would pick if the user did not.
+    """Mode DeepScout would pick if the user did not.
 
     A recommendation, never an override: modes cost money and latency, and the
     user's explicit choice always wins in `orchestrate`. Exposed so the UI can

@@ -1,4 +1,4 @@
-/* Agent Library — the MARS workforce as it actually exists. Objectives and
+/* Agent Library — the DeepScout workforce as it actually exists. Objectives and
  * tools are stated from the code, not marketing copy. Live per-agent latency
  * and cost are not instrumented yet — said plainly rather than faked. */
 

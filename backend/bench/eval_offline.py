@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic OFFLINE golden evaluator for MARS.
+"""Deterministic OFFLINE golden evaluator for DeepScout.
 
 Runs the versioned golden query set (bench/golden/queries_v1.json) through the
 PRODUCTION research graph with deterministic mocks (bench/mock_pipeline.py
@@ -633,7 +633,7 @@ def write_markdown(report: Dict[str, Any], out_dir: Path = RESULTS_DIR) -> Path:
     agg = report["aggregate"]["metrics"]
     lines: List[str] = []
     a = lines.append
-    a("# MARS Offline Golden Evaluation (v1)")
+    a("# DeepScout Offline Golden Evaluation (v1)")
     a("")
     a(f"*Generated {report['ran_at'][:19]}Z — deterministic, network-free.*")
     a("")
@@ -897,7 +897,7 @@ def main() -> int:
     md_path = write_markdown(report, out_dir)
 
     print("=" * 62)
-    print("MARS offline golden evaluation (v1)")
+    print("DeepScout offline golden evaluation (v1)")
     print("=" * 62)
     agg = report["aggregate"]["metrics"]
     for name in AGGREGATE_METRICS:

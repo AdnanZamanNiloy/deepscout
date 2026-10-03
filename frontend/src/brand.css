@@ -1,0 +1,77 @@
+/* The DeepScout identity — one lockup, used on the landing page, the chat
+ * sidebar and (mirrored by hand) the docs site.
+ *
+ * Built in code rather than shipped as an image so the mark's inner disc can be
+ * the page ground showing through — correct in both themes from one component —
+ * and so the wordmark stays real text.
+ *
+ * The wordmark is two-tone: "Deep" in the theme's text colour, "Scout" in the
+ * brand gradient, applied with gradient clipping. No tagline.
+ */
+
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* --- the mark ----------------------------------------------------------- */
+
+.brand-mark {
+  flex: none;
+  display: block;
+}
+
+/* The disc stands for whatever surface the mark sits on, so it tracks the
+   theme rather than carrying a baked-in black or white. */
+.brand-mark-disc {
+  fill: var(--bg);
+}
+
+:root[data-theme="light"] .brand-mark-disc {
+  fill: #ffffff;
+}
+
+/* --- the word ------------------------------------------------------------ */
+
+.brand-word {
+  display: flex;
+  min-width: 0;
+}
+
+.brand-name {
+  display: inline-flex;
+  align-items: baseline;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.015em;
+  font-size: 17px;
+  white-space: nowrap;
+}
+
+/* "Deep" — the theme's own text colour, so it flips with the palette. */
+.brand-name-deep {
+  color: var(--t1);
+}
+
+/* "Scout" — the brand gradient, clipped into the glyphs. */
+.brand-name-scout {
+  background-image: linear-gradient(103deg, #fda46a 0%, #ee7c50 46%, #d2461f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  /* Safari needs the webkit prefix to paint gradient text at all. */
+  -webkit-text-fill-color: transparent;
+}
+
+/* --- sizes --------------------------------------------------------------- */
+
+.brand-lockup[data-size="lg"] { gap: 11px; }
+/* The aperture mark is a filled disc, so it carries far more visual weight per
+   pixel than adjacent type. Sized down to sit optically level with the
+   wordmark rather than towering over it. */
+.brand-lockup[data-size="lg"] .brand-name { font-size: 23px; }
+
+.brand-lockup[data-size="sm"] { gap: 8px; }
+.brand-lockup[data-size="sm"] .brand-name { font-size: 16px; }

@@ -4,6 +4,7 @@ import App from "./App";
 import "./theme.css";
 import "./layout.css";
 import "./components.css";
+import "./brand.css";
 import { initTheme } from "./theme";
 
 initTheme();

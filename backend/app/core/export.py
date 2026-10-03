@@ -75,7 +75,7 @@ def is_supported_format(fmt: str) -> bool:
 def _clean_title(query: str) -> str:
     text = (query or "").strip()
     if not text:
-        return "MARS Research Report"
+        return "DeepScout Research Report"
     # Collapse whitespace and cap for use as a filename/title.
     text = re.sub(r"\s+", " ", text)
     return text[:120]

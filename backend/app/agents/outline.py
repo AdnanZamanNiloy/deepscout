@@ -4,7 +4,7 @@ The failure this module exists for: broad questions ("What is the current
 trend of AI?") were being answered by whatever claims happened to rank
 highest, so the report collapsed into a narrow thesis or a source dump.
 GPT Researcher avoids this by planning a report outline (subtopics) and
-researching each section — this is the MARS-native, low-risk half of that:
+researching each section — this is the DeepScout-native, low-risk half of that:
 an outline derived from the query + the evidence already in hand, computed
 deterministically and handed to the synthesizer so the writer targets the
 question's dimensions instead of dumping claims.

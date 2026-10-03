@@ -1,4 +1,4 @@
-# MARS Offline Golden Evaluation (v1)
+# DeepScout Offline Golden Evaluation (v1)
 
 *Generated 2026-09-23T09:08:42Z — deterministic, network-free.*
 

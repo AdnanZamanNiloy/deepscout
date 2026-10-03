@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "MARS golden benchmark — versioned query set with ONLY deterministic, offline-checkable expectations. No model-specific prose. Each query is run through the production graph with the deterministic golden mock (bench/mock_pipeline.py GoldenFakeLLM/GoldenFakeSearch); expectations are checked against the resulting report and measured pipeline state.",
+  "description": "DeepScout golden benchmark — versioned query set with ONLY deterministic, offline-checkable expectations. No model-specific prose. Each query is run through the production graph with the deterministic golden mock (bench/mock_pipeline.py GoldenFakeLLM/GoldenFakeSearch); expectations are checked against the resulting report and measured pipeline state.",
   "categories": [
     "factual_explanation",
     "current_trend",

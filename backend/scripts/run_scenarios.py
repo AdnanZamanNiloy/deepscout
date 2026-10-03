@@ -115,7 +115,7 @@ def render(comparison: dict, base_query: str) -> str:
 
 
 async def main() -> int:
-    parser = argparse.ArgumentParser(description="MARS Scenario Engine")
+    parser = argparse.ArgumentParser(description="DeepScout Scenario Engine")
     parser.add_argument("--run-id", default=None, help="completed base run to branch from")
     parser.add_argument("--query", default=None, help="base query (runs a fresh base run first)")
     parser.add_argument("--scenarios", required=True, help="JSON file: list of {id, assumption}")

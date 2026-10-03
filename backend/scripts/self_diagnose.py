@@ -85,7 +85,7 @@ def render_text(data: dict, days: int) -> str:
     contra = contradiction_watch(data["reports"])
     flags = attention_flags(health, domains, critic)
 
-    lines = [f"MARS self-diagnosis (last {days} days, {health['total']} runs)", ""]
+    lines = [f"DeepScout self-diagnosis (last {days} days, {health['total']} runs)", ""]
     lines.append("Run health:")
     for status, count in sorted(health["by_status"].items()):
         lines.append(f"  {status}: {count}")
@@ -140,7 +140,7 @@ def render_text(data: dict, days: int) -> str:
 
 
 async def main() -> int:
-    parser = argparse.ArgumentParser(description="MARS Self-Diagnosis (read-only)")
+    parser = argparse.ArgumentParser(description="DeepScout Self-Diagnosis (read-only)")
     parser.add_argument("--db", default=None)
     parser.add_argument("--days", type=int, default=30)
     parser.add_argument("--json", action="store_true")

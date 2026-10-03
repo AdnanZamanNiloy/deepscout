@@ -1,7 +1,7 @@
 """Per-claim investigation state — closing the adaptive-investigation loop.
 
 The live baseline: `needs_corroboration` stuck at 20-50 claims per query and
-every run hitting the iteration ceiling still "not sufficient". MARS detected
+every run hitting the iteration ceiling still "not sufficient". DeepScout detected
 and targeted gaps but never tracked whether a targeted attempt WORKED, so
 budget could be re-spent on the same dead-end gap and an exhausted gap could
 not be told apart from an un-attempted one.

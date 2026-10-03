@@ -157,7 +157,7 @@ def score_answer_relevance(query: str, answer: str) -> float:
     This is the "evidence-rich but answers the wrong thing" guard, and unlike
     the in-gate relevance blend it is a pure answer-vs-query measure — it
     cannot be inflated by verified evidence or citation density. It uses the
-    MARS semantic engine (TF-IDF cosine) over the query against the answer's
+    DeepScout semantic engine (TF-IDF cosine) over the query against the answer's
     substantive sentences, plus the query-concept hit rate, so a report about
     a neighbouring topic scores low even when every claim is well sourced.
 
