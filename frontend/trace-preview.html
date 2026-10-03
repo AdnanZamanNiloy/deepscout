@@ -46,7 +46,6 @@
       function Preview() {
         const [events, setEvents] = useState([]);
         const [done, setDone] = useState(false);
-        const [keyOnly, setKeyOnly] = useState(false);
         useEffect(() => startMockReplay(
           (f) => setEvents((p) => [...p, f]), () => setDone(true)), []);
         return (
@@ -54,8 +53,6 @@
             events={events}
             status={done ? "done" : "running"}
             defaultOpen
-            keyStepsOnly={keyOnly}
-            onKeyStepsOnlyChange={setKeyOnly}
           />
         );
       }

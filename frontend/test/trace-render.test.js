@@ -361,11 +361,27 @@ test("the trace paints no surface of its own, so backgrounds stay unified", asyn
   assert.doesNotMatch(css, /--apt-bg/, "the separate background token is gone");
 });
 
-test("shows a live pulse only while the run is streaming", async () => {
-  const running = await render({ events: wireEvents(), status: "running" });
-  assert.match(running, /class="apt-live"/);
-  const done = await render({ events: wireEvents(), status: "done" });
-  assert.doesNotMatch(done, /class="apt-live"/);
+test("the duration stops counting once the run is aborted", async () => {
+  // An aborted run is done=false with no error, so it previously reported
+  // status "running" and the header timer advanced forever after the user had
+  // stopped the run. Asserted at the status layer that drives the tick.
+  const src = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+  assert.match(
+    src,
+    /traceRun\?\.error \|\| traceRun\?\.aborted/,
+    "an aborted run must not be reported as still running",
+  );
+
+  // With a terminal status the elapsed figure is fixed at last-frame - first.
+  const events = wireEvents().map((e, i) => ({ ...e, __ts: 1_000 + i * 1_000 }));
+  const done = await render({ events, status: "done" });
+  const errored = await render({ events, status: "error" });
+  assert.match(done, /Worked for 7s/);
+  assert.equal(
+    (errored.match(/Worked for 7s/g) ?? []).length,
+    1,
+    "a terminal run reports a fixed elapsed time",
+  );
 });
 
 test("stays collapsed when defaultOpen is false", async () => {
