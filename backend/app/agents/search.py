@@ -137,6 +137,13 @@ class SearchResult:
             "search_type": self.search_type,
             "reliability_score": round(self.reliability_score, 3),
             "content_length": self.content_length,
+            # Whether this page's content was actually fetched and read, as
+            # opposed to only appearing in the result list. The trace needs the
+            # distinction to show which sources were genuinely opened; without
+            # it here the flag lived only on the dataclass and never reached
+            # graph state, so "View web page" could never be grounded in fact.
+            # Additive key — existing readers ignore it.
+            "is_content_fetched": self.is_content_fetched,
             "published_at": self.published_at,
             "matched_query": self.matched_query,
             "is_primary": self.is_primary,

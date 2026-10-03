@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Agent Flow — preview</title>
+    <title>Agent Pipeline Trace — preview</title>
     <style>
       body { margin: 0; background: #0d0d0d; color: #e9e9ec;
              font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif; }
@@ -11,12 +11,23 @@
       .q { display: inline-block; margin: 0 0 22px auto; padding: 7px 13px;
            background: #222226; border-radius: 12px; font-size: 13px; }
       h1 { font-size: 15px; font-weight: 600; color: #8b8b94; margin: 0 0 18px; }
+      .bar { display: flex; gap: 8px; margin: 0 0 16px; }
+      .bar button { background: #1c1c20; color: #b9b9c2; border: 1px solid #2a2a30;
+                     border-radius: 8px; padding: 4px 10px; font: inherit;
+                     font-size: 12px; cursor: pointer; }
+      :root[data-theme="light"] body { background: #f6f6f7; color: #16161a; }
+      :root[data-theme="light"] .q { background: #fff; }
+      :root[data-theme="light"] .bar button { background: #fff; color: #4a4a52;
+                                               border-color: #e2e2e6; }
     </style>
   </head>
   <body>
     <div class="wrap">
       <div class="q">What might be the trends and opportunities in 2026?</div>
-      <h1>Agent Flow — mock replay. Real wire-event shapes, invented content. Toggle <em>Less steps</em> / <em>Full trace</em> in the header.</h1>
+      <h1>Mock replay — real wire-event shapes, invented content</h1>
+      <div class="bar">
+        <button id="theme">Light theme</button>
+      </div>
       <div id="root"></div>
     </div>
     <script type="module">
@@ -26,9 +37,16 @@
       import { startMockReplay } from "/src/trace/mock.ts";
       import "/src/trace/trace.css";
 
+      document.getElementById("theme").onclick = (e) => {
+        const light = document.documentElement.dataset.theme === "light";
+        document.documentElement.dataset.theme = light ? "dark" : "light";
+        e.target.textContent = light ? "Light theme" : "Dark theme";
+      };
+
       function Preview() {
         const [events, setEvents] = useState([]);
         const [done, setDone] = useState(false);
+        const [keyOnly, setKeyOnly] = useState(false);
         useEffect(() => startMockReplay(
           (f) => setEvents((p) => [...p, f]), () => setDone(true)), []);
         return (
@@ -36,6 +54,8 @@
             events={events}
             status={done ? "done" : "running"}
             defaultOpen
+            keyStepsOnly={keyOnly}
+            onKeyStepsOnlyChange={setKeyOnly}
           />
         );
       }

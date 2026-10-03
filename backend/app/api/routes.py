@@ -754,6 +754,11 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                                         _r.get("source") or _r.get("provider") or ""
                                     ),
                                     "reliability": _r.get("reliability_score"),
+                                    # Which pages were actually opened, not just
+                                    # returned. The trace renders a separate
+                                    # "View web page" row from this, so it must
+                                    # be the real flag — never inferred.
+                                    "fetched": bool(_r.get("is_content_fetched")),
                                 })
 
                             for _sq, _hits in seen_sub.items():
