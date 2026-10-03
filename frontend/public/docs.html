@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#191919" />
 <meta name="description" content="MARS — Multi-Agent Research System. Architecture, research workflow, agents, evidence verification, confidence and citations." />
 <title>MARS — Documentation</title>
-<link rel="icon" type="image/svg+xml" href="/mars.svg" />
+<link rel="icon" type="image/svg+xml" href="/mars.svg?v=3" />
 <link rel="apple-touch-icon" sizes="180x180" href="/mars-180.png" />
 <script>
   (function () {
@@ -166,14 +166,28 @@ a:hover { text-decoration: underline; text-underline-offset: 2px; }
   border-bottom: 1px solid var(--line-soft);
 }
 .topbar .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
-/* The signed brand artwork bakes its background in, so dark and light are
-   separate files; CSS picks between them from data-theme. Both render and one
-   is hidden, so there is no wrong-variant flash and no script in the path. */
-.brand-lockup { display: inline-flex; align-items: center; min-width: 0; }
-.brand-lockup-img { display: block; width: auto; max-width: 100%; height: 30px; }
-.brand-lockup-light { display: none; }
-:root[data-theme="light"] .brand-lockup-dark { display: none; }
-:root[data-theme="light"] .brand-lockup-light { display: block; }
+.topbar .brand-planet {
+  position: relative; flex: none;
+  width: 30px; height: 30px; border-radius: 50%;
+  background:
+    radial-gradient(ellipse 20% 14% at 62% 30%, rgba(70, 20, 8, 0.55), transparent 70%),
+    radial-gradient(ellipse 24% 16% at 42% 66%, rgba(70, 20, 8, 0.5), transparent 70%),
+    radial-gradient(ellipse 13% 10% at 72% 60%, rgba(70, 20, 8, 0.45), transparent 70%),
+    radial-gradient(ellipse 30% 24% at 38% 34%, rgba(255, 196, 156, 0.22), transparent 70%),
+    radial-gradient(circle at 35% 30%, #f0a276 0%, #E8794F 22%, #c05a35 45%, #8f3f27 66%, #5c291b 85%, #3a1911 100%);
+  box-shadow:
+    inset -6px -8px 16px rgba(0, 0, 0, 0.62),
+    inset 3px 4px 9px rgba(255, 200, 160, 0.16),
+    0 3px 12px rgba(0, 0, 0, 0.5),
+    0 0 18px rgba(232, 121, 79, 0.18);
+}
+.topbar .brand-planet::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.16), transparent 46%);
+}
+.topbar .brand-word { display: flex; flex-direction: column; min-width: 0; }
+.topbar .brand-name { font-weight: 800; letter-spacing: 5px; font-size: 15px; color: #E8794F; }
+.topbar .brand-sub { color: var(--t3); font-size: 10px; line-height: 1.5; font-weight: 500; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topbar .spacer { flex: 1; }
 
 .tb-btn {
@@ -496,9 +510,7 @@ tbody td code { font-size: 12px; }
 }
 @media (max-width: 720px) {
   .search-wrap { width: 100%; }
-  /* The lockup carries the tagline inside the artwork, so shrinking the
-     image is the responsive behaviour the old .brand-sub rule handled. */
-  .brand-lockup-img { height: 24px; }
+  .topbar .brand-sub { display: none; }
   .topbar { gap: 10px; padding: 0 12px; }
   .tb-btn .tb-label { display: none; }
 }
@@ -515,11 +527,11 @@ tbody td code { font-size: 12px; }
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
   </button>
   <span class="brand">
-    <span class="brand-lockup">
-      <img class="brand-lockup-img brand-lockup-dark" src="/mars-branding-dark.svg" alt="" aria-hidden="true">
-      <img class="brand-lockup-img brand-lockup-light" src="/mars-branding-light.svg" alt="" aria-hidden="true">
+    <span class="brand-planet" aria-hidden="true"></span>
+    <span class="brand-word">
+      <span class="brand-name">MARS</span>
+      <span class="brand-sub">Multi-Agent Research System</span>
     </span>
-    <span class="sr-only">MARS — Multi-Agent Research System</span>
   </span>
   <div class="spacer"></div>
   <div class="search-wrap">
