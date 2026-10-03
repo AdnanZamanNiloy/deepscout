@@ -725,29 +725,6 @@ select:focus-visible {
 }
 
 /* ============================================================
-   BRAND LOCKUP
-   The signed brand artwork bakes its own background in, so the dark and light
-   variants are separate files and CSS picks between them from `data-theme`.
-   Both are rendered and one is hidden, rather than swapping `src`, so there
-   is no wrong-variant flash on first paint and no JS in the path.
-   ============================================================ */
-.brand-lockup {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-}
-.brand-lockup-img {
-  display: block;
-  width: auto;
-  max-width: 100%;
-  /* The artwork is 2125x570; constrain by height and let width follow. */
-  height: 100%;
-}
-.brand-lockup-light { display: none; }
-:root[data-theme="light"] .brand-lockup-dark { display: none; }
-:root[data-theme="light"] .brand-lockup-light { display: block; }
-
-/* ============================================================
    PRINT — the report is the deliverable; make it printable.
    ============================================================ */
 @media print {

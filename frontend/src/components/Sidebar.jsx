@@ -5,7 +5,6 @@ import {
   IconPlus, IconTrash,
 } from "./icons";
 import ThemeToggle from "./ThemeToggle";
-import BrandLockup from "./BrandLockup";
 
 export function Planet({ size = 40, ring = false }) {
   return (
@@ -164,7 +163,11 @@ export default function Sidebar({
       {/* A real <button>: Space now works, and the branding is keyboard
           reachable without a role/tabIndex workaround. */}
       <button type="button" className="brand" onClick={() => go("workspace")} title="Back to the research console">
-        <BrandLockup height={30} />
+        <Planet size={38} />
+        <span className="brand-copy">
+          <span className="brand-name">MARS</span>
+          <span className="brand-sub">Multi-Agent Research System</span>
+        </span>
       </button>
 
       <nav className="side-nav" aria-label="Primary">
