@@ -1,4 +1,4 @@
-/* DeepScout documentation view — mounts the standalone docs site at `#/docs`.
+/* MARS documentation view — mounts the standalone docs site at `#/docs`.
  * The docs themselves are a zero-build static page (`public/docs.html`);
  * the iframe isolates the docs' own `#page` hash routing from the
  * console's `#/view` hash router. Exiting via the docs' "Console" button
@@ -34,7 +34,7 @@ export default function DocsView() {
         ref={frameRef}
         className="docs-frame"
         src="/docs.html"
-        title="DeepScout Documentation"
+        title="MARS Documentation"
         onLoad={() => {
           const frame = frameRef.current;
           if (!frame || !frame.contentWindow) return;
