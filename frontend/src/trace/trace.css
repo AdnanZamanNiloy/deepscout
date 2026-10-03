@@ -301,16 +301,21 @@
   gap: 4px;
   /* Bounded so one long title cannot stretch a pill across the whole card.
      The pill sizes to its content up to this ceiling, then truncates. */
-  max-width: min(210px, 100%);
+  max-width: min(250px, 100%);
   min-width: 0;
-  padding: 0 7px;
+  padding: 0 8px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--apt-fg) 7%, transparent);
   background: color-mix(in srgb, var(--apt-fg) 5%, transparent);
   color: color-mix(in srgb, var(--apt-fg) 68%, transparent);
-  font-family: var(--apt-mono);
-  font-size: 9.5px;
-  line-height: 1.75;
+  /* The UI sans, not the monospace face. Monospace is markedly wider per
+     character, so titles were being clipped to "Context scali…" inside a pill
+     that still looked oversized. Proportional text fits far more of a title in
+     less space and matches the reference, which reserves mono for paths and
+     commands rather than for source names. */
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.7;
   text-decoration: none;
   transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
 }
@@ -327,8 +332,7 @@
 .apt-chip-meta {
   flex: none;
   color: color-mix(in srgb, var(--apt-fg) 32%, transparent);
-  font-size: 8.5px;
-  letter-spacing: 0.01em;
+  font-size: 9px;
 }
 a.apt-code:hover {
   background: color-mix(in srgb, var(--apt-fg) 11%, transparent);
@@ -389,7 +393,7 @@ a.apt-inline:hover { background: color-mix(in srgb, var(--apt-fg) 12%, transpare
   /* Narrower viewport, so the base type steps down rather than up — the old
      override made mobile chips LARGER than desktop, undoing the compaction. */
   .apt { font-size: 12.5px; }
-  .apt-code { font-size: 9px; }
+  .apt-code { font-size: 9.5px; }
 }
 
 @media (max-width: 420px) {
