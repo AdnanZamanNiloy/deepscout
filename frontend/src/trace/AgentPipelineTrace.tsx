@@ -39,8 +39,8 @@ export type AgentPipelineTraceProps = {
 
 const STAGGER = 0.04;
 
-/** Prose longer than this is clamped behind a toggle. */
-const CLAMP_CHARS = 320;
+/** A paragraph longer than this is clipped to two lines behind a toggle. */
+const CLAMP_CHARS = 240;
 
 /** Claims shown before the "show all" toggle appears on an evidence row. */
 const COLLAPSED_CLAIMS = 4;
@@ -242,21 +242,21 @@ function Row({
     },
     [step.content, isFinal],
   );
-  const tooLong = step.content.length > CLAMP_CHARS;
-
-  // Evidence arrives as one claim per line, and a deep run produces dozens.
-  // Rendering all of them inline turned the trace into a wall of paragraphs
-  // that buried the rest of the run. Collapsed, show a short preview of the
-  // first few, each clipped to two lines; expanding is an explicit act.
   const isEvidence = step.kind === "evidence";
+
+  // Long prose is clipped, never character-sliced. Slicing at a fixed offset
+  // cut mid-sentence and, on evidence, merged separate claims into one run-on
+  // paragraph. A CSS line clamp keeps the text intact and readable.
   const bulk = isEvidence && paragraphs.length > COLLAPSED_CLAIMS;
   const visible = bulk && !open ? paragraphs.slice(0, COLLAPSED_CLAIMS) : paragraphs;
-  const clipEach = bulk && !open;
-
-  // Character clamping does not apply to evidence: it would merge separate
-  // claims into one run-on paragraph and duplicate the claims toggle.
-  const clamped = tooLong && !open && !isEvidence;
-  const shown = clamped ? `${step.content.slice(0, CLAMP_CHARS).trimEnd()}…` : step.content;
+  const longProse = !open && visible.some((p) => p.length > CLAMP_CHARS);
+  // The clamp class goes on every collapsed claim, even short ones: a two-line
+  // clamp is a no-op on text that already fits, and applying it conditionally
+  // made the preview height jump around as claims arrived.
+  const applyClamp = !open && (isEvidence || longProse);
+  // A toggle appears only when there is genuinely more to read — a bulk batch,
+  // or prose too long for the clamp. Two short claims get no toggle.
+  const collapsible = bulk || longProse;
 
   return (
     <motion.li
@@ -282,10 +282,10 @@ function Row({
           <button
             type="button"
             className="apt-row-toggle"
-            onClick={() => (tooLong || step.chips?.length ? onToggle(step.id) : undefined)}
-            aria-expanded={tooLong || step.chips?.length ? open : undefined}
-            disabled={!tooLong && !step.chips?.length}
-            tabIndex={!tooLong && !step.chips?.length ? -1 : undefined}
+            onClick={() => (collapsible || step.chips?.length ? onToggle(step.id) : undefined)}
+            aria-expanded={collapsible || step.chips?.length ? open : undefined}
+            disabled={!collapsible && !step.chips?.length}
+            tabIndex={!collapsible && !step.chips?.length ? -1 : undefined}
           >
             <span className="apt-tool-label">{step.title}</span>
           </button>
@@ -309,12 +309,12 @@ function Row({
           renderContent(step)
         ) : isFinal && !open ? null : paragraphs.length ? (
           <div>
-            {(clamped ? [shown] : visible).map((p, i) => (
+            {visible.map((p, i) => (
               <p
                 className={
                   isFinal
                     ? "apt-prose apt-pre"
-                    : clipEach
+                    : applyClamp
                       ? "apt-prose apt-claim"
                       : "apt-prose"
                 }
@@ -323,7 +323,7 @@ function Row({
                 <Prose text={p} />
               </p>
             ))}
-            {bulk ? (
+            {collapsible ? (
               <button
                 type="button"
                 className="apt-row-toggle"
@@ -332,21 +332,10 @@ function Row({
               >
                 <span className="apt-muted">
                   {open
-                    ? "Show fewer claims"
-                    : `Show all ${paragraphs.length} claims`}
-                </span>
-              </button>
-            ) : null}
-
-            {tooLong && !isEvidence ? (
-              <button
-                type="button"
-                className="apt-row-toggle"
-                onClick={() => onToggle(step.id)}
-                aria-expanded={open}
-              >
-                <span className="apt-muted">
-                  {open ? "Show less" : `Show ${step.content.length - CLAMP_CHARS} more characters`}
+                    ? "Show less"
+                    : bulk
+                      ? `Show all ${paragraphs.length} claims`
+                      : "Show more"}
                 </span>
               </button>
             ) : null}
@@ -440,10 +429,12 @@ export default function AgentPipelineTrace({
   const defaultOpenFor = useCallback(
     (id: string) => {
       const s = all.find((x) => x.id === id);
-      // The final report and bulk evidence both stay collapsed by default: one
-      // duplicates the answer card, the other is dozens of claims.
-      if (!s || s.kind === "final" || s.kind === "evidence") return false;
-      return Boolean(s.chips?.length) || s.content.length > CLAMP_CHARS;
+      // Only source chips open by default. Auto-opening long prose was the
+      // defect: a critic rationale runs to thousands of characters, so the rule
+      // "open it if it's long" expanded exactly the rows that were unwieldy.
+      // Long text now stays clipped until asked for.
+      if (!s || s.kind === "final") return false;
+      return Boolean(s.chips?.length);
     },
     [all],
   );

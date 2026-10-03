@@ -218,6 +218,37 @@ test("a large evidence batch is previewed, not dumped in full", async () => {
   assert.match(clamp[1], /overflow:\s*hidden/);
 });
 
+test("a huge critic rationale is clipped, not expanded on arrival", async () => {
+  // The auto-open rule used to be "open it if it's long", which expanded
+  // precisely the rows that were unwieldy — a critic rationale runs to
+  // thousands of characters. Long prose must now stay clipped until asked.
+  const rationale =
+    "Review round 3. This is the final iteration and the evidence, while rich " +
+    "on capability and evaluation mechanics, is skewed toward one framing. ".repeat(12);
+  const html = await render({
+    events: [{ type: "critic", iteration: 3, reason: rationale, __ts: 9 }],
+    status: "done",
+  });
+  const block = html.match(/data-kind="gate"[\s\S]*?<\/li>/)?.[0] ?? "";
+  assert.ok(block, "expected a critic row");
+  assert.match(block, /apt-claim/, "long prose must be line-clamped while collapsed");
+  assert.match(block, /Show more/, "and stay behind an explicit toggle");
+  assert.doesNotMatch(block, /aria-expanded="true"/, "must not auto-expand");
+  // Clipping is visual, not destructive: the full rationale stays in the DOM so
+  // find-in-page and screen readers still get all of it. Only the painted
+  // height is limited.
+  assert.match(block, /skewed toward one framing/, "no text is discarded");
+});
+
+test("short prose needs no toggle", async () => {
+  const html = await render({
+    events: [{ type: "critic", iteration: 1, reason: "Sufficient after verification.", __ts: 9 }],
+    status: "done",
+  });
+  const block = html.match(/data-kind="gate"[\s\S]*?<\/li>/)?.[0] ?? "";
+  assert.doesNotMatch(block, /Show more/, "nothing to expand");
+});
+
 test("the trace paints no surface of its own, so backgrounds stay unified", async () => {
   // The trace used to fill itself with --card while the page used --bg, which
   // read as a second theme dropped inside the page. Asserted against the

@@ -241,7 +241,8 @@
 /* Verbatim markdown block: keep the author's line breaks. */
 .apt-pre { white-space: pre-wrap; }
 
-/* An extracted claim, clipped to two lines behind its "show all" toggle. */
+/* Any long paragraph — a claim, a critic rationale, a routing explanation —
+   clipped to two lines behind its "show more" toggle. */
 .apt-claim {
   display: -webkit-box;
   -webkit-line-clamp: 2;
