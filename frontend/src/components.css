@@ -839,8 +839,6 @@
   text-decoration: none; color: var(--t1);
   border-radius: var(--r-md);
 }
-.landing-brand .brand-name { font-size: 15px; font-weight: 800; letter-spacing: 5px; color: var(--mars); }
-.landing-brand .brand-sub { font-size: 10.5px; line-height: 1.45; color: var(--t3); margin-top: 2px; }
 
 /* Anchor targets clear the sticky nav so a jump does not hide the heading. */
 #landing-about, #landing-capabilities, #landing-trust, #landing-modes { scroll-margin-top: 72px; }
@@ -1250,9 +1248,7 @@
      child was clipped. Compress rather than overflow. */
   .landing-nav { padding: 12px 14px; gap: 10px; }
   .landing-brand { padding: 4px 2px; gap: 9px; }
-  .landing-brand .brand-sub { display: none; }
-  .landing-brand .brand-name { letter-spacing: 3px; font-size: 14px; }
-  .landing-links { gap: 2px; min-width: 0; }
+      .landing-links { gap: 2px; min-width: 0; }
   .landing-link { padding: 7px 9px; font-size: 12.5px; gap: 5px; }
   /* Icon-only for the least essential link keeps the row within bounds
      without hiding a destination from assistive tech (title + aria kept). */

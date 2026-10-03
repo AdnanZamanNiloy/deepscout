@@ -12,6 +12,7 @@
  * the intelligence rail render from code. */
 
 import { Planet } from "./Sidebar";
+import BrandLockup from "./BrandLockup";
 import ThemeToggle from "./ThemeToggle";
 import {
   IconAgents, IconChart, IconCheckCircle, IconCompass, IconDoc,
@@ -111,11 +112,7 @@ export default function Landing({ onStart, onDocs }) {
           onClick={(e) => e.preventDefault()}
           aria-label="MARS — Multi-Agent Research System"
         >
-          <Planet size={36} />
-          <span className="brand-copy">
-            <span className="brand-name">MARS</span>
-            <span className="brand-sub">Multi-Agent Research System</span>
-          </span>
+          <BrandLockup height={40} />
         </a>
         <nav className="landing-links" aria-label="Primary">
           <a className="landing-link" href="#landing-about">
