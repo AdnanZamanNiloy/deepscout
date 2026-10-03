@@ -428,7 +428,13 @@ function useElapsed(
   let last: number | null = null;
   let seen = 0;
   for (const e of events) {
-    const t = e && typeof e.__ts === "number" ? e.__ts : null;
+    if (!e) continue;
+    // The client's arrival stamp wins for a live run; the server's emission
+    // stamp is the only one present on replayed frames, so it is the fallback
+    // that keeps the duration visible after a reload.
+    const client = typeof e.__ts === "number" ? e.__ts : null;
+    const server = typeof e.ts === "number" ? e.ts : null;
+    const t = client ?? server;
     if (t === null) continue;
     seen += 1;
     if (first === null) first = t;

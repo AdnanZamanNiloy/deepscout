@@ -593,6 +593,9 @@ nuclear route…", "the renewables-first route…"), not by internal labels.
 9. NO thematic breaks. Never write `---`, `***` or `___` rules between
    sections — a blank line and the heading already separate them, and a rule
    under every heading reads as machine scaffolding.
+10. NO em dashes. Do not write "—". Use a comma, a colon, or a full stop. The
+    dash is replaced mechanically downstream, which cannot choose the
+    punctuation that actually fits the clause.
 
 ━━━ CITATION RULES (non-negotiable) ━━━
 

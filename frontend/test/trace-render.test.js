@@ -195,12 +195,40 @@ test("no duration is claimed from a single frame", async () => {
   assert.doesNotMatch(html, /Worked for/);
 });
 
-test("frames without arrival stamps do not fabricate a duration", async () => {
+test("a replayed run still shows its duration", async () => {
+  // Regression, and one this suite previously locked IN. __ts is stamped in the
+  // browser, so persisted frames never carried it — every restored session
+  // rendered no duration at all, and the old test asserted that absence as
+  // correct. The server's own `ts` stamp is what survives persistence, so the
+  // elapsed time must fall back to it.
+  const replayed = wireEvents().map(({ __ts, ...rest }, i) => ({
+    ...rest,
+    ts: 1_700_000_000_000 + i * 20_000,
+  }));
+  const html = await render({ events: replayed, status: "done" });
+  assert.match(html, /Worked for/);
+  assert.doesNotMatch(html, /NaN/);
+});
+
+test("no duration is invented when no frame carries any timestamp", async () => {
   const html = await render({
     events: wireEvents().map(({ __ts, ...rest }) => rest),
     status: "done",
   });
   assert.doesNotMatch(html, /Worked for/);
+});
+
+test("the client arrival stamp wins over the server stamp when both exist", async () => {
+  // For a live run the browser knows when the frame actually arrived; the
+  // server clock can drift. __ts must take precedence.
+  const events = wireEvents().map((e, i) => ({
+    ...e,
+    __ts: 2_000_000_000_000 + i * 5_000,
+    ts: 1_000_000_000_000 + i * 60_000,
+  }));
+  const html = await render({ events, status: "done" });
+  assert.match(html, /Worked for 35s/, "client stamps win (7 gaps x 5s)");
+  assert.doesNotMatch(html, /Worked for \d+m/, "server stamps must be ignored");
 });
 
 test("the trace grows with its content: no fixed height, no inner scroller", async () => {

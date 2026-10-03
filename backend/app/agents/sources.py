@@ -712,6 +712,11 @@ def strip_machine_sections(text: str) -> str:
 
 # Inline citation markers as the writer emits them: [3], [1][6], [4, 7].
 _INLINE_CITE_RE = re.compile(r"\s*\[\d+(?:\s*,\s*\d+)*\](?=\s*\[\d+)|\s*\[\d+(?:\s*,\s*\d+)*\]")
+# Em dash (U+2014) used as a parenthetical or appositive separator. Deleting it
+# outright welds two clauses together ("pattern holds 88% of firms..."), so it is
+# replaced with punctuation that keeps the sentence grammatical. En dash (U+2013)
+# is deliberately NOT touched: in a range like 2025-2026 it is correct typography.
+_EM_DASH_RE = re.compile(r"\s*\u2014\s*")
 # A thematic break on its own line: ---, ***, ___.
 _HR_RE = re.compile(r"(?m)^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$")
 
@@ -736,8 +741,17 @@ def clean_writer_prose(text: str) -> str:
     body = strip_machine_sections(text or "")
     body = _INLINE_CITE_RE.sub("", body)
     body = _HR_RE.sub("", body)
+    # Em dash -> comma. A colon would read better after a lead-in clause, but
+    # that needs parsing; a comma is grammatical in both directions and never
+    # produces a run-on.
+    body = _EM_DASH_RE.sub(", ", body)
     # Collapse the blank-line runs the removals leave behind, and any run of
     # three or more newlines, without touching single paragraph breaks.
     body = re.sub(r"[ \t]+\n", "\n", body)
     body = re.sub(r"\n{3,}", "\n\n", body)
+    # Tidy the punctuation the dash swap can double up, and drop a comma that
+    # would now sit directly before sentence-ending punctuation.
+    body = re.sub(r",\s*([.,;:])", r"\1", body)
+    body = re.sub(r"\(\s*,\s*", "(", body)
+    body = re.sub(r"\s+,", ",", body)
     return body.strip()

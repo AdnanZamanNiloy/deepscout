@@ -85,6 +85,27 @@ def test_cleanup_is_idempotent():
     assert clean_writer_prose(once) == once
 
 
+def test_em_dashes_are_replaced_with_grammatical_punctuation():
+    out = clean_writer_prose(
+        "The same pattern holds — 88% of organizations deploy AI somewhere."
+    )
+    assert "\u2014" not in out
+    # Deleting the dash outright would weld the clauses together.
+    assert "holds, 88% of organizations" in out
+
+
+def test_en_dash_ranges_are_preserved():
+    # An en dash in a range is correct typography, not presentation noise.
+    out = clean_writer_prose("Costs fell across 2025\u20132026 [4].")
+    assert "2025\u20132026" in out
+
+
+def test_a_dash_inside_a_phrase_is_replaced_without_wedging_words():
+    assert clean_writer_prose("A point\u2014made here\u2014matters.") == (
+        "A point, made here, matters."
+    )
+
+
 def test_text_without_noise_passes_through():
     plain = "## Heading\n\nA single clear paragraph of prose."
     assert clean_writer_prose(plain) == plain
