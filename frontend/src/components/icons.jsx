@@ -48,7 +48,9 @@ export const IconTrash = (p) => base({ ...p, children: <><path d="M3 6h18" /><pa
 export const IconPin = (p) => base({ ...p, children: <><path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16h14v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1Z" /></> });
 export const IconFolder = (p) => base({ ...p, children: <><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /></> });
 export const IconPlus = (p) => base({ ...p, children: <><path d="M12 5v14M5 12h14" /></> });
-export const IconSend = (p) => base({ ...p, children: <><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></> });
+/* Send. An upward arrow rather than a paper plane: a plane reads as "send a
+ * message", an arrow reads as "submit this", and matches the reference. */
+export const IconArrowUp = (p) => base({ ...p, strokeWidth: 2, children: <><line x1="12" y1="20" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></> });
 export const IconStop = (p) => base({ ...p, children: <rect x="6" y="6" width="12" height="12" rx="2" /> });
 export const IconClock = (p) => base({ ...p, children: <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></> });
 export const IconInfo = (p) => base({ ...p, children: <><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></> });

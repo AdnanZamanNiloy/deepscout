@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { MODE_META } from "../lib";
-import { IconCheck, IconChevronDown, IconSend, IconStop } from "./icons";
+import { IconArrowUp, IconCheck, IconChevronDown, IconStop } from "./icons";
 
 const MODES = ["quick", "standard", "deep", "executive", "audit", "redteam"];
 
@@ -152,7 +152,7 @@ export default function Composer({
             title={canSend ? "Send (Enter)" : "Type at least 5 characters"}
             aria-label="Send research question"
           >
-            <IconSend size={13} />
+            <IconArrowUp size={15} />
           </button>
         )}
       </div>
