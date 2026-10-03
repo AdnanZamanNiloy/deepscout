@@ -430,6 +430,27 @@ test("the header names the stage the run is really in", async () => {
   );
 });
 
+test("the stage sits after the last row, as a footer", async () => {
+  // It belongs at the bottom of the trace, under the last row — where the eye
+  // already is while reading a live run — not in the header competing with the
+  // elapsed time.
+  const html = await render({
+    events: [
+      { type: "search_query", query: "battery", __ts: 1 },
+      { type: "critic", iteration: 2, __ts: 2 },
+    ],
+    status: "running",
+  });
+  const stage = html.indexOf('class="apt-stage"');
+  const lastRow = html.lastIndexOf('class="apt-row"');
+  assert.ok(stage > 0, "expected a stage line");
+  assert.ok(lastRow > 0, "expected rows");
+  assert.ok(stage > lastRow, "the stage must come after the final row");
+  assert.ok(stage > html.indexOf('class="apt-body"'), "and inside the trace body");
+  // It is a footer, so it must not sit in the header.
+  assert.ok(stage > html.indexOf("</header>"), "the stage must not be in the header");
+});
+
 test("no stage is claimed for an empty or unknown stream", async () => {
   const empty = await render({ events: [], status: "running" });
   assert.doesNotMatch(empty, /class="apt-stage"/);
