@@ -240,6 +240,15 @@
 .apt-row[data-kind="final"] .apt-prose { color: var(--apt-fg); }
 /* Verbatim markdown block: keep the author's line breaks. */
 .apt-pre { white-space: pre-wrap; }
+
+/* An extracted claim, clipped to two lines behind its "show all" toggle. */
+.apt-claim {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .apt-row[data-status="error"] .apt-prose,
 .apt-row[data-status="error"] .apt-tool-label { color: var(--apt-err); }
 

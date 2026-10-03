@@ -189,6 +189,35 @@ test("a long source title truncates instead of stretching the pill", async () =>
   assert.match(html, /class="apt-code-label"/, "title text needs its own truncating box");
 });
 
+test("a large evidence batch is previewed, not dumped in full", async () => {
+  // A deep run yields dozens of claims. Rendering every one inline buried the
+  // rest of the trace in a wall of paragraphs, so a collapsed evidence row shows
+  // a short preview with each claim clipped, behind an explicit toggle.
+  const many = Array.from({ length: 14 }, (_, i) => ({
+    claim: `Claim ${i + 1}: ${"detail ".repeat(30)}`,
+    source: `src${i}.org`,
+  }));
+  const html = await render({
+    events: [{ type: "findings", items: many, __ts: 9 }],
+    status: "done",
+  });
+  const block = html.match(/data-kind="evidence"[\s\S]*?<\/li>/)?.[0] ?? "";
+  assert.ok(block, "expected an evidence row");
+  assert.equal(
+    (block.match(/apt-claim/g) ?? []).length,
+    4,
+    "only the first few claims render while collapsed",
+  );
+  assert.match(block, /Show all 14 claims/, "the rest must be one explicit click away");
+  assert.doesNotMatch(block, /Claim 14/, "no later claim leaks into the preview");
+
+  const css = await readFile(new URL("../src/trace/trace.css", import.meta.url), "utf8");
+  const clamp = css.match(/\.apt-claim \{([\s\S]*?)\n\}/);
+  assert.ok(clamp, "expected an .apt-claim rule");
+  assert.match(clamp[1], /-webkit-line-clamp:\s*2/);
+  assert.match(clamp[1], /overflow:\s*hidden/);
+});
+
 test("the trace paints no surface of its own, so backgrounds stay unified", async () => {
   // The trace used to fill itself with --card while the page used --bg, which
   // read as a second theme dropped inside the page. Asserted against the
