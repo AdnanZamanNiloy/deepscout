@@ -142,12 +142,25 @@ test("row icons carry an intrinsic size so they can never fill the card", async 
   assert.doesNotMatch(html, /class="apt-gutter"[^>]*>\s*<svg(?![^>]*class="apt-icon")/);
 });
 
-test("search results render as monospace path chips linking to the source", async () => {
+test("search results render as monospace chips linking to the source", async () => {
   const html = await render({ events: wireEvents(), status: "done" });
   assert.match(html, /class="apt-code"/);
   assert.match(html, /href="https:\/\/www\.iea\.org\/reports\/ger2026"/);
-  // Accent bar is the signature detail of the reference chip.
-  assert.match(html, /\.apt-code::before|apt-code/);
+});
+
+test("chips sit in a wrapping flex row, not stacked full-width bars", async () => {
+  // Regression: the chips container shipped with no className at all, so the
+  // block-level chips stacked one per line and filled the card width — a wall
+  // of grey bars instead of pills that flow like text. The container class is
+  // the only thing carrying the layout, so assert it is actually emitted.
+  const html = await render({ events: wireEvents(), status: "done" });
+  assert.match(html, /class="apt-chips"/);
+  const wrap = html.match(/<div[^>]*class="apt-chips"[^>]*>([\s\S]*?)<\/div>/);
+  assert.ok(wrap, "expected an apt-chips wrapper");
+  assert.ok(
+    (wrap[1].match(/class="apt-code"/g) ?? []).length >= 1,
+    "chips must live inside the wrapper, not beside it",
+  );
 });
 
 test("header reads 'Less steps' and reports the step count", async () => {

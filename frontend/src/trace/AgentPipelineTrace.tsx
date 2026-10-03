@@ -312,6 +312,7 @@ function Row({
           {open && step.chips?.length ? (
             <motion.div
               key="chips"
+              className="apt-chips"
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
