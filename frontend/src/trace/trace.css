@@ -1,845 +1,376 @@
-/* Agent Flow — hierarchical pipeline visualisation.
- *
- * Design language borrowed from DeerFlow / Cursor: one soft vertical rail, a
- * status dot per phase, an icon, a title, a single summary line, and a
- * timestamp. Everything else is progressive disclosure behind a chevron.
- *
- * Colours come from the app's own tokens where they exist and from local
- * fallbacks otherwise, so this reads correctly in both themes without
- * hard-coding a palette that fights the host page.
- */
+/* ===========================================================================
+   Agent Pipeline Trace
 
-.af {
-  --af-fg: var(--text-primary, #10151c);
-  --af-muted: var(--text-secondary, #5b6673);
-  --af-faint: var(--text-tertiary, #8a94a1);
-  --af-line: color-mix(in srgb, var(--af-fg) 12%, transparent);
-  --af-soft: color-mix(in srgb, var(--af-fg) 4%, transparent);
-  --af-soft-2: color-mix(in srgb, var(--af-fg) 7%, transparent);
-  --af-accent: #0f9b8e;
-  --af-accent-soft: color-mix(in srgb, var(--af-accent) 14%, transparent);
-  --af-warn: #c2703a;
-  --af-error: #cc4b4b;
-  --af-radius: 12px;
+   Visual model: a NARRATIVE DOCUMENT, not a status dashboard.
 
-  margin: 10px 0 4px;
-  border: 1px solid var(--af-line);
-  border-radius: var(--af-radius);
-  background: color-mix(in srgb, var(--af-fg) 2%, transparent);
-  color: var(--af-fg);
-  font-size: 13px;
-  line-height: 1.5;
+   The reference design reads as prose first — bullets of reasoning, with tool
+   calls set into the flow as icon + label + monospace path chip, all hanging
+   off one continuous left rail. Deliberately absent: status dots, uppercase
+   kind labels, per-step timestamps, pill-shaped chips, nested cards. Those
+   compete with the text and make a research run look like a CI log.
+
+   Everything is monochrome by design. Colour is reserved for two things only:
+   the live pulse while a run streams, and a genuine error. A step's importance
+   is carried by its place in the narrative, not by a hue.
+
+   Dark-first, themed through CSS variables. Reduced-motion honoured.
+   =========================================================================== */
+
+.apt {
+  /* Surfaces */
+  --apt-bg: var(--card, #0e0e10);
+  --apt-raised: color-mix(in srgb, var(--apt-fg) 4%, transparent);
+
+  /* Text: four steps of quiet, brightest for prose. */
+  --apt-fg: var(--t1, #e6e6e9);
+  --apt-prose: color-mix(in srgb, var(--apt-fg) 82%, transparent);
+  --apt-dim: color-mix(in srgb, var(--apt-fg) 58%, transparent);
+  --apt-faint: color-mix(in srgb, var(--apt-fg) 40%, transparent);
+
+  /* Hairlines. The rail is deliberately near-invisible. */
+  --apt-line: color-mix(in srgb, var(--apt-fg) 9%, transparent);
+  --apt-rail: color-mix(in srgb, var(--apt-fg) 8%, transparent);
+
+  --apt-run: #34d399;
+  --apt-err: #f87171;
+
+  --apt-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --apt-radius: 12px;
+
+  margin: 10px 0 6px;
+  background: var(--apt-bg);
+  color: var(--apt-fg);
+  border: 1px solid var(--apt-line);
+  border-radius: var(--apt-radius);
+  font-size: 13.5px;
+  line-height: 1.7;
   overflow: hidden;
+  contain: content;
 }
 
-/* ---------- header ---------- */
+/* --- header -------------------------------------------------------------- */
 
-.af-head {
+.apt-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 9px 12px;
-  flex-wrap: wrap;
+  gap: 10px;
+  padding: 9px 14px;
 }
 
-.af-disclosure {
+.apt-toggle {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 6px 4px 2px;
+  background: transparent;
   border: 0;
-  border-radius: 8px;
-  background: none;
-  color: var(--af-fg);
+  padding: 2px 4px;
+  margin-left: -4px;
+  border-radius: 6px;
+  color: var(--apt-dim);
   font: inherit;
-  font-weight: 560;
-  letter-spacing: -0.005em;
+  font-size: 13px;
   cursor: pointer;
+  transition: color 0.15s ease;
+}
+.apt-toggle:hover { color: var(--apt-fg); }
+
+.apt-caret {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translate(-1px, -1px);
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.apt-caret[data-open="true"] { transform: rotate(-135deg) translate(-2px, -2px); }
+
+.apt-head-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.af-disclosure:hover {
-  background: var(--af-soft);
+.apt-count {
+  font-size: 11.5px;
+  color: var(--apt-faint);
+  font-variant-numeric: tabular-nums;
 }
 
-.af-disclosure:focus-visible,
-.af-mode:focus-visible,
-.af-phase-head:focus-visible,
-.af-more:focus-visible,
-.af-domain:focus-visible,
-.af-claim-source:focus-visible,
-.af-urls a:focus-visible {
-  outline: 2px solid var(--af-accent);
-  outline-offset: 2px;
+.apt-keytoggle {
+  background: transparent;
+  border: 1px solid var(--apt-line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--apt-faint);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
+.apt-keytoggle:hover { color: var(--apt-dim); }
+.apt-keytoggle[aria-pressed="true"] { color: var(--apt-fg); border-color: color-mix(in srgb, var(--apt-fg) 22%, transparent); }
 
-.af-disclosure-label {
-  white-space: nowrap;
-}
-
-.af-live {
+.apt-live {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 1px 7px 1px 5px;
-  border-radius: 999px;
-  background: var(--af-accent-soft);
-  color: var(--af-accent);
-  font-size: 10.5px;
-  font-weight: 640;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  color: var(--apt-run);
 }
-
-.af-live-dot {
+.apt-live::before {
+  content: "";
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: currentColor;
-  animation: af-pulse 1.9s ease-in-out infinite;
+  animation: apt-pulse 1.7s ease-in-out infinite;
 }
 
-/* Mode switch: "Less steps · 8 phases" / "Full trace · 55 events" */
-
-.af-modes {
-  display: inline-flex;
-  padding: 2px;
-  border: 1px solid var(--af-line);
-  border-radius: 999px;
-  background: var(--af-soft);
+.apt-toggle:focus-visible,
+.apt-keytoggle:focus-visible,
+.apt-row-toggle:focus-visible,
+.apt-code:focus-visible {
+  outline: 2px solid var(--apt-run);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
-.af-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border: 0;
-  border-radius: 999px;
-  background: none;
-  color: var(--af-muted);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 540;
-  cursor: pointer;
-  transition: background 0.18s ease, color 0.18s ease;
-}
+/* --- the flow ------------------------------------------------------------ */
 
-.af-mode:hover {
-  color: var(--af-fg);
-}
-
-.af-mode[data-active="true"] {
-  background: color-mix(in srgb, var(--surface, #fff) 92%, transparent);
-  color: var(--af-fg);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--af-fg) 12%, transparent);
-}
-
-.af-mode-count {
-  color: var(--af-faint);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.af-mode[data-active="true"] .af-mode-count {
-  color: var(--af-muted);
-}
-
-/* ---------- chevron ---------- */
-
-.af-caret {
-  width: 7px;
-  height: 7px;
-  flex: none;
-  border-right: 1.6px solid currentColor;
-  border-bottom: 1.6px solid currentColor;
-  transform: rotate(-45deg);
-  transition: transform 0.2s ease;
-  opacity: 0.65;
-}
-
-.af-caret[data-open="true"] {
-  transform: rotate(45deg);
-}
-
-.af-caret-inline {
-  margin-left: 2px;
-}
-
-/* ---------- body ---------- */
-
-.af-body {
+.apt-body {
   overflow: hidden;
-}
-
-.af-empty {
-  margin: 0;
-  padding: 14px 14px 16px;
-  color: var(--af-faint);
-  font-size: 12.5px;
-}
-
-.af-foot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  padding: 6px 14px 9px;
-  border-top: 1px solid var(--af-line);
-  color: var(--af-accent);
-  font-size: 11.5px;
-}
-
-/* ---------- phases ---------- */
-
-.af-phases {
-  position: relative;
-  margin: 0;
-  padding: 2px 12px 12px 12px;
-  list-style: none;
-  max-height: 460px;
+  max-height: 560px;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  padding: 2px 16px 14px 18px;
   scrollbar-width: thin;
+  scrollbar-color: var(--apt-line) transparent;
 }
 
-/* The rail: one soft line threading every dot. Sits behind the dots. */
-.af-phases::before {
-  content: "";
-  position: absolute;
-  left: 25px;
-  top: 14px;
-  bottom: 22px;
-  width: 1px;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    var(--af-line) 8px,
-    var(--af-line) calc(100% - 8px),
-    transparent
-  );
-}
-
-.af-phase {
-  position: relative;
-  display: grid;
-  grid-template-columns: 26px minmax(0, 1fr);
-  column-gap: 8px;
-  padding: 4px 0;
-}
-
-.af-rail {
-  position: relative;
-  display: flex;
-  justify-content: center;
-  padding-top: 11px;
-}
-
-.af-phase-main {
-  min-width: 0;
-  padding-bottom: 2px;
-}
-
-/* Status dots */
-
-.af-dot {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  border: 1.5px solid var(--af-line);
-  background: var(--surface, #fff);
-  color: transparent;
-}
-
-.af-dot-done {
-  border-color: color-mix(in srgb, var(--af-accent) 42%, transparent);
-  background: var(--af-accent-soft);
-  color: var(--af-accent);
-}
-
-.af-dot-error {
-  border-color: color-mix(in srgb, var(--af-error) 55%, transparent);
-  background: color-mix(in srgb, var(--af-error) 14%, transparent);
-  color: var(--af-error);
-}
-
-/* Running: a soft teal pulse plus a single shimmer sweep across the dot. */
-.af-dot-running {
-  border-color: var(--af-accent);
-  background: color-mix(in srgb, var(--af-accent) 18%, transparent);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--af-accent) 40%, transparent);
-  animation: af-halo 2s ease-out infinite;
-}
-
-.af-dot-shimmer {
-  position: absolute;
-  inset: -1px;
-  border-radius: 50%;
-  overflow: hidden;
-}
-
-.af-dot-shimmer::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    115deg,
-    transparent 35%,
-    color-mix(in srgb, var(--af-accent) 75%, transparent) 50%,
-    transparent 65%
-  );
-  transform: translateX(-120%);
-  animation: af-shimmer 2.1s ease-in-out infinite;
-}
-
-@keyframes af-halo {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--af-accent) 38%, transparent);
-  }
-  70% {
-    box-shadow: 0 0 0 7px transparent;
-  }
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-  }
-}
-
-@keyframes af-shimmer {
-  0%,
-  55% {
-    transform: translateX(-120%);
-  }
-  100% {
-    transform: translateX(120%);
-  }
-}
-
-@keyframes af-pulse {
-  0%,
-  100% {
-    opacity: 0.45;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-/* Phase head */
-
-.af-phase-head {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 5px 8px 5px 6px;
-  border: 0;
-  border-radius: 9px;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.16s ease;
-}
-
-.af-phase-head:disabled {
-  cursor: default;
-}
-
-.af-phase-head:not(:disabled):hover {
-  background: var(--af-soft);
-}
-
-/* The only glow in the whole component: the phase being worked on right now. */
-.af-phase[data-status="running"] .af-phase-head {
-  background: linear-gradient(
-    90deg,
-    var(--af-accent-soft),
-    transparent 78%
-  );
-  box-shadow: inset 2px 0 0 var(--af-accent);
-}
-
-.af-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-  background: var(--af-soft-2);
-  color: var(--af-muted);
-}
-
-.af-phase[data-status="running"] .af-icon {
-  background: var(--af-accent-soft);
-  color: var(--af-accent);
-}
-
-.af-phase[data-kind="answer"] .af-icon {
-  background: color-mix(in srgb, var(--af-accent) 12%, transparent);
-  color: var(--af-accent);
-}
-
-.af-phase-text {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.af-phase-title {
-  font-size: 13px;
-  font-weight: 570;
-  letter-spacing: -0.006em;
-}
-
-.af-phase-summary {
-  color: var(--af-muted);
-  font-size: 12px;
-  /* The summary is one line by contract; long input is clipped, not wrapped
-     into a paragraph that would push the timeline out of shape. */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.af-phase-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--af-faint);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.af-duration {
-  padding: 1px 5px;
-  border-radius: 5px;
-  background: var(--af-soft-2);
-}
-
-.af-phase-meta .af-caret-inline {
-  color: var(--af-muted);
-}
-
-/* Count chips under the head */
-
-.af-statline,
-.af-answermeta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 5px;
-  margin: 3px 0 0 34px;
-}
-
-.af-stat {
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--af-soft-2);
-  color: var(--af-muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.af-stat[data-tone="good"] {
-  background: var(--af-accent-soft);
-  color: var(--af-accent);
-}
-
-.af-stat[data-tone="mid"] {
-  background: color-mix(in srgb, var(--af-warn) 15%, transparent);
-  color: var(--af-warn);
-}
-
-.af-stat[data-tone="low"] {
-  background: color-mix(in srgb, var(--af-error) 13%, transparent);
-  color: var(--af-error);
-}
-
-.af-answernote {
-  color: var(--af-faint);
-  font-size: 11.5px;
-}
-
-.af-error {
-  margin: 4px 0 0 34px;
-  padding: 6px 9px;
-  border-left: 2px solid var(--af-error);
-  border-radius: 0 6px 6px 0;
-  background: color-mix(in srgb, var(--af-error) 9%, transparent);
-  color: var(--af-error);
-  font-size: 12px;
-}
-
-/* ---------- details ---------- */
-
-.af-details {
-  margin: 4px 0 2px 34px;
-  overflow: hidden;
-}
-
-.af-detail {
-  padding: 7px 10px;
-  border-left: 1px solid var(--af-line);
-  border-radius: 0 8px 8px 0;
-  background: color-mix(in srgb, var(--af-fg) 2%, transparent);
-}
-
-.af-detail + .af-detail {
-  margin-top: 5px;
-}
-
-.af-detail-label {
-  margin: 0 0 2px;
-  color: var(--af-faint);
-  font-size: 10.5px;
-  font-weight: 620;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-}
-
-.af-detail-text {
-  margin: 0;
-  color: var(--af-muted);
+.apt-empty,
+.apt-hidden-note {
+  margin: 6px 0 10px;
   font-size: 12.5px;
+  color: var(--apt-faint);
 }
+.apt-hidden-note { font-style: italic; }
 
-/* Planned angles */
-
-.af-angles {
-  margin: 4px 0 2px 34px;
-  padding-left: 18px;
-  color: var(--af-muted);
-  font-size: 12.5px;
-}
-
-.af-angles li {
-  margin: 3px 0;
-}
-
-/* One search */
-
-.af-query-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.af-query-text {
-  margin: 0;
-  min-width: 0;
-  font-size: 12.5px;
-  font-weight: 520;
-  overflow-wrap: anywhere;
-}
-
-.af-query-count {
-  flex: none;
-  color: var(--af-faint);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.af-domains {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin: 6px 0 0;
-}
-
-.af-domain {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1.5px 7px;
-  border: 1px solid var(--af-line);
-  border-radius: 999px;
-  background: var(--af-soft);
-  color: var(--af-muted);
-  font-size: 11px;
-  text-decoration: none;
-  transition: border-color 0.16s ease, color 0.16s ease;
-}
-
-.af-domain:hover {
-  border-color: color-mix(in srgb, var(--af-accent) 45%, transparent);
-  color: var(--af-accent);
-}
-
-.af-domain-n {
-  padding: 0 4px;
-  border-radius: 999px;
-  background: var(--af-soft-2);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-}
-
-.af-more {
-  margin: 6px 0 0;
-  padding: 2px 0;
-  border: 0;
-  background: none;
-  color: var(--af-accent);
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 540;
-  cursor: pointer;
-}
-
-.af-more:hover {
-  text-decoration: underline;
-}
-
-.af-urls {
-  margin: 6px 0 2px;
-  padding: 0 0 0 12px;
+.apt-flow,
+.apt-nested {
   list-style: none;
-  overflow: hidden;
-}
-
-.af-urls li {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 2.5px 0;
-  border-bottom: 1px dashed var(--af-line);
-}
-
-.af-urls li:last-child {
-  border-bottom: 0;
-}
-
-.af-urls a {
-  color: var(--af-fg);
-  font-size: 12px;
-  text-decoration: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.af-urls a:hover {
-  color: var(--af-accent);
-  text-decoration: underline;
-}
-
-.af-url-host {
-  flex: none;
-  color: var(--af-faint);
-  font-size: 10.5px;
-}
-
-/* Claims */
-
-.af-claim-list {
   margin: 0;
   padding: 0;
-  list-style: none;
 }
 
-.af-claim-list li {
-  display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: 7px;
-  padding: 4px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--af-fg) 5%, transparent);
+/* ONE continuous rail for the whole document, rather than a per-row segment.
+   This is the single strongest cue that the rows are one narrative. */
+.apt-flow {
+  position: relative;
+  padding-left: 26px;
+}
+.apt-flow::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--apt-rail);
 }
 
-.af-claim-list li:last-child {
-  border-bottom: 0;
+/* --- a row --------------------------------------------------------------- */
+
+.apt-row {
+  position: relative;
+  margin: 0 0 3px;
+  padding: 1px 0;
+}
+.apt-row:last-child { margin-bottom: 0; }
+
+/* Prose rows carry a short vertical accent bar beside the text — the
+   reference's marker for a paragraph of reasoning, as opposed to the icon a
+   tool row gets. Deliberately not a dot: the bar reads as "this is prose". */
+.apt-row[data-kind="thinking"] .apt-gutter::before,
+.apt-row[data-kind="evidence"] .apt-gutter::before {
+  content: "";
+  position: absolute;
+  left: -19px;
+  top: 5px;
+  bottom: 5px;
+  width: 1px;
+  background: color-mix(in srgb, var(--apt-fg) 22%, transparent);
 }
 
-.af-claim-tick {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 13px;
-  height: 13px;
-  margin-top: 1px;
-  border-radius: 50%;
-  background: var(--af-soft-2);
-  color: var(--af-faint);
+/* Tool rows carry an icon instead of a dot, sitting in the same gutter. */
+.apt-icon {
+  position: absolute;
+  left: -25px;
+  top: 3px;
+  width: 15px;
+  height: 15px;
+  color: var(--apt-faint);
+  pointer-events: none;
 }
+.apt-row[data-kind="final"] .apt-icon { color: var(--apt-dim); }
 
-.af-claim-list li[data-verified="true"] .af-claim-tick {
-  background: var(--af-accent-soft);
-  color: var(--af-accent);
-}
+.apt-row-body { min-width: 0; }
 
-.af-claim-text {
-  font-size: 12.5px;
+.apt-prose {
+  margin: 0 0 8px;
+  color: var(--apt-prose);
   overflow-wrap: anywhere;
 }
+.apt-row[data-kind="final"] .apt-prose { color: var(--apt-fg); }
+/* Verbatim markdown block: keep the author's line breaks. */
+.apt-pre { white-space: pre-wrap; }
+.apt-row[data-status="error"] .apt-prose,
+.apt-row[data-status="error"] .apt-tool-label { color: var(--apt-err); }
 
-.af-claim-source {
-  max-width: 190px;
-  color: var(--af-faint);
-  font-size: 10.5px;
-  text-decoration: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* Tool label: quiet, sentence case, sits inline like the reference's
+   "Load … skill" / "Check … directory" rows. */
+.apt-tool-label {
+  margin: 0 0 6px;
+  color: var(--apt-dim);
+  font-size: 13px;
 }
 
-.af-claim-source:hover {
-  color: var(--af-accent);
-  text-decoration: underline;
+.apt-row-toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0 0 6px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
 }
+.apt-row-toggle:hover { color: var(--apt-fg); }
 
-/* Review rounds */
-
-.af-round {
-  display: flex;
-  gap: 9px;
-  align-items: baseline;
-}
-
-.af-round-tag {
-  flex: none;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--af-soft-2);
-  color: var(--af-muted);
-  font-size: 10.5px;
-  font-weight: 620;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.af-round-reason {
-  margin: 0;
-  color: var(--af-muted);
+.apt-muted {
+  color: var(--apt-faint);
   font-size: 12.5px;
 }
 
-/* ---------- full trace ---------- */
+/* --- monospace code / path chips ---------------------------------------- */
 
-.af-raw {
-  margin: 0;
-  padding: 4px 12px 12px;
-  list-style: none;
-  max-height: 460px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-}
-
-.af-raw-row {
-  display: grid;
-  grid-template-columns: 116px 128px minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: 10px;
-  padding: 3px 6px;
-  border-radius: 5px;
-}
-
-.af-raw-row:nth-child(odd) {
-  background: color-mix(in srgb, var(--af-fg) 2.5%, transparent);
-}
-
-/* A type this build does not model is still shown — flagging it is the point
-   of the raw view — but marked so it is obvious it is unhandled. */
-.af-raw-row[data-known="false"] .af-raw-type {
-  color: var(--af-warn);
-}
-
-.af-raw-type {
-  color: var(--af-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-}
-
-.af-raw-label {
-  color: var(--af-fg);
+/* The reference's signature element: a monospace path with a left accent bar.
+   Used for search-result URLs and inline paths, so a reader can scan targets
+   without leaving the trace. */
+.apt-code {
+  display: block;
+  position: relative;
+  margin: 0 0 6px;
+  padding: 3px 10px 3px 12px;
+  max-width: 100%;
+  background: var(--apt-raised);
+  border-radius: 6px;
+  color: var(--apt-dim);
+  font-family: var(--apt-mono);
   font-size: 11.5px;
-  font-weight: 540;
-}
-
-.af-raw-detail {
-  color: var(--af-faint);
-  font-size: 11.5px;
+  line-height: 1.55;
+  text-decoration: none;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.apt-code::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--apt-fg) 20%, transparent);
+}
+a.apt-code:hover {
+  background: color-mix(in srgb, var(--apt-fg) 8%, transparent);
+  color: var(--apt-fg);
+}
+a.apt-code:hover::before { background: var(--apt-run); }
+
+/* Inline highlight for a URL or quoted query inside prose. */
+.apt-inline {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--apt-fg) 7%, transparent);
+  color: var(--apt-prose);
+  font-family: var(--apt-mono);
+  font-size: 0.92em;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+a.apt-inline:hover { background: color-mix(in srgb, var(--apt-fg) 12%, transparent); color: var(--apt-fg); }
+
+/* --- nested -------------------------------------------------------------- */
+
+.apt-nested {
+  position: relative;
+  margin: 2px 0 8px;
+  padding-left: 14px;
+}
+.apt-nested::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: var(--apt-rail);
+}
+.apt-nested .apt-row { padding-left: 2px; }
+.apt-nested .apt-icon,
+.apt-nested .apt-gutter::before { left: -9px; }
+.apt-nested .apt-prose { font-size: 12.5px; color: var(--apt-dim); }
+
+/* --- motion -------------------------------------------------------------- */
+
+@keyframes apt-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@keyframes apt-breathe {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+.apt-row[data-status="running"] .apt-icon { animation: apt-breathe 1.5s ease-in-out infinite; }
+
+/* --- responsive ---------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .apt-body { max-height: 62vh; padding-left: 16px; }
+  .apt { font-size: 13px; }
+  .apt-code { font-size: 11px; }
 }
 
-.af-raw-row .af-time {
-  color: var(--af-faint);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
+@media (max-width: 420px) {
+  .apt-keytoggle { display: none; }
 }
 
-/* ---------- responsive ---------- */
+/* --- light theme --------------------------------------------------------- */
 
-@media (max-width: 720px) {
-  .af-head {
-    align-items: flex-start;
-  }
-
-  .af-modes {
-    width: 100%;
-  }
-
-  .af-mode {
-    flex: 1;
-    justify-content: center;
-  }
-
-  .af-phases,
-  .af-raw {
-    max-height: 400px;
-  }
-
-  .af-raw-row {
-    grid-template-columns: 96px minmax(0, 1fr) auto;
-  }
-
-  .af-raw-label {
-    display: none;
-  }
-
-  .af-claim-source {
-    max-width: 110px;
-  }
+:root[data-theme="light"] .apt {
+  --apt-bg: #ffffff;
+  --apt-fg: #16161a;
+  --apt-run: #0f9d63;
+  --apt-err: #d33a3a;
+  --apt-line: #e6e7ec;
+  --apt-raised: #f4f5f7;
 }
-
-/* ---------- reduced motion ---------- */
 
 @media (prefers-reduced-motion: reduce) {
-  .af *,
-  .af *::before,
-  .af *::after {
+  .apt *,
+  .apt *::before,
+  .apt *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
   }
-
-  /* The running dot still has to read as "working" without motion, so it
-     keeps a static tint instead of the pulse. */
-  .af-dot-running {
-    box-shadow: 0 0 0 3px var(--af-accent-soft);
-  }
-}
-/* A restored run is rebuilt from the persisted node trail, which records one
-   row per node rather than per result. Labelling it is the honest thing to do:
-   otherwise an empty query list reads as "found nothing". */
-.af-provenance {
-  padding: 2px 9px;
-  border: 1px dashed var(--af-line);
-  border-radius: 999px;
-  color: var(--af-faint);
-  font-size: 11px;
-  letter-spacing: 0.02em;
 }

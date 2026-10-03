@@ -1,321 +1,345 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import {
-  flattenRawSteps,
-  formatClock,
-  formatDuration,
-  transformNodeTrail,
-  transformToDeerFlowSteps,
-  type ClaimsDetail,
-  type HighLevelStep,
-  type NodeTrailEvent,
-  type PhaseDetail,
-  type PhaseKind,
-  type QueryDetail,
-  type RawStep,
-} from "./flow.ts";
-import type { Finding, WireEvent } from "./events.ts";
+  buildTrace,
+  summarize,
+  type StepKind,
+  type StepStatus,
+  type TraceChip,
+  type TraceStep,
+  type WireEvent,
+} from "./events";
+
+export type { TraceStep, WireEvent };
 
 export type AgentPipelineTraceProps = {
   /** Live NDJSON frames from the backend, oldest first. */
   events: readonly WireEvent[];
-  /**
-   * Persisted node trail for a restored session. Used only when there is no
-   * live frame stream: replay records one row per node, not per result, so the
-   * phases it rebuilds carry the run's shape and counts but no per-result
-   * detail. The panel says so rather than implying the detail was empty.
-   */
-  trail?: readonly NodeTrailEvent[];
-  /** Overall run state; drives the header and the "running" glow. */
+  /** Overall run state; drives the live pulse and empty/error copy. */
   status?: "idle" | "running" | "done" | "error";
-  /** Start collapsed (e.g. for a finished run the reader already scanned). */
+  /** Start collapsed. */
   defaultOpen?: boolean;
+  /** Hide intermediate reasoning, keeping only milestones. */
+  keyStepsOnly?: boolean;
+  onKeyStepsOnlyChange?: (on: boolean) => void;
+  /** Render prop for a step body that needs richer content. */
+  renderContent?: (step: TraceStep) => ReactNode;
+  /** Cap on rendered rows; older ones collapse into a count. */
+  maxSteps?: number;
   className?: string;
 };
 
-type Mode = "less" | "full";
+const STAGGER = 0.04;
 
-const STAGGER = 0.05;
-const EASE = [0.22, 1, 0.36, 1] as const;
+/** Prose longer than this is clamped behind a toggle. */
+const CLAMP_CHARS = 320;
 
-/** Claims shown before the "show all" expander. */
-const CLAIM_PAGE = 10;
+// ---------------------------------------------------------------------------
+// Icons — monochrome, 24-grid, sized by CSS. One per row kind so a reader can
+// scan the rail and know what kind of action happened without reading labels.
+// ---------------------------------------------------------------------------
 
-/** Phases that open themselves: whatever is working, and the answer. */
-function openByDefault(p: HighLevelStep): boolean {
-  return p.status === "running" || p.kind === "answer";
+function Icon({ kind }: { kind: StepKind }) {
+  const common = {
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.6,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+  switch (kind) {
+    case "tool":
+      return (
+        <svg {...common}>
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+      );
+    case "todo":
+      return (
+        <svg {...common}>
+          <path d="m3 7 2 2 4-4" />
+          <path d="m3 17 2 2 4-4" />
+          <path d="M13 6h8" />
+          <path d="M13 12h8" />
+          <path d="M13 18h8" />
+        </svg>
+      );
+    case "evidence":
+      return (
+        <svg {...common}>
+          <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+          <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+          <path d="M10 9H8" />
+          <path d="M16 13H8" />
+          <path d="M16 17H8" />
+        </svg>
+      );
+    case "gate":
+      return (
+        <svg {...common}>
+          <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+          <path d="m9 12 2 2 4-4" />
+        </svg>
+      );
+    case "final":
+      return (
+        <svg {...common}>
+          <path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z" />
+        </svg>
+      );
+    case "thinking":
+    default:
+      return null;
+  }
 }
 
-export default function AgentPipelineTrace({
-  events,
-  trail,
-  status = "idle",
-  defaultOpen = true,
-  className,
-}: AgentPipelineTraceProps) {
-  const [mode, setMode] = useState<Mode>("less");
-  const [expandedPanel, setExpandedPanel] = useState(defaultOpen);
-  /** Explicit user choices win over openByDefault for the life of the run. */
-  const [override, setOverride] = useState<Map<string, boolean>>(() => new Map());
-  const listRef = useRef<HTMLOListElement | null>(null);
-  const pinnedRef = useRef(true);
-  const reduce = useReducedMotion();
+/** Kinds that read as prose bullets rather than tool rows. */
+function isProse(kind: StepKind): boolean {
+  return kind === "thinking";
+}
 
-  const final = status !== "running";
-  // A restored run has no raw frames; rebuild from its node trail instead.
-  const replay = events.length === 0 && (trail?.length ?? 0) > 0;
-  const phases = useMemo(
-    () => (replay ? transformNodeTrail(trail!) : transformToDeerFlowSteps(events, { final })),
-    [replay, trail, events, final],
+// ---------------------------------------------------------------------------
+// Prose rendering
+//
+// The trace's premium quality comes from the text reading like a narrative, so
+// URLs and quoted queries inside a sentence are highlighted inline — the same
+// treatment the reference gives an inline path. Purely presentational: the text
+// is whatever the backend sent.
+// ---------------------------------------------------------------------------
+
+const URL_RE = /https?:\/\/[^\s<>()[\]"]+/g;
+
+function Prose({ text }: { text: string }) {
+  const nodes: ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  URL_RE.lastIndex = 0;
+  let key = 0;
+
+  while ((m = URL_RE.exec(text)) !== null) {
+    if (m.index > last) nodes.push(...highlightQuotes(text.slice(last, m.index), `t${key++}`));
+    const url = m[0];
+    nodes.push(
+      <a
+        key={`u${key++}`}
+        className="apt-inline"
+        href={url}
+        target="_blank"
+        rel="noreferrer noopener"
+      >
+        {url}
+      </a>,
+    );
+    last = m.index + url.length;
+  }
+  if (last < text.length) nodes.push(...highlightQuotes(text.slice(last), `t${key++}`));
+
+  return <>{nodes}</>;
+}
+
+/** Wrap "quoted spans" in the inline chip treatment. */
+function highlightQuotes(chunk: string, keyBase: string): ReactNode[] {
+  if (!chunk.includes('"')) return [chunk];
+  const out: ReactNode[] = [];
+  const parts = chunk.split(/("[^"]*")/g);
+  parts.forEach((part, i) => {
+    if (part.startsWith('"') && part.endsWith('"') && part.length > 2) {
+      out.push(
+        <code key={`${keyBase}-q${i}`} className="apt-inline">
+          {part.slice(1, -1)}
+        </code>,
+      );
+    } else if (part) {
+      out.push(part);
+    }
+  });
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Rows
+// ---------------------------------------------------------------------------
+
+/** A retrieved URL, set as a monospace path chip with a left accent bar. */
+function CodeChip({ chip }: { chip: TraceChip }) {
+  const safe = /^https?:\/\//i.test(chip.url);
+  const body = (
+    <>
+      {chip.label}
+      {chip.meta ? <span className="apt-muted"> · {chip.meta}</span> : null}
+    </>
   );
-  const raw = useMemo(() => (replay ? [] : flattenRawSteps(events)), [replay, events]);
-
-  const runningCount = phases.filter((p) => p.status === "running").length;
-
-  const isOpen = useCallback(
-    (p: HighLevelStep) => (override.has(p.id) ? override.get(p.id)! : openByDefault(p)),
-    [override],
-  );
-
-  const toggle = useCallback(
-    (id: string, currentlyOpen: boolean) =>
-      setOverride((prev) => {
-        const next = new Map(prev);
-        next.set(id, !currentlyOpen);
-        return next;
-      }),
-    [],
-  );
-
-  // Auto-follow the newest phase only while the reader is already at the
-  // bottom; scrolling up to read something must not be fought by the script.
-  useLayoutEffect(() => {
-    const el = listRef.current;
-    if (!el || !pinnedRef.current || !expandedPanel) return;
-    el.scrollTop = el.scrollHeight;
-  }, [phases.length, expandedPanel, mode]);
-
-  const onScroll = useCallback(() => {
-    const el = listRef.current;
-    if (!el) return;
-    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 56;
-  }, []);
-
-  const counts =
-    mode === "less"
-      ? { label: "Less steps", n: phases.length, unit: phases.length === 1 ? "phase" : "phases" }
-      : { label: "Full trace", n: raw.length, unit: raw.length === 1 ? "event" : "events" };
-
+  if (!safe) return <div className="apt-code">{body}</div>;
   return (
-    <section className={`af ${className ?? ""}`} data-status={status}>
-      <header className="af-head">
-        <button
-          type="button"
-          className="af-disclosure"
-          onClick={() => setExpandedPanel((v) => !v)}
-          aria-expanded={expandedPanel}
-          aria-controls="af-body"
-        >
-          <span className="af-caret" aria-hidden="true" data-open={expandedPanel} />
-          <span className="af-disclosure-label">
-            {expandedPanel ? "Hide agent flow" : "Show agent flow"}
-          </span>
-          {status === "running" ? (
-            <span className="af-live">
-              <span className="af-live-dot" aria-hidden="true" />
-              live
-            </span>
-          ) : null}
-        </button>
-
-        {replay ? (
-          <span className="af-provenance" title="Rebuilt from the saved run timeline">
-            reconstructed
-          </span>
-        ) : (
-        <div
-          className="af-modes"
-          role="group"
-          aria-label="Trace detail level"
-          data-count={counts.n}
-        >
-          <button
-            type="button"
-            className="af-mode"
-            data-active={mode === "less"}
-            aria-pressed={mode === "less"}
-            onClick={() => setMode("less")}
-          >
-            Less steps
-            <span className="af-mode-count">
-              {phases.length} {phases.length === 1 ? "phase" : "phases"}
-            </span>
-          </button>
-          <button
-            type="button"
-            className="af-mode"
-            data-active={mode === "full"}
-            aria-pressed={mode === "full"}
-            onClick={() => setMode("full")}
-          >
-            Full trace
-            <span className="af-mode-count">
-              {raw.length} {raw.length === 1 ? "event" : "events"}
-            </span>
-          </button>
-        </div>
-        )}
-      </header>
-
-      <AnimatePresence initial={false}>
-        {expandedPanel ? (
-          <motion.div
-            id="af-body"
-            key="body"
-            className="af-body"
-            initial={reduce ? false : { height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
-            transition={{ duration: 0.28, ease: EASE }}
-          >
-            {mode === "less" ? (
-              phases.length === 0 ? (
-                <p className="af-empty">
-                  {status === "running"
-                    ? "Reading the question…"
-                    : "No agent steps were recorded for this run."}
-                </p>
-              ) : (
-                <ol
-                  className="af-phases"
-                  ref={listRef}
-                  onScroll={onScroll}
-                  aria-live="polite"
-                  aria-relevant="additions"
-                  aria-label="Agent flow phases"
-                >
-                  {phases.map((p, i) => (
-                    <Phase
-                      key={p.id}
-                      phase={p}
-                      index={i}
-                      open={isOpen(p)}
-                      onToggle={() => toggle(p.id, isOpen(p))}
-                    />
-                  ))}
-                </ol>
-              )
-            ) : (
-              <RawTrace rows={raw} />
-            )}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-
-      {runningCount > 0 && expandedPanel && mode === "less" ? (
-        <p className="af-foot" aria-live="polite">
-          <span className="af-live-dot" aria-hidden="true" />
-          Working on {runningCount === 1 ? "the current phase" : `${runningCount} phases`}
-        </p>
-      ) : null}
-    </section>
+    <a
+      className="apt-code"
+      href={chip.url}
+      target="_blank"
+      rel="noreferrer noopener"
+      title={chip.url}
+    >
+      {body}
+    </a>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Phase
-// ---------------------------------------------------------------------------
-
-function Phase({
-  phase,
-  index,
+function Row({
+  step,
   open,
   onToggle,
+  index,
+  renderContent,
 }: {
-  phase: HighLevelStep;
-  index: number;
+  step: TraceStep;
   open: boolean;
-  onToggle: () => void;
+  onToggle: (id: string) => void;
+  index: number;
+  renderContent?: (s: TraceStep) => ReactNode;
 }) {
-  const reduce = useReducedMotion();
-  const hasDetail = phase.details.length > 0 && phase.kind !== "answer";
-  const duration = formatDuration(phase.endedAt - phase.startedAt);
+  const prose = isProse(step.kind) || step.kind === "evidence";
+  // Claims arrive newline-separated and read well as separate bullets, which is
+  // how the reference sets out a narrative. The final report is markdown, so
+  // splitting it on newlines would turn "# Answer" into its own bullet — keep
+  // that block intact and let CSS preserve its line breaks.
+  const isFinal = step.kind === "final";
+  const paragraphs = useMemo(
+    () => {
+      if (!step.content) return [];
+      if (isFinal) return [step.content];
+      return step.content.split("\n").filter((p) => p.trim());
+    },
+    [step.content, isFinal],
+  );
+  const tooLong = step.content.length > CLAMP_CHARS;
+  const clamped = tooLong && !open;
+  const shown = clamped ? `${step.content.slice(0, CLAMP_CHARS).trimEnd()}…` : step.content;
 
   return (
     <motion.li
-      className="af-phase"
-      data-kind={phase.kind}
-      data-status={phase.status}
-      initial={{ opacity: 0, y: 10 }}
+      className="apt-row"
+      data-kind={step.kind}
+      data-status={step.status}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{
-        duration: reduce ? 0 : 0.3,
-        delay: reduce ? 0 : Math.min(index, 8) * STAGGER,
-        ease: EASE,
+        duration: 0.26,
+        delay: Math.min(index, 14) * STAGGER,
+        ease: [0.22, 1, 0.36, 1],
       }}
     >
-      <span className="af-rail" aria-hidden="true">
-        <StatusDot status={phase.status} />
+      <span className="apt-gutter" aria-hidden="true">
+        <Icon kind={step.kind} />
       </span>
 
-      <div className="af-phase-main">
-        <button
-          type="button"
-          className="af-phase-head"
-          onClick={hasDetail ? onToggle : undefined}
-          aria-expanded={hasDetail ? open : undefined}
-          disabled={!hasDetail}
-        >
-          <span className="af-icon" aria-hidden="true">
-            <PhaseIcon kind={phase.kind} />
-          </span>
-
-          <span className="af-phase-text">
-            <span className="af-phase-title">{phase.title}</span>
-            {phase.summary ? <span className="af-phase-summary">{phase.summary}</span> : null}
-          </span>
-
-          <span className="af-phase-meta">
-            {duration ? <span className="af-duration">{duration}</span> : null}
-            <time className="af-time" dateTime={new Date(phase.startedAt).toISOString()}>
-              {formatClock(phase.startedAt)}
-            </time>
-            {hasDetail ? (
-              <span className="af-caret af-caret-inline" aria-hidden="true" data-open={open} />
-            ) : null}
-          </span>
-        </button>
-
-        {phase.stats.queries || phase.stats.claims || phase.stats.angles ? (
-          <p className="af-statline">
-            {phase.stats.angles ? <Stat>{phase.stats.angles} angles</Stat> : null}
-            {phase.stats.queries ? <Stat>{phase.stats.queries} queries</Stat> : null}
-            {phase.stats.domains ? <Stat>{phase.stats.domains} domains</Stat> : null}
-            {phase.stats.claims ? <Stat>{phase.stats.claims} claims</Stat> : null}
-            {phase.stats.sources ? <Stat>{phase.stats.sources} sources</Stat> : null}
-            {phase.stats.rounds ? <Stat>{phase.stats.rounds} rounds</Stat> : null}
-          </p>
+      <div className="apt-row-body">
+        {/* Tool rows get a short label above their detail, matching the
+            reference's "Check … directory" rows. */}
+        {!prose ? (
+          <button
+            type="button"
+            className="apt-row-toggle"
+            onClick={() => (tooLong || step.chips?.length ? onToggle(step.id) : undefined)}
+            aria-expanded={tooLong || step.chips?.length ? open : undefined}
+            disabled={!tooLong && !step.chips?.length}
+            tabIndex={!tooLong && !step.chips?.length ? -1 : undefined}
+          >
+            <span className="apt-tool-label">{step.title}</span>
+          </button>
         ) : null}
 
-        {phase.error ? <p className="af-error">{phase.error}</p> : null}
+        {/* The final report is already rendered in full by the answer card.
+            Repeating it inline would bury the trace, so it stays behind an
+            explicit toggle even when it is short enough to skip the clamp. */}
+        {isFinal && !open && !renderContent ? (
+          <button
+            type="button"
+            className="apt-row-toggle"
+            onClick={() => onToggle(step.id)}
+            aria-expanded={false}
+          >
+            <span className="apt-muted">Show report</span>
+          </button>
+        ) : null}
 
-        {phase.kind === "answer" ? <AnswerMeta phase={phase} /> : null}
+        {renderContent ? (
+          renderContent(step)
+        ) : isFinal && !open ? null : paragraphs.length ? (
+          <div>
+            {(clamped ? [shown] : paragraphs).map((p, i) => (
+              <p
+                className={isFinal ? "apt-prose apt-pre" : "apt-prose"}
+                key={`${step.id}-p${i}`}
+              >
+                <Prose text={p} />
+              </p>
+            ))}
+            {tooLong ? (
+              <button
+                type="button"
+                className="apt-row-toggle"
+                onClick={() => onToggle(step.id)}
+                aria-expanded={open}
+              >
+                <span className="apt-muted">
+                  {open ? "Show less" : `Show ${step.content.length - CLAMP_CHARS} more characters`}
+                </span>
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {step.error ? <p className="apt-prose">{step.error}</p> : null}
 
         <AnimatePresence initial={false}>
-          {hasDetail && open ? (
+          {open && step.chips?.length ? (
             <motion.div
-              className="af-details"
-              key="details"
-              initial={reduce ? false : { height: 0, opacity: 0 }}
+              key="chips"
+              initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
-              exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
-              transition={{ duration: 0.24, ease: EASE }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              style={{ overflow: "hidden" }}
             >
-              {phase.details.map((d) => (
-                <Detail key={d.id} detail={d} />
+              {step.chips.map((c) => (
+                <CodeChip key={c.id} chip={c} />
               ))}
             </motion.div>
+          ) : null}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false}>
+          {open && step.children?.length ? (
+            <motion.ul
+              className="apt-nested"
+              key="children"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              style={{ overflow: "hidden" }}
+            >
+              {step.children.map((c, i) => (
+                <Row
+                  key={c.id}
+                  step={c}
+                  open
+                  onToggle={onToggle}
+                  index={i}
+                  renderContent={renderContent}
+                />
+              ))}
+            </motion.ul>
           ) : null}
         </AnimatePresence>
       </div>
@@ -323,326 +347,151 @@ function Phase({
   );
 }
 
-function Stat({ children }: { children: ReactNode }) {
-  return <span className="af-stat">{children}</span>;
-}
-
-function AnswerMeta({ phase }: { phase: HighLevelStep }) {
-  const conf = phase.stats.confidence;
-  const degraded = phase.details.find((d) => d.kind === "report");
-  const list = degraded && degraded.kind === "report" ? degraded.degraded : [];
-  return (
-    <p className="af-answermeta">
-      {conf != null ? (
-        <span className="af-stat" data-tone={conf >= 0.75 ? "good" : conf >= 0.55 ? "mid" : "low"}>
-          confidence {conf.toFixed(2)}
-        </span>
-      ) : null}
-      {list.map((d) => (
-        <span className="af-stat" data-tone="low" key={d}>
-          degraded: {d}
-        </span>
-      ))}
-      <span className="af-answernote">Full answer is below.</span>
-    </p>
-  );
-}
-
 // ---------------------------------------------------------------------------
-// Details
+// Component
 // ---------------------------------------------------------------------------
 
-function Detail({ detail }: { detail: PhaseDetail }) {
-  switch (detail.kind) {
-    case "text":
-      return (
-        <div className="af-detail">
-          <p className="af-detail-label">{detail.label}</p>
-          <p className="af-detail-text">{detail.body}</p>
-        </div>
-      );
-    case "todo":
-      return (
-        <ol className="af-angles">
-          {detail.items.map((q, i) => (
-            <li key={`${q}-${i}`}>{q}</li>
-          ))}
-        </ol>
-      );
-    case "query":
-      return <QueryRow detail={detail} />;
-    case "claims":
-      return <Claims detail={detail} />;
-    case "round":
-      return (
-        <div className="af-round">
-          <span className="af-round-tag">{detail.round != null ? `Round ${detail.round}` : "Review"}</span>
-          <p className="af-round-reason">{detail.reason || "No reasoning recorded."}</p>
-        </div>
-      );
-    case "report":
-      // The answer body is rendered by AnswerCard directly below the flow;
-      // repeating the whole report here would be the wall of text this view
-      // exists to avoid.
-      return null;
-    default:
-      return null;
-  }
-}
-
-function QueryRow({ detail }: { detail: QueryDetail }) {
-  const [open, setOpen] = useState(false);
-  const domains = detail.domains.slice(0, 6);
-  const rest = detail.hits.length;
-  return (
-    <div className="af-detail af-query">
-      <div className="af-query-head">
-        <p className="af-query-text">{detail.query}</p>
-        <span className="af-query-count">
-          {detail.hits.length} {detail.hits.length === 1 ? "source" : "sources"}
-        </span>
-      </div>
-      {domains.length ? (
-        <p className="af-domains">
-          {domains.map((d) => (
-            <a
-              key={d.label}
-              className="af-domain"
-              href={/^https?:\/\//i.test(d.url) ? d.url : undefined}
-              target="_blank"
-              rel="noreferrer noopener"
-              title={d.count > 1 ? `${d.count} results from ${d.label}` : d.label}
-            >
-              {d.label}
-              {d.count > 1 ? <span className="af-domain-n">{d.count}</span> : null}
-            </a>
-          ))}
-        </p>
-      ) : null}
-      {rest ? (
-        <>
-          <button type="button" className="af-more" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-            {open ? "Hide results" : `Show ${rest} result${rest === 1 ? "" : "s"}`}
-          </button>
-          <AnimatePresence initial={false}>
-            {open ? (
-              <motion.ul
-                className="af-urls"
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2, ease: EASE }}
-              >
-                {detail.hits.map((h) => (
-                  <li key={h.url}>
-                    <a href={h.url} target="_blank" rel="noreferrer noopener">
-                      {h.title || h.url}
-                    </a>
-                    <span className="af-url-host">{h.source ?? ""}</span>
-                  </li>
-                ))}
-              </motion.ul>
-            ) : null}
-          </AnimatePresence>
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-function Claims({ detail }: { detail: ClaimsDetail }) {
-  const [all, setAll] = useState(false);
-  const shown = all ? detail.claims : detail.claims.slice(0, CLAIM_PAGE);
-  const hidden = detail.claims.length - shown.length;
-  return (
-    <div className="af-detail af-claims">
-      <ul className="af-claim-list">
-        {shown.map((c: Finding, i) => (
-          <li key={`${c.claim}-${i}`} data-verified={c.verified === true}>
-            <span className="af-claim-tick" aria-hidden="true">
-              {c.verified === true ? <CheckIcon /> : null}
-            </span>
-            <span className="af-claim-text">{c.claim}</span>
-            {c.source ? (
-              <a
-                className="af-claim-source"
-                href={/^https?:\/\//i.test(c.source) ? c.source : undefined}
-                target="_blank"
-                rel="noreferrer noopener"
-              >
-                {c.source}
-              </a>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-      {hidden > 0 ? (
-        <button type="button" className="af-more" onClick={() => setAll(true)}>
-          Show {hidden} more claim{hidden === 1 ? "" : "s"}
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Raw view
-// ---------------------------------------------------------------------------
-
-function RawTrace({ rows }: { rows: readonly RawStep[] }) {
+export default function AgentPipelineTrace({
+  events,
+  status = "idle",
+  defaultOpen = true,
+  keyStepsOnly = false,
+  onKeyStepsOnlyChange,
+  renderContent,
+  maxSteps = 100,
+  className,
+}: AgentPipelineTraceProps) {
+  const [expanded, setExpanded] = useState(defaultOpen);
+  const [openOverride, setOpenOverride] = useState<Record<string, boolean>>({});
   const reduce = useReducedMotion();
-  if (!rows.length) {
-    return <p className="af-empty">No events were received for this run.</p>;
-  }
+  const listRef = useRef<HTMLOListElement | null>(null);
+  const pinnedRef = useRef(true);
+
+  const all = useMemo(() => buildTrace(events), [events]);
+  const filtered = useMemo(
+    () => (keyStepsOnly ? summarize(all) : all),
+    [all, keyStepsOnly],
+  );
+  const steps = useMemo(() => filtered.slice(-maxSteps), [filtered, maxSteps]);
+  const hidden = filtered.length - steps.length;
+
+  const toggleStep = useCallback((id: string) => {
+    setOpenOverride((prev) => ({ ...prev, [id]: !defaultOpenFor(id) }));
+  }, [all]);
+
+  // Open-ness is DERIVED during render rather than seeded by an effect. An
+  // effect only runs in the browser, so server-rendered and first-paint markup
+  // came out collapsed and every source chip flashed shut before appearing.
+  const defaultOpenFor = useCallback(
+    (id: string) => {
+      const s = all.find((x) => x.id === id);
+      if (!s || s.kind === "final") return false;
+      return Boolean(s.chips?.length) || s.content.length > CLAMP_CHARS;
+    },
+    [all],
+  );
+
+  const isOpen = useCallback(
+    (id: string) => (id in openOverride ? openOverride[id] : defaultOpenFor(id)),
+    [openOverride, defaultOpenFor],
+  );
+
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (!el || !pinnedRef.current || !expanded) return;
+    el.scrollTop = el.scrollHeight;
+  }, [steps.length, expanded]);
+
+  const onScroll = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+  }, []);
+
+  const running = status === "running";
+
   return (
-    <ol className="af-raw" aria-label="Raw event stream">
-      {rows.map((r, i) => (
-        <motion.li
-          key={r.id}
-          className="af-raw-row"
-          data-known={r.known}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: reduce ? 0 : 0.22, delay: reduce ? 0 : Math.min(i, 20) * 0.012, ease: EASE }}
+    <section className={`apt ${className ?? ""}`} data-status={status}>
+      <header className="apt-head">
+        <button
+          type="button"
+          className="apt-toggle"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls="apt-body"
         >
-          <code className="af-raw-type">{r.type}</code>
-          <span className="af-raw-label">{r.label}</span>
-          {r.detail ? <span className="af-raw-detail">{r.detail}</span> : null}
-          <time className="af-time" dateTime={new Date(r.at).toISOString()}>
-            {formatClock(r.at)}
-          </time>
-        </motion.li>
-      ))}
-    </ol>
+          <span className="apt-caret" aria-hidden="true" data-open={expanded} />
+          <span>Less steps</span>
+        </button>
+
+        <div className="apt-head-right">
+          {running ? <span className="apt-live">live</span> : null}
+          <span className="apt-count">
+            {filtered.length} step{filtered.length === 1 ? "" : "s"}
+          </span>
+          {onKeyStepsOnlyChange ? (
+            <button
+              type="button"
+              className="apt-keytoggle"
+              onClick={() => onKeyStepsOnlyChange(!keyStepsOnly)}
+              aria-pressed={keyStepsOnly}
+              title="Hide intermediate reasoning and keep only milestones"
+            >
+              Key steps
+            </button>
+          ) : null}
+        </div>
+      </header>
+
+      <AnimatePresence initial={false}>
+        {expanded ? (
+          <motion.div
+            id="apt-body"
+            key="body"
+            className="apt-body"
+            initial={reduce ? false : { height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {hidden > 0 ? (
+              <p className="apt-hidden-note">
+                {hidden} earlier step{hidden === 1 ? "" : "s"} not shown
+              </p>
+            ) : null}
+
+            {steps.length === 0 ? (
+              <p className="apt-empty">
+                {status === "running"
+                  ? "Starting the research run…"
+                  : "No pipeline steps were recorded for this run."}
+              </p>
+            ) : (
+              <ol
+                className="apt-flow"
+                ref={listRef}
+                onScroll={onScroll}
+                aria-live="polite"
+                aria-relevant="additions"
+                aria-label="Agent pipeline steps"
+              >
+                {steps.map((s, i) => (
+                  <Row
+                    key={s.id}
+                    step={s}
+                    open={isOpen(s.id)}
+                    onToggle={toggleStep}
+                    index={i}
+                    renderContent={renderContent}
+                  />
+                ))}
+              </ol>
+            )}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </section>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Icons
-// ---------------------------------------------------------------------------
-
-function StatusDot({ status }: { status: HighLevelStep["status"] }) {
-  if (status === "running") {
-    return (
-      <span className="af-dot af-dot-running" aria-label="in progress">
-        <span className="af-dot-shimmer" aria-hidden="true" />
-      </span>
-    );
-  }
-  if (status === "error") {
-    return (
-      <span className="af-dot af-dot-error" aria-label="failed">
-        <BangIcon />
-      </span>
-    );
-  }
-  return (
-    <span className="af-dot af-dot-done" aria-label="complete">
-      <CheckIcon />
-    </span>
-  );
-}
-
-function PhaseIcon({ kind }: { kind: PhaseKind }) {
-  switch (kind) {
-    case "understand":
-      return <BrainIcon />;
-    case "plan":
-      return <ListIcon />;
-    case "research":
-      return <GlobeIcon />;
-    case "evidence":
-      return <FileIcon />;
-    case "review":
-      return <ScaleIcon />;
-    case "answer":
-      return <SparkIcon />;
-    case "error":
-      return <BangIcon />;
-    default:
-      return <DotIcon />;
-  }
-}
-
-const S = { fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-
-function CheckIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
-      <path d="M3.5 8.4 6.6 11.5 12.5 5" {...S} strokeWidth={2} />
-    </svg>
-  );
-}
-
-function BangIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
-      <path d="M8 4.2v4.4M8 11.4v.2" {...S} strokeWidth={2} />
-    </svg>
-  );
-}
-
-function DotIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <circle cx="8" cy="8" r="2.4" {...S} />
-    </svg>
-  );
-}
-
-function BrainIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <path d="M6.4 3.2a1.9 1.9 0 0 0-2.7 2.7 1.9 1.9 0 0 0-.6 3.3 1.9 1.9 0 0 0 2.3 2.6c.5.2 1 .2 1.4.1" {...S} />
-      <path d="M9.6 3.2a1.9 1.9 0 0 1 2.7 2.7 1.9 1.9 0 0 1 .6 3.3 1.9 1.9 0 0 1-2.3 2.6c-.5.2-1 .2-1.4.1" {...S} />
-      <path d="M8 3v9.9" {...S} />
-    </svg>
-  );
-}
-
-function ListIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <path d="M6 4.5h6.5M6 8h6.5M6 11.5h4" {...S} />
-      <path d="M3.2 4.4l.9.9 1-1.4M3.2 7.9l.9.9 1-1.4M3.2 11.4l.9.9 1-1.4" {...S} />
-    </svg>
-  );
-}
-
-function GlobeIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <circle cx="8" cy="8" r="5.2" {...S} />
-      <path d="M2.9 8h10.2M8 2.8c1.5 1.6 2.2 3.4 2.2 5.2S9.5 11.6 8 13.2C6.5 11.6 5.8 9.8 5.8 8S6.5 4.4 8 2.8Z" {...S} />
-    </svg>
-  );
-}
-
-function FileIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <path d="M9 2.6H4.8c-.6 0-1.1.5-1.1 1.1v8.6c0 .6.5 1.1 1.1 1.1h6.4c.6 0 1.1-.5 1.1-1.1V5.9L9 2.6Z" {...S} />
-      <path d="M9 2.6v3.3h3.3M6 8.6h4M6 10.8h2.6" {...S} />
-    </svg>
-  );
-}
-
-function ScaleIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <path d="M8 3v10M4.4 13h7.2M3 6.2h10" {...S} />
-      <path d="M3 6.2 1.6 10h2.8L3 6.2ZM13 6.2 11.6 10h2.8L13 6.2Z" {...S} />
-    </svg>
-  );
-}
-
-function SparkIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <path d="M8 2.4 9.3 6l3.6 1.3L9.3 8.6 8 12.2 6.7 8.6 3.1 7.3 6.7 6 8 2.4Z" {...S} />
-    </svg>
-  );
-}
-
-export type { HighLevelStep } from "./flow.ts";
-export type { WireEvent } from "./events.ts";
+export type { StepStatus };
