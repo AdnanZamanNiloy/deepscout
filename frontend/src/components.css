@@ -745,7 +745,9 @@
 .welcome {
   max-width: 720px;
   margin: 0 auto;
-  padding: 4vh 0 0;
+  /* No extra top offset: the thread already pads 72px, and the empty state
+     anchors this block to the top of that padding. */
+  padding: 0;
   text-align: center;
 }
 .welcome-accent { color: #E8794F; }
