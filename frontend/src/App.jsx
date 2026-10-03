@@ -314,10 +314,25 @@ export default function App() {
   const threadRef = useRef(null);
   const workspaceRef = useRef(null); // skip-link / focus target
   const runRef = useRef(null); // tempId of the in-flight run
+  /* Message lists for sessions the user navigated AWAY from while a run was
+   * streaming. The run patches `messages` by tempId, so without this a session
+   * switch would silently orphan the live run: its card would vanish from the
+   * thread and every later event would no-op. Keeping the list here lets the
+   * run keep updating offscreen and restores it intact on return.
+   *
+   * Bounded: only sessions with an in-flight run are held, and an entry is
+   * dropped as soon as that run settles. */
+  const bgMessagesRef = useRef(new Map()); // sessionId -> messages[]
+  const runOwnerRef = useRef(new Map()); // tempId -> sessionId
+  const messagesRef = useRef([]); // mirror of `messages` for async handlers
   const parentRef = useRef(null); // parent runId for challenge runs
   const sessionIdRef = useRef(sessionId); // stable chat id for async handlers
   const abortedRef = useRef(new Set()); // tempIds of runs the user stopped
   const autoScrollRef = useRef(true); // follow the stream unless user scrolled up
+
+  // Mirror `messages` so async stream handlers can read the current list
+  // without capturing a stale closure.
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   const setActiveSession = useCallback((id) => {
     sessionIdRef.current = id || "";
@@ -466,11 +481,28 @@ export default function App() {
     scrollThreadToBottom("smooth");
   }, [messages, scrollThreadToBottom]);
 
+  /** Apply `fn` to the message list that owns `tempId`.
+   *
+   * A live run writes into one global list, so navigating to another chat would
+   * otherwise orphan it: the run card would disappear and every later frame
+   * would silently no-op. Sending the update to the owning session's cached
+   * list keeps the run alive offscreen and makes it intact on return. */
+  const applyToOwner = useCallback((tempId, fn) => {
+    const owner = runOwnerRef.current.get(tempId);
+    const current = sessionIdRef.current;
+    if (owner && owner !== current) {
+      const list = bgMessagesRef.current.get(owner);
+      if (list) bgMessagesRef.current.set(owner, fn(list));
+      return;
+    }
+    setMessages((prev) => fn(prev));
+  }, []);
+
   const patchRun = useCallback((tempId, patch) => {
-    setMessages((prev) =>
+    applyToOwner(tempId, (prev) =>
       prev.map((m) => (m.kind === "run" && m.run.tempId === tempId ? { ...m, run: { ...m.run, ...patch } } : m))
     );
-  }, []);
+  }, [applyToOwner]);
 
   /* Append one pipeline-trace step to the message that OWNS this run.
    * Scoped by tempId: each run card reads only its own message.steps, so a
@@ -478,12 +510,12 @@ export default function App() {
    * (The old App-level traceLog was one array shared by every card — a new
    * message's events mutated what all previous cards displayed.) */
   const pushTrace = useCallback((tempId, entry) => {
-    setMessages((prev) => prev.map((m) =>
+    applyToOwner(tempId, (prev) => prev.map((m) =>
       m.kind === "run" && m.run?.tempId === tempId
         ? { ...m, steps: applyTraceEntry(m.steps, entry) }
         : m
     ));
-  }, []);
+  }, [applyToOwner]);
 
   const handleEvent = useCallback((tempId, evt) => {
     // Ignore any late event from a run the user stopped or replaced. Without
@@ -492,7 +524,7 @@ export default function App() {
     if (abortedRef.current.has(tempId)) return;
     // Keep the raw frames: the pipeline trace is rendered from them, so the
     // story it tells is the stream the backend actually sent.
-    setMessages((prev) => prev.map((m) =>
+    applyToOwner(tempId, (prev) => prev.map((m) =>
       m.kind === "run" && m.run?.tempId === tempId
         ? { ...m, traceEvents: [...(m.traceEvents || []), { ...evt, __ts: Date.now() }] }
         : m
@@ -723,6 +755,9 @@ export default function App() {
     }
 
     runRef.current = tempId;
+    // Record which chat owns this run, so stream updates can be routed to it
+    // even after the user navigates elsewhere.
+    runOwnerRef.current.set(tempId, sessionIdRef.current);
     setRunning(true);
     setIntelCollapsed(false);
     try {
@@ -749,8 +784,17 @@ export default function App() {
       }
     } finally {
       controllerRef.current = null;
+      const settled = runRef.current;
       runRef.current = null;
       parentRef.current = null;
+      // The run has settled: the server holds the authoritative copy, so drop
+      // the offscreen cache entry and its ownership record. Without this the
+      // map would retain a full message list per session for the page's life.
+      if (settled) {
+        const owner = runOwnerRef.current.get(settled);
+        runOwnerRef.current.delete(settled);
+        if (owner) bgMessagesRef.current.delete(owner);
+      }
       setRunning(false);
     }
   }, [running, mode, patchRun, pushTrace, handleEvent, saveMissions, setActiveSession, scrollToBottomAfterRender]);
@@ -826,13 +870,32 @@ export default function App() {
   }, [launch, running]);
 
   const openReplay = useCallback(async (targetSessionId) => {
-    if (replaying || running) return;
+    // Navigating away from a streaming run is allowed: the run keeps going and
+    // keeps updating its own chat offscreen (see applyToOwner). It used to be
+    // refused outright, which pinned the user to one chat until the run ended.
+    if (replaying) return;
+    const live = runRef.current;
+    if (live && sessionIdRef.current) {
+      // Stash the streaming chat before its messages are replaced.
+      bgMessagesRef.current.set(sessionIdRef.current, messagesRef.current);
+    }
     setReplaying(true);
     try {
-      const session = await fetchSession(targetSessionId);
       // Opening a chat adopts its session id, so a follow-up asked from a
       // replayed chat appends to THAT chat rather than starting a new one.
       setActiveSession(targetSessionId);
+      // If the target chat is the one still streaming, restore it from the
+      // cache so it is live again — not a stale server snapshot that would
+      // show an unfinished run as finished.
+      const cached = bgMessagesRef.current.get(targetSessionId);
+      const targetLive = cached && live && runOwnerRef.current.get(live) === targetSessionId;
+      if (targetLive) {
+        setMessages(cached);
+        setSelectedFinding(null);
+        go("workspace");
+        return;
+      }
+      const session = await fetchSession(targetSessionId);
       const restored = await buildReplayMessages(session);
       if (restored.length === 0) {
         restored.push({
@@ -855,7 +918,7 @@ export default function App() {
     } finally {
       setReplaying(false);
     }
-  }, [replaying, running, setActiveSession]);
+  }, [replaying, setActiveSession]);
 
   const activeRun = [...messages].reverse().find((m) => m.kind === "run")?.run || null;
 
