@@ -2,15 +2,20 @@
  * Mock replay harness — a local preview of the pipeline trace.
  *
  * Feeds the component a scripted sequence of REAL-shaped wire events on a timer,
- * so the motion, staggered entrances, chips and status transitions can be
+ * so the grouping, motion, staggered entrances and status transitions can be
  * reviewed without running a research query. The frames are the same shapes the
  * backend emits; only the content is invented.
+ *
+ * The script is chosen to exercise the awkward parts of the fold: three
+ * searches that must collapse into one research phase, a findings batch that is
+ * re-emitted with verification annotations (so claims merge instead of
+ * doubling), and two critic rounds that must become one review phase.
  *
  * Usage (dev only):
  *   /trace-preview.html           — open in a browser via Vite
  *   import { mockFrames } from "./mock";
  */
-import type { WireFrame } from "./events";
+import type { WireFrame } from "./events.ts";
 
 let t = 0;
 /** Monotonic clock so the demo's timestamps look real. */

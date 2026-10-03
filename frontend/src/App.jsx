@@ -1136,7 +1136,12 @@ function ThreadMessage({
         canRegenerate={run.done && !running && !run.error && run.query.length > 0}
         onRegenerate={() => onRegenerate(run.query)}
       >
-        <AgentPipelineTrace events={traceEvents} status={traceStatus} defaultOpen={false} />
+        <AgentPipelineTrace
+          events={traceEvents}
+          trail={message.trace?.events}
+          status={traceStatus}
+          defaultOpen={false}
+        />
         {run.aborted && !run.done ? (
           <div className="error-box" style={{ borderColor: "var(--line)", background: "var(--card)" }}>
             Mission aborted by user before completion.
@@ -1172,7 +1177,12 @@ function ThreadMessage({
         canRegenerate={!running && message.query.length > 0}
         onRegenerate={() => onRegenerate(message.query)}
       >
-        <AgentPipelineTrace events={traceEvents} status={traceStatus} defaultOpen={false} />
+        <AgentPipelineTrace
+          events={traceEvents}
+          trail={message.trace?.events}
+          status={traceStatus}
+          defaultOpen={false}
+        />
         {trace.final_report ? (
           <ReplayAnswerCard trace={trace} />
         ) : (
