@@ -1017,7 +1017,6 @@ class ClaimLedger:
         self._texts: List[str] = []
         self.removed_restatements = 0
         self.refined_restatements = 0
-        self.kept_fragments = 0
         self.allowed_expansions = 0
         self.total_sentences = 0
 
@@ -1094,7 +1093,6 @@ class ClaimLedger:
         if not _is_refinable_sentence(sentence, is_bullet=is_bullet):
             # A bullet, label-style line or fragment: leave it intact rather
             # than splice an analytical clause onto a data item or non-sentence.
-            self.kept_fragments += 1
             self._texts.append(sentence)
             return Refinement(text=sentence, kept=True, transformed=False)
 
@@ -1108,7 +1106,6 @@ class ClaimLedger:
             # No topic-specific move clause applied, so the sentence is left
             # exactly as written. Treat it as kept-verbatim rather than a
             # refinement: nothing was transformed and no generic tail invented.
-            self.kept_fragments += 1
             self._texts.append(sentence)
             return Refinement(text=sentence, kept=True, transformed=False)
         # Record the dimension the move maps onto so a later true expansion of

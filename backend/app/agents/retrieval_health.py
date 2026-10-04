@@ -116,7 +116,6 @@ def failure_cools_host(reason: str) -> bool:
 class DomainState:
     failures: int = 0
     cooled_until: float = 0.0
-    last_reason: str = ""
 
     def is_cooling(self, now: float) -> bool:
         return self.cooled_until > now
@@ -166,7 +165,6 @@ class DomainRegistry:
         if state is not None and state.failures:
             state.failures = 0
             state.cooled_until = 0.0
-            state.last_reason = ""
 
     def record_failure(self, domain: str, reason: str) -> None:
         """Count a host failure and cool the domain when warranted.
@@ -179,7 +177,6 @@ class DomainRegistry:
             return
         state = self._touch(domain)
         state.failures += 1
-        state.last_reason = reason
         hard = reason == "forbidden"
         if hard or state.failures >= self.failure_threshold:
             state.cooled_until = self._clock() + self.cooldown_sec

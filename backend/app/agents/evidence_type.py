@@ -156,14 +156,6 @@ class EvidenceNeed:
     asks_definition: bool = False
     entity_tokens: Tuple[str, ...] = ()
 
-    def strength(self, ev: str) -> float:
-        """How strongly the question demands `ev` (0.0 when it does not)."""
-        return float(self.scores.get(ev, 0.0))
-
-    @property
-    def ranked_types(self) -> List[Tuple[str, float]]:
-        return sorted(self.scores.items(), key=lambda kv: (-kv[1], kv[0]))
-
 
 _COMPILED: Dict[str, Tuple[Tuple[re.Pattern[str], float], ...]] = {
     ev: tuple((re.compile(p, re.I), w) for p, w in pats)

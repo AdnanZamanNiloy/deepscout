@@ -538,22 +538,6 @@ class OrchestrationPlan:
             "budget_multiplier": self.budget_multiplier,
         }
 
-    def rationale(self) -> str:
-        """One paragraph explaining the strategy, for the trace and the UI."""
-        c = self.complexity
-        bits = [
-            f"{c.level} complexity (score {c.score}, {c.query_type})",
-            f"{len(c.dimensions)} dimension(s): {', '.join(c.dimensions) or 'general'}",
-            f"{self.target_agents} research angle(s)",
-            f"mode {self.mode}",
-        ]
-        if self.targets:
-            bits.append(f"up to {self.targets.max_iterations} pass(es)")
-            bits.append(f"confidence target {self.targets.confidence_target:.2f}")
-        if self.clamped:
-            bits.append("clamped by hardware cap")
-        return "; ".join(bits) + "."
-
 
 def orchestrate(
     query: str,

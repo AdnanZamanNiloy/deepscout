@@ -111,7 +111,6 @@ class ResearchBudget:
     spent_tokens: int = field(default=0, init=False)
     llm_calls: int = field(default=0, init=False)
     search_calls: int = field(default=0, init=False)
-    reserved_usd: float = field(default=0.0, init=False)
     started_at: float = field(default_factory=time.monotonic, init=False)
     records: List[SpendRecord] = field(default_factory=list, init=False)
     refusals: List[str] = field(default_factory=list, init=False)
@@ -170,7 +169,7 @@ class ResearchBudget:
 
     @property
     def remaining_usd(self) -> float:
-        return max(0.0, self.max_usd - self.spent_usd - self.reserved_usd)
+        return max(0.0, self.max_usd - self.spent_usd)
 
     @property
     def remaining_tokens(self) -> int:
@@ -250,12 +249,6 @@ class ResearchBudget:
         logger.info("[budget] refused %s", message)
 
     # -- accounting --------------------------------------------------------
-
-    def reserve(self, usd: float) -> None:
-        self.reserved_usd += max(0.0, usd)
-
-    def release(self, usd: float) -> None:
-        self.reserved_usd = max(0.0, self.reserved_usd - max(0.0, usd))
 
     def record_llm(
         self,

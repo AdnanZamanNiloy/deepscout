@@ -58,9 +58,6 @@ SUPPORTING = "SUPPORTING"
 CONTEXT = "CONTEXT"
 AUDIT_ONLY = "AUDIT_ONLY"
 
-# The tier order, highest priority first. Exposed for tests and rendering.
-TIER_ORDER = (CORE_ANSWER, SUPPORTING, CONTEXT, AUDIT_ONLY)
-
 # How many items of each tier the directive names. Bounded so the directive
 # stays a brief and never becomes a second evidence dump.
 MAX_CORE = 6
