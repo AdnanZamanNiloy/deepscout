@@ -179,9 +179,14 @@ async def test_primary_fallback_queries_run_concurrently(monkeypatch):
 # ---------------------------------------------------------------------------
 
 async def test_route_overlaps_grounding_search(monkeypatch):
-    """route_query must finish BEFORE the grounding search does — the old
-    shape awaited it after the search/classify gather, adding one serial
-    LLM round-trip to every run. Completion ordering proves the overlap."""
+    """route_query must finish BEFORE the grounding search begins.
+
+    The invariant used to be "overlap" — the search ran concurrently with the
+    intent/route LLM calls. It is now stronger: the route decision GATES the
+    search, because the search's only consumer is the planner and a
+    conversation/direct turn never reaches one. So route must complete first
+    even on the research branch.
+    """
     import app.graph.workflow as wf
     from app.core.llm import LLMClient
 
@@ -250,12 +255,136 @@ async def test_route_overlaps_grounding_search(monkeypatch):
         pass
 
     assert {"classify", "route", "search"} <= set(stamps)
-    # classify+route together (0.20s) finish before the search (0.35s):
-    # overlap holds even with generous scheduler jitter. The old serial
-    # shape produced route >= search, failing this assertion.
+    # classify+route (0.20s) complete before the search starts, so a
+    # conversation/direct turn never pays for it at all.
     assert stamps["route"] < stamps["search"], (
-        "route_query did not overlap the grounding search"
+        "route_query must complete before the grounding search is issued"
     )
+
+
+# ---------------------------------------------------------------------------
+# Intent node: the grounding search is gated on the research branch
+# ---------------------------------------------------------------------------
+
+
+async def _run_with_route(monkeypatch, path: str) -> tuple[int, dict]:
+    """Run the graph with the router stubbed to `path`; return (search_calls,
+    planner_kwargs)."""
+    import app.graph.workflow as wf
+    from app.core.llm import LLMClient
+
+    calls = {"search": 0}
+    planner_kwargs: dict = {}
+    settings = Settings(groq_api_key="k", _env_file=None)
+    llm = LLMClient(settings)
+
+    class _CountingSearch:
+        async def run_search(self, sub_questions):
+            calls["search"] += 1
+            await asyncio.sleep(0.01)
+            return [
+                {"title": "Grounding hit", "snippet": "terminology from the web",
+                 "url": "https://example.org/a", "content": "body",
+                 "reliability_score": 0.9}
+            ]
+
+    async def fake_classify(llm_arg, query, context_snippets=None):
+        return heuristic_intent(query)
+
+    class _RouteStub:
+        def to_dict(self):
+            return {
+                "path": path, "reason": "test", "confidence": 0.95,
+                "origin": "llm", "signals": {},
+                # conversation_node reads exactly this key.
+                "answer_sketch": "Hello! What would you like to research?",
+            }
+
+    async def fake_route(llm_arg, query, intent=None):
+        return _RouteStub()
+
+    async def fake_planner(**kwargs):
+        planner_kwargs.update(kwargs)
+        return [{
+            "id": 1, "question": "q", "axis": "definition",
+            "search_type": "encyclopedia", "priority": 1, "depends_on": [],
+            "domain": "machine_learning", "minimum_sources": 2,
+            "coverage_goal": "", "stop_condition": "", "variants": [],
+            "agent": "", "tools": ["web_search"], "scope": [],
+            "output_format": "structured_findings", "specialist": "technical",
+            "preferred_domains": [], "primary_source_query": "", "wave": 0,
+            "sense": "",
+        }]
+
+    async def fake_summarizer(*a, **k):
+        return []
+
+    async def fake_critic(**k):
+        return {"is_sufficient": True, "reason": "enough",
+                "improved_queries": [], "confidence": 0.8}
+
+    async def fake_synthesizer(**k):
+        return "## Executive Summary\n\nAnswer."
+
+    class _DirectStub:
+        usable = True
+        needs_research = False
+        confidence = 0.9
+        answer = "Paris."
+
+        def to_dict(self):
+            return {"answer": self.answer, "confidence": self.confidence,
+                    "needs_research": False, "usable": True, "reason": "stable"}
+
+    async def fake_direct(*a, **k):
+        return _DirectStub()
+
+    # Without this the direct path REFUSES (the test's fake Groq key 401s) and
+    # falls through to the planner, which legitimately searches — so the test
+    # would measure the fallthrough rather than the fast path.
+    monkeypatch.setattr(wf, "direct_answer_agent", fake_direct)
+    monkeypatch.setattr(wf, "classify_intent", fake_classify)
+    monkeypatch.setattr(wf, "route_query", fake_route)
+    monkeypatch.setattr(wf, "planner_agent", fake_planner)
+    monkeypatch.setattr(wf, "summarizer_agent", fake_summarizer)
+    monkeypatch.setattr(wf, "critic_agent", fake_critic)
+    monkeypatch.setattr(wf, "synthesizer_agent", fake_synthesizer)
+
+    graph = wf.create_workflow(llm, _CountingSearch())
+    state = wf.build_initial_state("hi", 3, mode="quick")
+    async for _snap in graph.astream(state, stream_mode="values"):
+        pass
+    return calls["search"], planner_kwargs
+
+
+@pytest.mark.parametrize("path", ["conversation", "direct"])
+async def test_fast_paths_never_pay_for_the_grounding_search(monkeypatch, path):
+    """A greeting took ~20s because the grounding search ran before the route
+    was known, and its only consumer — the planner — is never reached on these
+    branches. Both fast paths must now issue zero searches."""
+    calls, planner_kwargs = await _run_with_route(monkeypatch, path)
+    assert calls == 0, f"{path} path paid for the grounding search"
+    assert planner_kwargs == {}, f"{path} path unexpectedly reached the planner"
+
+
+async def test_research_path_still_receives_grounding_snippets(monkeypatch):
+    """Behaviour preservation: gating the search must not starve the planner,
+    which is the one component that reads context_snippets."""
+    calls, planner_kwargs = await _run_with_route(monkeypatch, "research")
+    # >= 1, not == 1: search_node legitimately searches again after the plan.
+    # What matters is that the intent node's grounding search still happened.
+    assert calls >= 1, "research path lost its grounding search"
+    snippets = planner_kwargs.get("context_snippets") or []
+    assert snippets, "planner received no grounding snippets"
+    assert any("Grounding hit" in s for s in snippets)
+
+
+async def test_unknown_route_path_still_researches_with_grounding(monkeypatch):
+    """`route_after_intent` treats anything that is not conversation/direct as
+    research. The gate must agree, or the fail-safe direction loses grounding."""
+    calls, planner_kwargs = await _run_with_route(monkeypatch, "something-garbage")
+    assert calls >= 1
+    assert planner_kwargs.get("context_snippets")
 
 
 # ---------------------------------------------------------------------------

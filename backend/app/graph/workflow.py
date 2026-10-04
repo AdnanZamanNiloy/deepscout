@@ -1118,6 +1118,21 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
         on the raw query — the exact mechanism that pulled electrical-
         transformer statistics into an ML question's plan). Ambiguity is
         resolved here, never after the evidence is in.
+
+        Latency: the grounding search runs ONLY on the research branch, and only
+        AFTER the route decision. It used to run concurrently with the intent
+        LLM call, which was correct while the two were independent — but its
+        entire output is read by exactly one consumer, the planner
+        (`planner_agent(context_snippets=...)`). Neither `conversation_node` nor
+        `direct_answer_node` looks at it, and `classify_intent` is called
+        without snippets. So on a greeting or a direct-answer turn the search
+        was pure waste that `asyncio.gather` still made the node wait for.
+
+        Measured: 19.7s of retrieval against 0.28s of LLM work, so a one-line
+        "hi" took ~20s. Gating on the route drops the fast paths to the LLM
+        cost and costs the research branch 0.28s against a run of 100s+.
+        Behaviour-preserving: the only branch that reaches the planner is the
+        one that runs the search, so the planner still gets its grounding.
         """
         # Latency: the grounding search and the intent LLM call are
         # independent — run them CONCURRENTLY. The classifier reads the
@@ -1136,29 +1151,37 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
                 logger.warning("planner_context_search_failed", error=str(exc), exc_info=exc)
                 return []
 
+        # Latency: the route decision is CHEAP (two LLM calls, ~0.3s measured)
+        # and it determines whether the grounding search is needed at all. The
+        # search is the expensive part — a bare-string query is treated as a
+        # contract, so `contract_queries` builds a primary-source variant and
+        # the call fans out 2-3 site-scoped queries AND fetches page bodies
+        # (~20s measured). Sequencing route-then-search spends 0.3s on the
+        # research branch to save ~20s on both fast branches.
         intent_enabled = bool(getattr(llm.settings, "intent_enabled", True))
 
         async def _classify_and_route() -> tuple[Dict[str, Any], Dict[str, Any]]:
-            # Router after classifier (it reads the ambiguity signal), but
-            # BOTH overlap the grounding search: the old shape awaited
-            # route_query after the gather, adding one serial LLM round-trip
-            # to every run's critical path before the planner.
+            # Router after classifier (it reads the ambiguity signal), and
+            # both fail safe to "research" on any error.
             if intent_enabled:
                 intent_dict = (await classify_intent(llm, state["query"])).to_dict()
             else:
                 intent_dict = heuristic_intent(state["query"]).to_dict()
-            # Query router (R2): decide direct-vs-research. R2 only records
-            # the decision on state so the route event and trace can surface
-            # it — the graph still always researches. Any failure is
-            # swallowed by route_query itself, which fails safe to "research".
             route_decision = await route_query(
                 llm, state["query"], intent=intent_dict
             )
             return intent_dict, route_decision.to_dict()
 
-        context_snippets, (intent_dict, route_dict) = await asyncio.gather(
-            _context_search(), _classify_and_route()
-        )
+        intent_dict, route_dict = await _classify_and_route()
+
+        # Only the research branch consumes grounding snippets (see docstring).
+        # `route_after_intent` treats anything that is not an explicit
+        # conversation/direct path as research, and so must this gate, or the
+        # fail-safe direction would lose its grounding.
+        route_path = str(route_dict.get("path", "") or "").lower()
+        context_snippets: List[str] = []
+        if route_path not in ("conversation", "direct"):
+            context_snippets = await _context_search()
 
         return {
             "intent": intent_dict,
