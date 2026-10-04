@@ -870,9 +870,9 @@ def question_jurisdiction(text: str) -> Tuple[str, ...]:
         if iso2 in _KNOWN_COUNTRY_CODES:
             hits.append((raw.find(code), iso2))
     for candidate in _DOMAIN_IN_TEXT_RE.findall(blob):
-        iso2 = host_jurisdiction(candidate)
-        if iso2:
-            hits.append((blob.find(candidate), iso2))
+        found_iso2 = host_jurisdiction(candidate)
+        if found_iso2:
+            hits.append((blob.find(candidate), found_iso2))
     seen: Set[str] = set()
     out: List[str] = []
     for _pos, iso2 in sorted(hits):
@@ -1211,10 +1211,11 @@ def build_substitution_query(
     if not text:
         return ""
     blocked = (blocked_domain or "").strip().lower()
-    blocked_juris = (host_jurisdiction(blocked),) if blocked else ()
+    bound = host_jurisdiction(blocked) if blocked else None
+    blocked_juris: Tuple[str, ...] = (bound,) if bound else ()
     # The question's own countries lead; the failed host's country is the
     # fallback signal when the question itself named none.
-    juris = question_jurisdiction(text) or blocked_juris
+    juris: Tuple[str, ...] = question_jurisdiction(text) or blocked_juris
     out: List[str] = []
     # Jurisdiction families are NOT filtered by the failed host. `go.kr` is the
     # family that contains a failed `go.kr` agency, and dropping it would send
