@@ -48,8 +48,6 @@ GRADE_B = "B"
 GRADE_C = "C"
 GRADE_D = "D"
 
-GRADE_RANK: Dict[str, int] = {GRADE_A: 3, GRADE_B: 2, GRADE_C: 1, GRADE_D: 0}
-
 # Source tiers (from sources.py) that count as primary/authoritative for the
 # purpose of corroboration: independent instances of these strongly corroborate.
 _PRIMARY_LIKE_TIERS = frozenset({

@@ -158,3 +158,38 @@ def test_contract_fields_validated():
     assert item["tools"] == ["web_search", "fetch_content"]
     assert len(item["scope"]) == 5
     assert item["output_format"] == "structured_findings"
+
+
+def test_every_specialist_role_has_a_prompt_overlay():
+    """A role with no overlay runs the GENERAL prompt silently.
+
+    `summarizer.specialist_system_prompt` does
+    `SPECIALIST_PROMPT_ADDITIONS.get(role, "")`, so a typo in
+    SPECIALIST_DOMAINS would degrade a specialist to the general prompt with no
+    error anywhere. `specialist_role_for_domain` now guards against that; this
+    pins the two vocabularies to each other.
+    """
+    from app.agents.summarizer import SPECIALIST_PROMPT_ADDITIONS
+    from app.core.isolation import SPECIALIST_ROLES, SPECIALIST_DOMAINS
+
+    assert not (SPECIALIST_ROLES - set(SPECIALIST_PROMPT_ADDITIONS)), (
+        "a declared specialist role has no prompt overlay"
+    )
+    assert not (set(SPECIALIST_PROMPT_ADDITIONS) - SPECIALIST_ROLES), (
+        "a prompt overlay names a role the registry does not declare"
+    )
+    # Every mapped domain must land on a declared role.
+    for domain, role in SPECIALIST_DOMAINS.items():
+        assert role in SPECIALIST_ROLES, f"{domain} -> {role}"
+
+
+def test_a_bad_role_in_the_mapping_degrades_to_general(monkeypatch):
+    """The guard itself: inject a typo and confirm it is caught, not silently
+    handed to `.get(role, "")`."""
+    from app.core import isolation
+    from app.core.isolation import specialist_role_for_domain
+
+    monkeypatch.setitem(
+        isolation.SPECIALIST_DOMAINS, "economics", "finanical"  # typo
+    )
+    assert specialist_role_for_domain("economics") == "general"

@@ -13,11 +13,12 @@ nothing downstream needs it.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 from app.agents.planner import SubQuestion
+from app.core.logging import get_logger
 
-ALLOWED_TOOL_PERMISSIONS = frozenset({"web_search", "wikipedia", "content_fetch"})
+logger = get_logger(__name__)
 
 # Specialist domain routing (Phase 3.1): the summarizer gets a domain
 # prompt variant based on the contract's `domain` field.
@@ -40,13 +41,23 @@ def specialist_role_for_domain(domain: str) -> str:
 
     Market covers news/statistical comparison work across domains;
     everything unrouted stays general.
+
+    The result is validated against SPECIALIST_ROLES because the summarizer
+    consumes it with `SPECIALIST_PROMPT_ADDITIONS.get(role, "")` — an unknown
+    role gets NO overlay and silently runs the general prompt, so a typo in
+    SPECIALIST_DOMAINS would degrade a specialist with no error anywhere.
+    This constant existed and was referenced only by a test; now it is the
+    guard that makes a mapping mistake visible.
     """
     d = (domain or "").strip().lower()
-    if d in SPECIALIST_DOMAINS:
-        return SPECIALIST_DOMAINS[d]
-    if d == "general":
+    role = SPECIALIST_DOMAINS.get(d, "general")
+    if role not in SPECIALIST_ROLES:  # pragma: no cover - guards a mapping typo
+        logger.warning(
+            "[Isolation] domain %r maps to unknown specialist role %r; using general",
+            d, role,
+        )
         return "general"
-    return "general"
+    return role
 
 
 @dataclass
@@ -56,10 +67,6 @@ class AgentContext:
     contract: SubQuestion
     # This sub-question's own search results only (never other sub-questions').
     own_results: List[Dict[str, Any]] = field(default_factory=list)
-    # Explicit tool scope: a specialist may be restricted further (3.1).
-    tool_permissions: frozenset = ALLOWED_TOOL_PERMISSIONS
-    # Optional domain allowlist enforced for the specialist (3.1 hook).
-    allowed_source_domains: Optional[Tuple[str, ...]] = None
 
     def question(self) -> str:
         return str(self.contract.get("question", "")).strip()
