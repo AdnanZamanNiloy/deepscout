@@ -1,16 +1,20 @@
 """Query Router Agent: direct-answer vs. research decision (R1).
 
 R1 is unwired — these tests pin the decision logic, not the graph wiring.
-The two properties that matter most:
-  * hard signals (freshness/quantitative/decision/contested/type/ambiguity)
-    always force research, even against a model that says "direct";
+The properties that matter:
+  * ABSOLUTE signals (freshness/decision/contested/ambiguity) always force
+    research, even against a model that says "direct";
+  * question SHAPE signals (quantitative/comparative) are overridable, but only
+    at a higher confidence bar;
   * the deterministic fallback NEVER grants a direct answer, so a router
     failure degrades to research, never to an ungrounded answer.
 """
 
 from app.agents.router import (
     DEFAULT_MIN_DIRECT_CONFIDENCE,
+    DEFAULT_MIN_DIRECT_CONFIDENCE_CLEARING_BLOCKER,
     DIRECT,
+    MODEL_OVERRIDABLE_BLOCKERS,
     RESEARCH,
     RouteDecision,
     deterministic_route,
@@ -272,3 +276,137 @@ async def test_graph_routes_greeting_to_conversation_not_planner(monkeypatch):
     assert final["route"]["path"] == "conversation"
     assert final["direct_answer"], "the greeting reply must be delivered"
     assert "research assistant" in final["final_report"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Shape blockers are overridable; absolute blockers are not
+# ---------------------------------------------------------------------------
+
+
+def test_shape_blockers_are_separated_from_absolute_ones():
+    """`hard_blockers` keeps listing everything (the deterministic gate's own
+    vocabulary, which bench/eval_router asserts against), but only the absolute
+    subset may not be cleared by the model."""
+    shape = deterministic_route("How many legs does a spider have?")
+    assert "quantitative" in shape.signals["hard_blockers"]
+    assert shape.signals["absolute_blockers"] == []
+    assert shape.signals["overridable_blockers"] == ["quantitative"]
+
+    # A query can carry both kinds at once. "the latest price of gold" is
+    # quantitative (price) AND fresh (latest); the absolute blocker must be
+    # what forces research, not the overridable one riding along with it.
+    absolute = deterministic_route("What is the latest price of gold?")
+    assert "freshness" in absolute.signals["absolute_blockers"]
+    assert "quantitative" in absolute.signals["overridable_blockers"]
+
+    # And a purely absolute query has no overridable component.
+    contested = deterministic_route("Is this supplement safe to take daily?")
+    assert contested.signals["overridable_blockers"] == []
+
+
+async def test_shape_signal_alone_does_not_stop_the_model_being_asked():
+    """The bug: `route_query` returned without consulting the model whenever
+    ANY blocker was present, so "how many legs does a spider have" never got a
+    chance to be cleared."""
+    llm = FakeLLM({"path": "direct", "confidence": 0.99,
+                   "needs_research": False, "reason": "stable"})
+    d = await route_query(llm, "How many legs does a spider have?")
+    assert llm.calls, "model was never consulted for a shape-only blocker"
+    assert d.path == DIRECT
+
+
+async def test_a_confident_model_clears_a_shape_blocker():
+    llm = FakeLLM({"path": "direct", "confidence": 0.95,
+                   "needs_research": False, "reason": "stable"})
+    d = await route_query(llm, "How many legs does a spider have?")
+    assert d.path == DIRECT
+
+
+async def test_comparative_stays_research_even_when_the_model_is_sure():
+    """A comparative question is indistinguishable from a stable one without an
+    LLM, and clearing it produced an ungrounded answer for "Solar vs nuclear
+    energy for Bangladesh". Wasting a few seconds is the cheaper error."""
+    llm = FakeLLM({"path": "direct", "confidence": 1.0,
+                   "needs_research": False, "reason": "I know this"})
+    for query in (
+        "What is the difference between TCP and UDP",
+        "Solar vs nuclear energy for Bangladesh",
+        "Python vs Java performance",
+        "What are the trade-offs of nuclear power?",
+        "How do I reverse a string in Python",
+    ):
+        assert (await route_query(llm, query)).path == RESEARCH, query
+
+
+async def test_a_marginal_clearance_cannot_overrule_a_shape_blocker():
+    """Above the ordinary bar (0.75) but below the clearing bar (0.90): the
+    deterministic signal disagreed, so the model must be markedly more sure."""
+    llm = FakeLLM({"path": "direct", "confidence": 0.80,
+                   "needs_research": False, "reason": ""})
+    d = await route_query(llm, "How many legs does a spider have?")
+    assert d.path == RESEARCH
+    # The gate explains itself when the model gave no reason of its own.
+    assert "question shape" in d.reason.lower()
+    assert "0.90" in d.reason
+
+
+async def test_absolute_blockers_still_win_against_a_confident_model():
+    for query, blocker in (
+        ("What is the latest price of gold?", "freshness"),
+        ("Solar vs nuclear energy for Bangladesh", None),
+        ("Should we invest in nuclear energy for our grid?", "decision"),
+        ("Is this supplement safe to take daily?", "contested"),
+    ):
+        llm = FakeLLM({"path": "direct", "confidence": 1.0,
+                   "needs_research": False, "reason": "I know this"})
+        d = await route_query(llm, query)
+        assert d.path == RESEARCH, query
+        if blocker:
+            assert blocker in d.signals["absolute_blockers"]
+
+
+async def test_absolute_blockers_do_not_even_spend_a_model_call():
+    """Unchanged from before: a genuinely world-dependent question is decided
+    deterministically, so the call is not wasted."""
+    llm = FakeLLM({"path": "direct", "confidence": 1.0})
+    d = await route_query(llm, "What is the latest price of gold?")
+    assert not llm.calls, "spent a model call on an absolute blocker"
+    assert d.path == RESEARCH
+
+
+async def test_clearing_bar_is_configurable():
+    class S:
+        router_enabled = True
+        router_min_direct_confidence = 0.75
+        router_min_direct_confidence_clearing_blocker = 0.99
+
+    llm = FakeLLM({"path": "direct", "confidence": 0.95,
+                   "needs_research": False, "reason": "stable"}, settings=S())
+    d = await route_query(llm, "How many legs does a spider have?")
+    assert d.path == RESEARCH
+
+
+def test_duck_typed_signals_without_the_split_stay_conservative():
+    """A caller passing signals with no `absolute_blockers` key must not have a
+    direct answer granted by accident."""
+    base = RouteDecision(
+        path=RESEARCH, reason="x", confidence=0.5, signals={"hard_blockers": ["decision"]},
+    )
+    from app.agents.router import _finalize
+
+    d = _finalize("q", {"path": "direct", "confidence": 1.0}, base, 1.0)
+    assert d.path == RESEARCH
+
+
+def test_the_two_bars_are_ordered():
+    """A clearing bar below the ordinary bar would make the extra gate a
+    no-op that silently pretends to be a safeguard."""
+    assert (
+        DEFAULT_MIN_DIRECT_CONFIDENCE_CLEARING_BLOCKER
+        > DEFAULT_MIN_DIRECT_CONFIDENCE
+    )
+    # Exactly one blocker is clearable. Every attempt to add a query-type
+    # blocker sent a genuinely research-shaped question to an ungrounded direct
+    # answer (comparative -> "Solar vs nuclear for Bangladesh";
+    # analytical -> "trade-offs of nuclear power").
+    assert MODEL_OVERRIDABLE_BLOCKERS == {"quantitative"}

@@ -135,6 +135,38 @@ def conversation_kind(query: str) -> str:
 # willing. Overridable via Settings.router_min_direct_confidence.
 DEFAULT_MIN_DIRECT_CONFIDENCE = 0.75
 
+# Blockers the model MAY clear, at a higher confidence bar.
+#
+# The deterministic gate used to treat every signal as absolute and
+# `route_query` returned without ever consulting the model. `quantitative` was
+# the one blocker doing real damage: it fires on any "how many X" phrasing, so
+# "How many legs does a spider have" — a textbook constant — went to the full
+# research pipeline.
+#
+# MEASURED, and the reason this list is one entry long. Every attempt to also
+# relax the query-type blockers opened a real hole in the opposite direction:
+#
+#   comparative  "Solar vs nuclear energy for Bangladesh" -> DIRECT, ungrounded
+#   analytical   "What are the trade-offs of nuclear power?" -> DIRECT
+#
+# Both are `query_type`-flagged questions that genuinely need sources, and
+# neither is distinguishable from a stable one without a model. Since the
+# deterministic gate cannot tell them apart, the gate must not be relaxed:
+# misrouting a direct question costs a few seconds, while misrouting a
+# research question produces an answer with no sources behind it.
+#
+# What stays absolute is everything that genuinely implies external evidence:
+# freshness, contested, decision, ambiguity, and all research-shaped query
+# types. Those are not question shapes but facts about the world (it changes,
+# it is disputed, it is high-stakes, it is under-specified), and no amount of
+# model confidence makes them answerable from parameters.
+MODEL_OVERRIDABLE_BLOCKERS: frozenset = frozenset({"quantitative"})
+
+# Higher bar for clearing a question the heuristics flagged. The model must be
+# more certain when a deterministic signal disagreed with it, so the fail-safe
+# direction survives the relaxation.
+DEFAULT_MIN_DIRECT_CONFIDENCE_CLEARING_BLOCKER = 0.90
+
 # Query types that always need evidence. Only a plain factual question is
 # even a candidate for a direct answer.
 _RESEARCH_QUERY_TYPES = ("comparative", "analytical", "exploratory")
@@ -275,6 +307,11 @@ def _collect_signals(
         hard_blockers.append("query_type")
     if ambiguity:
         hard_blockers.append("ambiguity")
+    # Which blockers the model may clear (see MODEL_OVERRIDABLE_BLOCKERS).
+    # `hard_blockers` keeps listing everything: it is the deterministic gate's
+    # own vocabulary and bench/eval_router asserts against it.
+    overridable = [b for b in hard_blockers if b in MODEL_OVERRIDABLE_BLOCKERS]
+    absolute = [b for b in hard_blockers if b not in MODEL_OVERRIDABLE_BLOCKERS]
     return {
         "query_type": query_type,
         "ambiguity": ambiguity,
@@ -284,6 +321,8 @@ def _collect_signals(
         "contested": contested,
         "research_query_type": research_type,
         "hard_blockers": hard_blockers,
+        "absolute_blockers": absolute,
+        "overridable_blockers": overridable,
     }
 
 
@@ -351,6 +390,7 @@ def _finalize(
     base: RouteDecision,
     confidence: float,
     min_direct_confidence: float = DEFAULT_MIN_DIRECT_CONFIDENCE,
+    min_clearing_confidence: float = DEFAULT_MIN_DIRECT_CONFIDENCE_CLEARING_BLOCKER,
 ) -> RouteDecision:
     """Validate the LLM's verdict against the deterministic hard gate.
 
@@ -361,7 +401,14 @@ def _finalize(
     says no research is needed.
     """
     signals = base.signals
-    blockers = signals.get("hard_blockers") or []
+    # Only the absolute blockers stop the model. `hard_blockers` also carries
+    # question-shape signals the model may clear, at a higher bar below.
+    blockers = signals.get("absolute_blockers")
+    if blockers is None:
+        # Signals from an older/duck-typed caller with no split: fall back to
+        # the full list, which is the conservative direction.
+        blockers = signals.get("hard_blockers") or []
+    overridable = signals.get("overridable_blockers") or []
     model_path = str(payload.get("path", "") or "").strip().lower()
     needs_research = bool(payload.get("needs_research", False))
     reason = str(payload.get("reason", "") or "").strip()
@@ -382,6 +429,23 @@ def _finalize(
         return RouteDecision(
             path=RESEARCH,
             reason=reason or "Model did not clear a direct answer.",
+            confidence=confidence,
+            signals=signals,
+            origin="llm",
+        )
+
+    # Cleared an unremarkable question, or one whose only objection was a
+    # question shape? The second needs the model to have been markedly more
+    # certain, so a marginal clearance cannot quietly overrule the heuristics.
+    if overridable and confidence < min_clearing_confidence:
+        return RouteDecision(
+            path=RESEARCH,
+            reason=reason
+            or (
+                f"Question shape suggested research ({', '.join(overridable)}) and "
+                f"the model was not confident enough to clear it "
+                f"({confidence:.2f} < {min_clearing_confidence:.2f})."
+            ),
             confidence=confidence,
             signals=signals,
             origin="llm",
@@ -418,6 +482,7 @@ async def route_query(
     # are read defensively so tests with a duck-typed LLM keep working.
     router_enabled = True
     min_direct_confidence = DEFAULT_MIN_DIRECT_CONFIDENCE
+    min_clearing_confidence = DEFAULT_MIN_DIRECT_CONFIDENCE_CLEARING_BLOCKER
     settings = getattr(llm, "settings", None)
     if settings is not None:
         router_enabled = bool(getattr(settings, "router_enabled", True))
@@ -431,18 +496,30 @@ async def route_query(
             )
         except (TypeError, ValueError):
             min_direct_confidence = DEFAULT_MIN_DIRECT_CONFIDENCE
+        try:
+            min_clearing_confidence = float(
+                getattr(
+                    settings,
+                    "router_min_direct_confidence_clearing_blocker",
+                    DEFAULT_MIN_DIRECT_CONFIDENCE_CLEARING_BLOCKER,
+                )
+            )
+        except (TypeError, ValueError):
+            min_clearing_confidence = DEFAULT_MIN_DIRECT_CONFIDENCE_CLEARING_BLOCKER
 
-    # A query with a hard blocker is research regardless of the model; there
-    # is no reason to spend a call asking. A conversational turn (R5) is
-    # answered deterministically — never worth an LLM routing call.
-    if (
-        not router_enabled
-        or base.path == CONVERSATION
-        or base.signals.get("hard_blockers")
-    ):
+    # Absolute blockers are research regardless of the model; there is no
+    # reason to spend a call asking. A conversational turn (R5) is answered
+    # deterministically for the same reason. A `quantitative` blocker is NOT in
+    # this test — the model gets to clear that one, at a higher bar.
+    absolute = base.signals.get("absolute_blockers")
+    if absolute is None:
+        # Signals from a caller that predates the split: be conservative and
+        # treat everything as absolute rather than guessing the query type.
+        absolute = list(base.signals.get("hard_blockers") or [])
+    if not router_enabled or base.path == CONVERSATION or absolute:
         logger.info(
-            "[Router] deterministic path=%s blockers=%s",
-            base.path, base.signals.get("hard_blockers"),
+            "[Router] deterministic path=%s absolute_blockers=%s",
+            base.path, absolute,
         )
         return base
 
@@ -466,7 +543,10 @@ async def route_query(
         return base
 
     confidence = _coerce_confidence(payload.get("confidence"), default=0.0)
-    decision = _finalize(query, payload, base, confidence, min_direct_confidence)
+    decision = _finalize(
+        query, payload, base, confidence, min_direct_confidence,
+        min_clearing_confidence,
+    )
     logger.info(
         "[Router] path=%s origin=%s confidence=%.2f reason=%s",
         decision.path, decision.origin, decision.confidence, decision.reason,
