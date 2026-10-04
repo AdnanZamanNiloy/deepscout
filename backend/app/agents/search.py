@@ -76,7 +76,7 @@ from app.agents.retrieval_health import (
 )
 from app.agents.sources import (
     build_dimension_primary_query,
-    build_primary_source_query,
+    build_substitution_query,
     canonical_url,
     classify_source,
     extract_domain as _host,
@@ -1325,12 +1325,12 @@ class SearchClient:
         evidence from a DIFFERENT authoritative/independent publisher.
 
         This reuses the existing primary-source machinery
-        (`build_primary_source_query` + the authoritative registry): it builds
-        a `site:`-scoped query aimed at an authoritative host the run has not
-        already failed on, issues it through the SAME search providers, and
-        appends any new results to `ranked` so the caller's content-attach and
-        downstream ranking see them. It is a targeted substitution, not a new
-        search system and not a retry of the blocked host.
+        (`build_substitution_query`): it builds a `site:`-scoped query aimed at an
+        authoritative publisher in the SAME jurisdiction as the one that failed,
+        issues it through the SAME search providers, and appends any new results
+        to `ranked` so the caller's content-attach and downstream ranking see
+        them. It is a targeted substitution, not a new search system and not a
+        retry of the blocked host.
 
         Bounded: at most `search_primary_fallback_max` queries per contract,
         only when the setting is enabled, and only for results whose host is
@@ -1358,16 +1358,9 @@ class SearchClient:
             if host not in blocked:
                 continue
             question = result.sub_question or result.matched_query or result.title
-            fallback_query = build_primary_source_query(
-                question, result.search_type or "general", domain="general", max_sites=2
+            fallback_query = build_substitution_query(
+                question, result.search_type or "general", host, max_sites=2
             )
-            if not fallback_query:
-                # No registered authoritative hint for this shape: fall back to
-                # the deterministic suffix-scoped query so a substituted
-                # publisher is still targeted.
-                fallback_query = build_dimension_primary_query(
-                    question, result.search_type or "general", "general"
-                )
             fallback_query = (fallback_query or "").strip()
             if not fallback_query:
                 continue
