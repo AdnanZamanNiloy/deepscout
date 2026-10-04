@@ -75,12 +75,12 @@ def is_transient(exc: BaseException) -> bool:
     return any(marker in text for marker in _TRANSIENT_MESSAGE_MARKERS)
 
 
-def retry_after_seconds(exc: BaseException) -> Optional[float]:
-    """Honour a provider's own Retry-After when it sends one. Guessing a
-    backoff while the provider is telling you the answer is how a 429 storm
-    turns into a ban."""
-    response = getattr(exc, "response", None)
-    headers = getattr(response, "headers", None)
+def retry_after_from_headers(headers, cap: float = 60.0) -> Optional[float]:
+    """Seconds requested by a `Retry-After` header, clamped to `cap`.
+
+    Single implementation so the search-provider retry path and the page-fetch
+    retry path cannot drift into disagreeing about what the header means.
+    """
     if not headers:
         return None
     try:
@@ -93,7 +93,30 @@ def retry_after_seconds(exc: BaseException) -> Optional[float]:
         value = float(str(raw).strip())
     except (TypeError, ValueError):
         return None
-    return max(0.0, min(60.0, value))
+    return max(0.0, min(max(0.0, cap), value))
+
+
+def retry_after_seconds(exc: BaseException, cap: float = 60.0) -> Optional[float]:
+    """Honour a provider's own Retry-After when it sends one. Guessing a
+    backoff while the provider is telling you the answer is how a 429 storm
+    turns into a ban.
+
+    `cap` bounds it to the calling policy's own ceiling, so Retry-After can
+    SHORTEN a wait but never extend it past what that call is allowed to spend.
+    This was measured, not theorised: a Wikipedia 429 carrying
+    `Retry-After: 52` was overriding that leg's own `max_delay` of 3.0s and
+    sleeping 52 seconds inside a single contract search — on an optional
+    enrichment provider, while the circuit breaker beside it had the right
+    answer (stop calling for a cooldown). One such header added ~52s to a
+    research run, and `max_parallel_search` serialised it against every other
+    contract in flight. That is the provider-timeout trap AGENTS.md warns about:
+    do the multiplication before adding attempts.
+
+    A provider that needs longer than this should be handled by the breaker,
+    which stops the calls rather than sleeping through them.
+    """
+    response = getattr(exc, "response", None)
+    return retry_after_from_headers(getattr(response, "headers", None), cap=cap)
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +171,7 @@ async def retry_async(
             last = exc
             if attempt >= attempts or not retry_on(exc):
                 break
-            delay = retry_after_seconds(exc)
+            delay = retry_after_seconds(exc, cap=policy.max_delay)
             if delay is None:
                 delay = policy.delay_for(attempt)
             logger.warning(

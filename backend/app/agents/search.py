@@ -65,6 +65,7 @@ from app.agents.reliability import (
     call_protected,
     gather_bounded,
     get_breaker,
+    retry_after_from_headers,
 )
 from app.agents.retrieval_health import (
     DomainRegistry,
@@ -700,21 +701,24 @@ async def _fetch_content_outcome(
 _fetch_content_original = _fetch_content
 
 
+# Ceiling for a provider-supplied Retry-After on the FETCH path, matching the
+# exponential backoff this same loop falls back to (see `_fetch_content_outcome`).
+# A publisher sending `Retry-After: 52` must not be able to spend 52 seconds of
+# a research run on one page; the host cooldown handles a publisher that needs
+# longer, by not calling it again rather than sleeping through it.
+FETCH_RETRY_AFTER_CAP_SEC = 6.0
+
+
 def _retry_after_header(response) -> float:
     """Parse a Retry-After header (seconds form) from a response, capped.
 
-    Reuses the shared retry semantics (0-60s cap on Retry-After) so the two
-    retry paths cannot disagree about what Retry-After means.
+    Delegates to the shared parser so the search-provider and page-fetch retry
+    paths cannot disagree about what Retry-After means, and bounds it to this
+    loop's own backoff ceiling.
     """
-    try:
-        headers = getattr(response, "headers", None)
-        raw = headers.get("retry-after") if headers else None
-        if raw is None:
-            return 0.0
-        value = float(str(raw).strip())
-        return max(0.0, min(60.0, value))
-    except (TypeError, ValueError, AttributeError):
-        return 0.0
+    headers = getattr(response, "headers", None)
+    value = retry_after_from_headers(headers, cap=FETCH_RETRY_AFTER_CAP_SEC)
+    return 0.0 if value is None else value
 
 
 @dataclass
