@@ -17,7 +17,7 @@ from app.agents.intent import classify_intent, heuristic_intent
 from app.agents.orchestrator import MODE_CONFIDENCE_TARGET, orchestrate
 from app.agents.planner import normalize_text, planner_agent
 from app.agents.redteam import redteam_agent
-from app.agents.router import route_query
+from app.agents.router import conversation_kind, deterministic_route, route_query
 from app.agents.search import SearchClient
 from app.agents.summarizer import summarizer_agent
 from app.agents.synthesizer import synthesizer_agent
@@ -1159,6 +1159,31 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
         # (~20s measured). Sequencing route-then-search spends 0.3s on the
         # research branch to save ~20s on both fast branches.
         intent_enabled = bool(getattr(llm.settings, "intent_enabled", True))
+
+        # A conversational turn is settled by `conversation_kind`, a PURE
+        # function with no model in it, and `route_query` already returns that
+        # deterministic decision without spending an LLM call. But this node
+        # used to run `classify_intent` FIRST, so "hi" paid a full LLM
+        # round-trip to classify the intent of a greeting — then `route_query`
+        # discarded the answer by deciding deterministically anyway.
+        #
+        # Nothing downstream needs the model's intent on this branch:
+        # conversation_node reads only route["answer_sketch"], and
+        # build_conversation_report reads only state["direct_answer"]. The
+        # heuristic intent keeps state["intent"] populated for the trace at no
+        # cost, which is the same deterministic fallback every other agent uses
+        # (AGENTS.md 4.7). Removing this is the difference between a greeting
+        # costing two serial LLM calls under Groq's rate limiter and costing
+        # nothing.
+        if conversation_kind(state["query"]):
+            greeting_intent = heuristic_intent(state["query"]).to_dict()
+            return {
+                "intent": greeting_intent,
+                "context_snippets": [],
+                "route": deterministic_route(
+                    state["query"], intent=greeting_intent
+                ).to_dict(),
+            }
 
         async def _classify_and_route() -> tuple[Dict[str, Any], Dict[str, Any]]:
             # Router after classifier (it reads the ambiguity signal), and

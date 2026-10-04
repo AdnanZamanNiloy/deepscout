@@ -263,13 +263,83 @@ async def test_route_overlaps_grounding_search(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Intent node: a greeting costs no LLM call at all
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "query", ["hi", "thanks", "hello there", "goodbye", "hey"]
+)
+async def test_conversation_turn_makes_no_llm_call(monkeypatch, query):
+    """`conversation_kind` is a pure function and `route_query` already
+    returns that decision without a model call — but the node used to run
+    `classify_intent` FIRST, so "hi" paid a full LLM round-trip to classify
+    the intent of a greeting. Under Groq's rate limiter that is the whole
+    latency budget of a greeting."""
+    import app.graph.workflow as wf
+    from app.core.llm import LLMClient
+
+    calls = {"intent": 0, "route": 0, "search": 0}
+    settings = Settings(groq_api_key="k", _env_file=None)
+    llm = LLMClient(settings)
+
+    class _Search:
+        async def run_search(self, sub_questions):
+            calls["search"] += 1
+            return []
+
+    async def classify(*a, **k):
+        calls["intent"] += 1
+        raise AssertionError("classify_intent must not run for a greeting")
+
+    async def route(*a, **k):
+        calls["route"] += 1
+        raise AssertionError("route_query must not run for a greeting")
+
+    monkeypatch.setattr(wf, "classify_intent", classify)
+    monkeypatch.setattr(wf, "route_query", route)
+
+    graph = wf.create_workflow(llm, _Search())
+    state = wf.build_initial_state(query, 3, mode="quick")
+    final: dict = {}
+    async for snap in graph.astream(state, stream_mode="values"):
+        final = snap
+
+    assert calls == {"intent": 0, "route": 0, "search": 0}
+    # The reply still reaches the user.
+    assert str(final.get("direct_answer") or "").strip(), "no reply delivered"
+    assert str(final.get("route", {}).get("answer_sketch") or "").strip()
+
+
+async def test_conversation_shortcut_matches_the_full_route_decision():
+    """The shortcut must be byte-identical to what route_query would have
+    returned, or it is a behaviour change dressed up as an optimisation."""
+    from app.agents.intent import heuristic_intent
+    from app.agents.router import deterministic_route, route_query
+    from app.core.llm import LLMClient
+
+    llm = LLMClient(Settings(groq_api_key="k", _env_file=None))
+    for query in ("hi", "thanks", "hello there", "goodbye"):
+        intent = heuristic_intent(query).to_dict()
+        fast = deterministic_route(query, intent=intent).to_dict()
+        slow = (await route_query(llm, query, intent=intent)).to_dict()
+        assert fast == slow, query
+        assert fast["path"] == "conversation"
+        assert fast["answer_sketch"], "conversation needs its fixed reply"
+
+
+# ---------------------------------------------------------------------------
 # Intent node: the grounding search is gated on the research branch
 # ---------------------------------------------------------------------------
 
 
-async def _run_with_route(monkeypatch, path: str) -> tuple[int, dict]:
+async def _run_with_route(monkeypatch, path: str, query: str = "transformer?") -> tuple[int, dict]:
     """Run the graph with the router stubbed to `path`; return (search_calls,
-    planner_kwargs)."""
+    planner_kwargs).
+
+    The default query must NOT be a conversational turn: those now short-circuit
+    before the router is consulted at all, which would make every research-path
+    assertion here vacuous."""
     import app.graph.workflow as wf
     from app.core.llm import LLMClient
 
@@ -351,7 +421,7 @@ async def _run_with_route(monkeypatch, path: str) -> tuple[int, dict]:
     monkeypatch.setattr(wf, "synthesizer_agent", fake_synthesizer)
 
     graph = wf.create_workflow(llm, _CountingSearch())
-    state = wf.build_initial_state("hi", 3, mode="quick")
+    state = wf.build_initial_state(query, 3, mode="quick")
     async for _snap in graph.astream(state, stream_mode="values"):
         pass
     return calls["search"], planner_kwargs
