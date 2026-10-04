@@ -225,6 +225,10 @@ _BROWSER_USER_AGENT = (
 # endpoint is enough to OOM an 8GB host mid-run.
 MAX_FETCH_BYTES = 3_000_000
 
+# How many pages may rest on a single underlying source. Two is enough to show
+# agreement without letting one study's republication fill the result set.
+ORIGIN_CAP = 2
+
 # Content types worth reading. Anything else (video, images, archives) costs
 # bandwidth and yields nothing.
 _READABLE_TYPES = ("text/html", "text/plain", "application/xhtml", "application/pdf",
@@ -235,22 +239,33 @@ _READABLE_TYPES = ("text/html", "text/plain", "application/xhtml", "application/
 # SCORING
 # =============================================================================
 
-def _score_result(result: SearchResult, query: str) -> float:
+def _score_result(result: SearchResult, query: str, need=None) -> float:
     """Rank a result before any content is fetched.
 
-    Changes from the previous formula:
-      * primary sources get an explicit boost — the point of reaching them
-      * recency is scored by decay against the result's own search_type, so a
-        2019 news hit sinks while a 2019 paper does not
-      * the flat 0.15 Wikipedia penalty is kept but no longer applies when
-        Wikipedia is the only high-authority hit for an encyclopedia-typed
-        question, which is exactly when it is the right answer
+    Authority alone answers "is this publisher worth listening to", which is not
+    the same question as "does this document answer what was asked". A live run
+    showed why that distinction is load-bearing: asked for the latest revenue
+    guidance from a company's most recent earnings filing, eight encyclopedia
+    pages defining "forward guidance" outranked the issuer's own investor
+    relations pages. Those publishers are authoritative and the document was
+    still the wrong type.
+
+    So scoring now folds in, per result:
+      * evidence-type fit  — does this tier match the KIND of document required
+      * definition misfit — a glossary page returned to a non-definition question
+      * entity engagement  — does it actually mention what the question is about
+      * originality         — is it the source, or a page quoting one
+
+    Recency is still scored by decay against the result's own search_type, so a
+    2019 news hit sinks while a 2019 paper does not. The flat Wikipedia penalty
+    remains, but does not apply when Wikipedia is the right answer.
     """
     profile = classify_source(result.url)
     base = profile.authority
 
     snippet = result.snippet or ""
     content = result.content or ""
+    haystack = f"{result.title or ''} {snippet} {content}"
 
     richness = min(0.10, len(snippet) / 1500)
     relevance = _relevance_score(query, snippet + " " + content)
@@ -258,9 +273,18 @@ def _score_result(result: SearchResult, query: str) -> float:
     primary_bonus = 0.10 if profile.is_primary else 0.0
     recency = freshness_score(result.published_at, result.search_type or "default")
     recency_weight = 0.12 if (result.search_type or "").lower() == "news" else 0.06
-    wiki_penalty = 0.15 if "wikipedia.org" in (result.url or "") else 0.0
+    # The Wikipedia penalty is a tie-breaker for questions that do not want an
+    # encyclopedia. It must not fire when one was asked for, or the penalised
+    # source is the correct answer. `want_encyclopedic` is computed before use.
+    want_encyclopedic = False
+    if need is not None:
+        from app.agents.evidence_type import EV_ENCYCLOPEDIC, required_types
 
-    return (
+        wanted = required_types(need) or frozenset((need.primary,))
+        want_encyclopedic = EV_ENCYCLOPEDIC in wanted
+    wiki_penalty = 0.15 if "wikipedia.org" in (result.url or "") and not want_encyclopedic else 0.0
+
+    total = (
         base
         + richness
         + (relevance * 0.25)
@@ -270,13 +294,40 @@ def _score_result(result: SearchResult, query: str) -> float:
         - wiki_penalty
     )
 
+    if need is not None:
+        from app.agents.sources import (
+            definition_misfit,
+            entity_miss,
+            evidence_fit,
+            first_party_bonus,
+            is_original_source,
+        )
+
+        fit, _why = evidence_fit(profile, wanted)
+        total += fit
+        total += definition_misfit(result.title or "", snippet, need.asks_definition)
+        total += entity_miss(query, need.entity_tokens, haystack)
+        total += first_party_bonus(result.url, need.entity_tokens)
+        # Prefer the original document over a page quoting it — but only when
+        # the document is the KIND asked for. A study is the original source of
+        # itself, and that earns it nothing on a "what is X" question.
+        if fit > 0 and is_original_source(result.url, result.title or "", snippet, content):
+            total += 0.12
+    return total
+
 
 # =============================================================================
 # RANK + DEDUP
 # =============================================================================
 
-def _deduplicate_and_rank(results, query, max_results=10, search_type: str = ""):
-    """Canonical-URL dedup, scoring, near-duplicate removal, domain diversity."""
+def _deduplicate_and_rank(results, query, max_results=10, search_type: str = "", need=None):
+    """Canonical-URL dedup, scoring, near-duplicate removal, domain diversity.
+
+    Also caps how many results may share one UNDERLYING source. Five outlets
+    republishing the same study are one piece of evidence repeated, not five
+    corroborating ones; without the cap they fill the fetch budget and crowd
+    out the primary document they are all quoting.
+    """
     seen: set = set()
     filtered: List[SearchResult] = []
 
@@ -295,7 +346,7 @@ def _deduplicate_and_rank(results, query, max_results=10, search_type: str = "")
         filtered.append(r)
 
     for r in filtered:
-        r.reliability_score = _score_result(r, query)
+        r.reliability_score = _score_result(r, query, need)
 
     ranked = sorted(filtered, key=lambda r: r.reliability_score, reverse=True)
 
@@ -318,13 +369,27 @@ def _deduplicate_and_rank(results, query, max_results=10, search_type: str = "")
 
     selected: List[SearchResult] = []
     domain_count: Dict[str, int] = {}
+    origin_count: Dict[str, int] = {}
     for r in diverse:
         d = _domain(r.url)
         cap = 1 if "wikipedia.org" in d else 2
         if domain_count.get(d, 0) >= cap:
             continue
+        # Independence cap: at most ORIGIN_CAP pages may rest on one original.
+        # The original itself is exempt so it is never the page dropped.
+        from app.agents.sources import is_original_source, underlying_source_key
+
+        origin = underlying_source_key(r.url, r.title or "", r.snippet or "", r.content or "")
+        is_original = is_original_source(r.url, r.title or "", r.snippet or "", r.content or "")
+        if not is_original and origin_count.get(origin, 0) >= ORIGIN_CAP:
+            continue
         selected.append(r)
         domain_count[d] = domain_count.get(d, 0) + 1
+        # The original does not consume the republication budget: it is the
+        # source every other page is quoting, so counting it would halve the
+        # allowance for the very repetition the cap exists to limit.
+        if not is_original:
+            origin_count[origin] = origin_count.get(origin, 0) + 1
         if len(selected) >= max_results:
             break
 
@@ -1026,7 +1091,12 @@ class SearchClient:
         if not collected:
             return []
 
-        ranked = _deduplicate_and_rank(collected, question_text, max_results, search_type)
+        from app.agents.evidence_type import classify_evidence_need
+
+        ranked = _deduplicate_and_rank(
+            collected, question_text, max_results, search_type,
+            need=classify_evidence_need(question_text),
+        )
         await self._attach_content(ranked)
 
         try:
