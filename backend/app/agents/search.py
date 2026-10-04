@@ -176,14 +176,6 @@ def _is_semantic_duplicate(a: str, b: str, threshold: float = 0.6) -> bool:
     return _semantic_overlap(a, b) >= threshold
 
 
-def _relevance_score(query: str, text: str) -> float:
-    q_words = set(_normalize_text(query).split())
-    t_words = set(_normalize_text(text).split())
-    if not q_words:
-        return 0.0
-    return len(q_words & t_words) / len(q_words)
-
-
 def _domain(url: str) -> str:
     return _host(url)
 
@@ -1246,8 +1238,20 @@ class SearchClient:
 
         # Publishers the queries steered toward but did not hard-filter on.
         # Recovered from the queries actually issued, so the preference always
-        # describes what was asked rather than what was intended.
+        # describes what was asked rather than what was intended. The
+        # contract's own `preferred_domains` seeds it: the planner computes that
+        # list from the question's jurisdiction and evidence type, and it was
+        # write-only until now — stored on every contract, documented in the
+        # planner prompt, asserted by tests, and read by nothing. Since the
+        # planner's steering stopped being a hard provider filter (see
+        # `partition_site_targets`), the ranking preference is where this
+        # preference belongs.
         preferred: List[str] = []
+        if isinstance(query, dict):
+            for term in query.get("preferred_domains") or ():
+                text_term = str(term or "").strip().lower().lstrip(".")
+                if text_term and text_term not in preferred:
+                    preferred.append(text_term)
         for q in queries:
             for term in partition_site_targets(q).soft:
                 if term not in preferred:

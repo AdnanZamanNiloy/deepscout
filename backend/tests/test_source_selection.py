@@ -534,3 +534,52 @@ def test_no_text_means_no_judgement() -> None:
 
     for url in ("https://example.com/a", "https://random-blog.com/post"):
         assert documentary_authority(url) == authority_score(url)
+
+
+def test_contract_preferred_domains_reach_the_ranker() -> None:
+    """`preferred_domains` was write-only: stored on every contract, documented
+    in the planner prompt, asserted by tests, and read by nothing. Since the
+    planner's steering stopped being a hard provider filter, the ranking
+    preference is where it belongs."""
+    import asyncio
+
+    from app.agents.search import SearchClient
+    from app.core.config import Settings
+
+    settings = Settings(
+        groq_api_key="k", database_url=":memory:", _env_file=None,
+        search_max_results=5,
+    )
+    client = SearchClient(settings)
+
+    async def fake_providers(self, q, stype):
+        return [
+            _r("Preferred", "https://bbs.gov.bd/report", "Bangladesh electrification report"),
+            _r("Other", "https://other-site.com/report", "Bangladesh electrification report"),
+        ]
+
+    async def fake_fetch(url, client=None):
+        return "text", ""
+
+    import app.agents.search as search_mod
+
+    original_providers = SearchClient._providers_for
+    original_fetch = search_mod._fetch_content
+    SearchClient._providers_for = fake_providers
+    search_mod._fetch_content = fake_fetch
+    try:
+        contract = {
+            "question": "Bangladesh electricity access statistics",
+            "search_type": "statistical",
+            "domain": "general",
+            "preferred_domains": ["gov.bd"],
+            "primary_source_query": "",
+            "variants": [],
+        }
+        ranked = asyncio.run(client._search(contract))
+    finally:
+        SearchClient._providers_for = original_providers
+        search_mod._fetch_content = original_fetch
+
+    assert ranked, "expected ranked results"
+    assert ranked[0].url == "https://bbs.gov.bd/report"
