@@ -1168,9 +1168,28 @@ class SearchClient:
 
         return results
 
+    async def run_grounding_search(self, query: str) -> List[Dict[str, Any]]:
+        """Cheap single-query search for the planner's terminology grounding.
+
+        Deliberately NOT `run_search`. A grounding search exists to hand the
+        planner a handful of `title: snippet` pairs, and it paid for a full
+        research retrieval to get them: as a bare string it was treated as a
+        contract with no `primary_source_query`, so `contract_queries` built
+        one and the call fanned out to 2-3 site-scoped queries AND downloaded
+        page bodies — every one of which was discarded unread. Measured ~20s
+        against a 0.28s LLM budget, of which the fetches and their retries were
+        the bulk.
+
+        Snippets come from the provider response, so dropping the fetch costs
+        nothing here. Evidence extraction is unaffected: it goes through
+        `run_search`, which still fetches bodies for the summarizer.
+        """
+        batch = await self._search(query, fetch_content=False)
+        return [r.to_dict() for r in batch]
+
     # -- per-contract search ----------------------------------------------
 
-    async def _search(self, query) -> List[SearchResult]:
+    async def _search(self, query, *, fetch_content: bool = True) -> List[SearchResult]:
         settings = self.settings
         question_text, search_type = _split_query(query)
         if not question_text:
@@ -1182,14 +1201,22 @@ class SearchClient:
         )
         max_results = int(getattr(settings, "search_max_results", 10) or 10)
 
-        # Cache key now includes the search_type and a version tag. Without the
-        # type, a news contract and an encyclopedia contract for the same words
-        # shared one entry; without the version, a shape change served stale
-        # payloads for a full TTL.
+        # Cache key now includes the search_type, a version tag, and whether
+        # page bodies were fetched. Without the type, a news contract and an
+        # encyclopedia contract for the same words shared one entry; without the
+        # version, a shape change served stale payloads for a full TTL.
+        #
+        # `fetch_content` is load-bearing and was missing: the planner's
+        # grounding search stores content-free results, so with one shared key a
+        # later evidence search for the same query hit that entry and reached
+        # the summarizer with snippets only and no page bodies — for a whole
+        # TTL. A test caught this the day it was written; the flag keeps the two
+        # populations in separate entries.
         key = cache_key(
             SEARCH_CACHE_VERSION,
             "search_query",
             (search_type or "general").lower(),
+            "bodies" if fetch_content else "snippets_only",
             _normalize_text(" | ".join(queries)),
         )
         cache = None
@@ -1262,7 +1289,8 @@ class SearchClient:
             need=classify_evidence_need(question_text),
             preferred=tuple(preferred),
         )
-        await self._attach_content(ranked)
+        if fetch_content:
+            await self._attach_content(ranked)
 
         try:
             if cache is not None:

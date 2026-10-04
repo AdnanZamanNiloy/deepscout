@@ -263,6 +263,129 @@ async def test_route_overlaps_grounding_search(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Grounding search must not pay for page bodies it discards
+# ---------------------------------------------------------------------------
+
+
+async def test_grounding_search_does_not_fetch_page_bodies(monkeypatch):
+    """The planner's grounding search reads six `title: snippet` pairs and
+    throws every page body away. Fetching them was ~20s of pure latency."""
+    from app.agents.search import SearchClient
+    import app.agents.search as search_mod
+
+    settings = Settings(groq_api_key="k", database_url=":memory:", _env_file=None)
+    client = SearchClient(settings)
+    fetched: list = []
+
+    async def fake_providers(self, q, stype):
+        return [
+            SearchResult(
+                title="Grounding hit", url="https://example.org/a",
+                snippet="terminology from the web", provider="test",
+            )
+        ]
+
+    async def fake_fetch(url, client=None):
+        fetched.append(url)
+        return "full page body", ""
+
+    monkeypatch.setattr(SearchClient, "_providers_for", fake_providers)
+    monkeypatch.setattr(search_mod, "_fetch_content", fake_fetch)
+
+    grounding = await client.run_grounding_search("transformer architecture")
+    assert grounding, "grounding search returned nothing"
+    assert not fetched, "grounding search downloaded page bodies it discards"
+    # The snippet it keeps is exactly what it was asked for.
+    assert "terminology from the web" in grounding[0]["snippet"]
+
+
+async def test_evidence_search_still_fetches_page_bodies(monkeypatch):
+    """The grounding optimisation must not starve the summarizer, which reads
+    the bodies."""
+    from app.agents.search import SearchClient
+    import app.agents.search as search_mod
+
+    settings = Settings(
+        groq_api_key="k", database_url=":memory:", _env_file=None,
+        search_fetch_top_n=3,
+    )
+    client = SearchClient(settings)
+    fetched: list = []
+
+    async def fake_providers(self, q, stype):
+        return [
+            SearchResult(
+                title=f"Hit {i}", url=f"https://example{i}.org/a",
+                snippet="snippet text", provider="test",
+            )
+            for i in range(3)
+        ]
+
+    async def fake_fetch(url, client=None):
+        fetched.append(url)
+        return "full page body", ""
+
+    monkeypatch.setattr(SearchClient, "_providers_for", fake_providers)
+    monkeypatch.setattr(search_mod, "_fetch_content", fake_fetch)
+
+    await client.run_search(["transformer architecture"])
+    assert fetched, "evidence search stopped fetching bodies"
+
+
+async def test_grounding_search_does_not_poison_the_evidence_cache(monkeypatch):
+    """Regression: the cache key omitted whether bodies were fetched, so the
+    grounding search's content-free entry was served to a later evidence search
+    and the summarizer got snippets with no page bodies — for a whole TTL."""
+    from app.agents.search import SearchClient
+    import app.agents.search as search_mod
+
+    settings = Settings(
+        groq_api_key="k", database_url=":memory:", _env_file=None,
+        cache_ttl_sec=3600,
+    )
+    client = SearchClient(settings)
+    fetched: list = []
+
+    async def fake_providers(self, q, stype):
+        return [
+            SearchResult(
+                title="Grounding hit", url="https://cache-poison.example/a",
+                snippet="terminology", provider="test",
+            )
+        ]
+
+    async def fake_fetch(url, client=None):
+        fetched.append(url)
+        return "full page body", ""
+
+    monkeypatch.setattr(SearchClient, "_providers_for", fake_providers)
+    monkeypatch.setattr(search_mod, "_fetch_content", fake_fetch)
+
+    await client.run_grounding_search("cache poisoning probe query")
+    assert not fetched
+    # Same query, evidence path: must NOT be served the content-free entry.
+    await client.run_search(["cache poisoning probe query"])
+    assert fetched, "evidence search was served the grounding search's cache entry"
+
+
+def test_breaker_cooldown_is_configurable_and_short():
+    """The cooldown was a literal 60.0 at four sites. A healthy direct answer is
+    ~2-3s, so one upstream 503 parked the chain for a minute — observed as a
+    68s wait for a one-line answer."""
+    from app.core.llm import LLMClient
+
+    settings = Settings(groq_api_key="k", _env_file=None)
+    client = LLMClient(settings)
+    assert client.groq_breaker.cooldown_sec == settings.llm_breaker_cooldown_sec
+    assert client.groq_breaker.threshold == settings.llm_breaker_threshold
+    # Chain breakers must not silently keep the old literal.
+    chain = client._chain_breaker({"endpoint": "e", "model": "m"})
+    assert chain.cooldown_sec == settings.llm_breaker_cooldown_sec
+    # Sized against a ~2-3s request, not a minute.
+    assert settings.llm_breaker_cooldown_sec <= 30.0
+
+
+# ---------------------------------------------------------------------------
 # Intent node: a greeting costs no LLM call at all
 # ---------------------------------------------------------------------------
 
@@ -284,6 +407,10 @@ async def test_conversation_turn_makes_no_llm_call(monkeypatch, query):
     llm = LLMClient(settings)
 
     class _Search:
+        async def run_grounding_search(self, query):
+            calls["search"] += 1
+            return []
+
         async def run_search(self, sub_questions):
             calls["search"] += 1
             return []
@@ -349,6 +476,15 @@ async def _run_with_route(monkeypatch, path: str, query: str = "transformer?") -
     llm = LLMClient(settings)
 
     class _CountingSearch:
+        async def run_grounding_search(self, query):
+            calls["search"] += 1
+            await asyncio.sleep(0.01)
+            return [
+                {"title": "Grounding hit", "snippet": "terminology from the web",
+                 "url": "https://example.org/a", "content": "body",
+                 "reliability_score": 0.9}
+            ]
+
         async def run_search(self, sub_questions):
             calls["search"] += 1
             await asyncio.sleep(0.01)

@@ -81,6 +81,9 @@ async def test_expansion_searches_only_new_questions(monkeypatch):
                      "sub_question": q[0] if isinstance(q, (tuple, list)) else q,
                      "snippet": "snip", "content": "content here"} for q in questions]
 
+        async def run_grounding_search(self, query):
+            return await self.run_search([query])
+
     state = wf.build_initial_state("What is RAG?", 3)
     workflow = wf.create_workflow(LLMClient(settings), StubSearch())
 
@@ -134,6 +137,9 @@ async def test_variant_queries_searched_and_attributed(monkeypatch):
                      "sub_question": q[0] if isinstance(q, (tuple, list)) else q,
                      "snippet": "snip", "content": "content here"}
                     for i, q in enumerate(questions)]
+
+        async def run_grounding_search(self, query):
+            return await self.run_search([query])
 
     state = wf.build_initial_state("What is RAG?", 3)
     workflow = wf.create_workflow(LLMClient(settings), StubSearch())

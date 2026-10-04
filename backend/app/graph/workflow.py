@@ -1141,7 +1141,7 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
         # the planner, which was their original job.
         async def _context_search() -> List[str]:
             try:
-                raw_results = await search_client.run_search([state["query"]])
+                raw_results = await search_client.run_grounding_search(state["query"])
                 return [
                     f"{str(r.get('title', '') or '').strip()}: {str(r.get('snippet', '') or '').strip()[:220]}"
                     for r in (raw_results or [])[:6]
