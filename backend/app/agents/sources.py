@@ -27,7 +27,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Dict, Iterable, List, NamedTuple, Optional, Sequence, Set, Tuple
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 
 # ---------------------------------------------------------------------------
@@ -1112,6 +1112,66 @@ def _blocks_host(site_term: str, blocked_host: str) -> bool:
         return False
     term = (site_term or "").strip().lower().lstrip(".")
     return bool(term) and term == blocked_host.lower()
+
+
+class SiteTargets(NamedTuple):
+    """A query's `site:` terms, sorted by how strongly they may be enforced."""
+
+    hard: Tuple[str, ...]      # justified by the query's own subject; may filter
+    soft: Tuple[str, ...]      # steering preference only; must NOT filter
+    excluded: Tuple[str, ...]  # `-site:` terms; must be passed as exclusions
+
+
+_SITE_TERM_RE = re.compile(r"(-?)site:(\S+)", re.IGNORECASE)
+
+
+def partition_site_targets(text: str) -> SiteTargets:
+    """Split a query's `site:` terms into hard, soft and excluded targets.
+
+    HARD means "the query's own subject justifies excluding everything else": a
+    country official suffix family for a country the question actually named
+    (`population of Malawi` -> `site:gov.mw`). Scoping there loses nothing,
+    because the answer lives in that family.
+
+    SOFT means "we would like results from here": a registry hint, a rotated
+    corroboration target, a journal or agency guessed from (search_type,
+    domain). Handing those to a provider as a domain filter converts a mild
+    preference into a hard exclusion, which is how a mis-aimed hint produced an
+    EMPTY result set and burned the retrieval slot reserved for the primary
+    source. Soft targets are therefore stripped from the query text and applied
+    as a ranking preference instead, where a wrong guess costs nothing.
+
+    EXCLUDED are `-site:` terms. They are negatives and must never be read as
+    targets: `build_corroboration_query` emits `-site:<domain>` precisely to
+    obtain an INDEPENDENT publisher, and treating that as a preference would
+    rank the one source we are required to move away from to the top.
+
+    Every `site:` term is stripped from the query text either way; the split
+    only decides what the caller may additionally filter on.
+    """
+    positive: List[str] = []
+    excluded: List[str] = []
+    for negated, match in _SITE_TERM_RE.findall(text or ""):
+        for part in str(match).replace(",", " ").split():
+            if part.upper() == "OR":
+                continue
+            term = part.strip().strip(",").strip("()").strip("-").split("/")[0].lower()
+            if not term:
+                continue
+            bucket = excluded if negated else positive
+            if term not in bucket:
+                bucket.append(term)
+    if not positive:
+        return SiteTargets((), (), tuple(excluded))
+    juris = question_jurisdiction(text)
+    if not juris:
+        # Nothing in the query names a country, so no term can be justified by
+        # the query's subject: every site: hint is a guess.
+        return SiteTargets((), tuple(positive), tuple(excluded))
+    own = set(jurisdiction_site_terms(juris, max_sites=max(1, len(positive))))
+    hard = tuple(t for t in positive if t in own)
+    soft = tuple(t for t in positive if t not in own)
+    return SiteTargets(hard, soft, tuple(excluded))
 
 
 def authoritative_site_terms(

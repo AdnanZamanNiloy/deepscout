@@ -184,22 +184,76 @@ async def test_tavily_content_skips_refetch(monkeypatch, tmp_path):
     assert calls == []
 
 
-def test_prepare_tavily_query_translates_site_operators():
-    query, domains = _prepare_tavily_query(
-        "retrieval benchmarks site:arxiv.org,foo/bar comparisons",
-        ["example.com", "arxiv.org"],
+def test_prepare_tavily_query_translates_hard_site_operators():
+    """A `site:` term justified by the query's own subject MAY filter.
+
+    "population of Malawi" names Malawi, so scoping to Malawi's official
+    suffix family excludes nothing — the answer is in that family.
+    """
+    query, domains, excluded = _prepare_tavily_query(
+        "population of Malawi site:gov.mw,foo/bar comparisons"
     )
 
     assert "site:" not in query
-    assert domains == ["example.com", "arxiv.org", "foo"]
+    assert domains == ["gov.mw"]
+    assert excluded == []
     assert len(query) <= 400
 
 
+def test_prepare_tavily_query_does_not_filter_on_unguessed_site_operators():
+    """An UNGROUNDED `site:` hint must not become a provider filter.
+
+    `site:` came from the (search_type, domain) registry, not from anything the
+    query says. Passing it as include_domains deletes every other candidate from
+    the result set, which is how a mis-aimed hint returned zero results and
+    burned the retrieval slot reserved for the primary source. It is stripped
+    from the query text and re-applied as a ranking preference instead.
+    """
+    query, domains, excluded = _prepare_tavily_query(
+        "retrieval benchmarks site:arxiv.org,foo/bar comparisons"
+    )
+
+    assert "site:" not in query
+    assert domains == [], "an ungrounded site: hint became a hard filter"
+    assert excluded == []
+
+
+def test_prepare_tavily_query_honours_explicit_query_domains():
+    """Domains passed by our own code are an explicit request, so they filter."""
+    query, domains, excluded = _prepare_tavily_query(
+        "retrieval benchmarks site:arxiv.org", ["example.com", "arxiv.org"]
+    )
+
+    assert domains == ["example.com", "arxiv.org"]
+
+
+def test_prepare_tavily_query_maps_negative_site_to_exclude_domains():
+    """`-site:` is an exclusion and must never read as a preferred target.
+
+    Corroboration queries emit `-site:<domain>` to obtain an INDEPENDENT
+    publisher. Treating it as a positive preference would rank the one source
+    we are required to move away from to the top; leaving it in the query text
+    as literal punctuation meant the exclusion filtered nothing at all.
+    """
+    query, domains, excluded = _prepare_tavily_query(
+        "exports corroboration (site:gov.bd OR site:oecd.org) -site:example.com"
+    )
+
+    assert domains == ["gov.bd"]
+    assert excluded == ["example.com"]
+    assert "-site:" not in query
+    assert "site:" not in query
+    # The grouping punctuation and dangling ORs must not survive as noise.
+    assert "(" not in query and ")" not in query
+    assert not query.rstrip().endswith("OR")
+
+
 def test_prepare_tavily_query_truncates_long_queries():
-    query, domains = _prepare_tavily_query("word " * 200)
+    query, domains, excluded = _prepare_tavily_query("word " * 200)
 
     assert len(query) == 400
     assert domains == []
+    assert excluded == []
 
 
 def test_tavily_payload_content_fallbacks():
@@ -253,8 +307,11 @@ async def test_tavily_request_uses_clean_query_and_domains():
         monkeypatch.undo()
 
     assert route.called
-    payload = json.loads(route.calls[0].request.content.decode("utf-8"))
-    assert payload["include_domains"] == ["example.com", "arxiv.org"]
+    payload = json.loads(route.calls[0].request.content.decode("utf8"))
+    # Only the caller-supplied domain filters. The inline `site:arxiv.org` came
+    # from the steering registry rather than from anything the query says, so it
+    # is stripped and re-applied as a ranking preference instead of a filter.
+    assert payload["include_domains"] == ["example.com"]
     assert "site:" not in payload["query"]
     assert len(payload["query"]) <= 400
     assert [(row.url, row.provider) for row in results] == [("https://arxiv.org/scoped", "tavily")]

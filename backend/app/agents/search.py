@@ -48,7 +48,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 from urllib.parse import quote
 from xml.etree import ElementTree
 
@@ -82,6 +82,7 @@ from app.agents.sources import (
     extract_domain as _host,
     freshness_score,
     is_primary_source,
+    partition_site_targets,
 )
 
 logger = get_logger(__name__)
@@ -239,7 +240,38 @@ _READABLE_TYPES = ("text/html", "text/plain", "application/xhtml", "application/
 # SCORING
 # =============================================================================
 
-def _score_result(result: SearchResult, query: str, need=None) -> float:
+# Reward a result that came from a publisher a query STEERED toward without
+# hard-filtering on it. Sized below the topicality and tier gaps on purpose: a
+# preferred publisher that does not actually discuss the question must still
+# lose to one that does.
+PREFERRED_HOST_BONUS = 0.16
+PREFERRED_FAMILY_BONUS = 0.08
+
+
+def _preferred_domain_bonus(url: str, targets: Sequence[str]) -> float:
+    """Bonus for a host matching one of the query's soft `site:` targets.
+
+    Matches subdomains, so a `site:gov.bd` target is satisfied by `bbs.gov.bd`
+    and a `site:worldbank.org` target by `data.worldbank.org`.
+    """
+    if not targets:
+        return 0.0
+    domain = _host(url)
+    if not domain:
+        return 0.0
+    best = 0.0
+    for target in targets:
+        term = (target or "").strip().lower().lstrip(".")
+        if not term:
+            continue
+        if domain == term:
+            best = max(best, PREFERRED_HOST_BONUS)
+        elif domain.endswith(f".{term}"):
+            best = max(best, PREFERRED_FAMILY_BONUS)
+    return best
+
+
+def _score_result(result: SearchResult, query: str, need=None, preferred=()) -> float:
     """Rank a result before any content is fetched.
 
     Authority alone answers "is this publisher worth listening to", which is not
@@ -292,6 +324,7 @@ def _score_result(result: SearchResult, query: str, need=None) -> float:
         + primary_bonus
         + (recency * recency_weight)
         - wiki_penalty
+        + _preferred_domain_bonus(result.url, preferred)
     )
 
     if need is not None:
@@ -320,13 +353,18 @@ def _score_result(result: SearchResult, query: str, need=None) -> float:
 # RANK + DEDUP
 # =============================================================================
 
-def _deduplicate_and_rank(results, query, max_results=10, search_type: str = "", need=None):
+def _deduplicate_and_rank(results, query, max_results=10, search_type: str = "", need=None,
+                          preferred=()):
     """Canonical-URL dedup, scoring, near-duplicate removal, domain diversity.
 
     Also caps how many results may share one UNDERLYING source. Five outlets
     republishing the same study are one piece of evidence repeated, not five
     corroborating ones; without the cap they fill the fetch budget and crowd
     out the primary document they are all quoting.
+
+    `preferred` is the set of publishers the queries STEERED toward without
+    hard-filtering on them; matching hosts get a ranking bonus so the steering
+    still buys something after the provider stopped filtering.
     """
     seen: set = set()
     filtered: List[SearchResult] = []
@@ -346,7 +384,7 @@ def _deduplicate_and_rank(results, query, max_results=10, search_type: str = "",
         filtered.append(r)
 
     for r in filtered:
-        r.reliability_score = _score_result(r, query, need)
+        r.reliability_score = _score_result(r, query, need, preferred)
 
     ranked = sorted(filtered, key=lambda r: r.reliability_score, reverse=True)
 
@@ -709,11 +747,29 @@ _SITE_OPERATOR_RE = re.compile(r"site:(\S+)", re.IGNORECASE)
 _TAVILY_MAX_QUERY_CHARS = 400
 
 
-def _prepare_tavily_query(query: Any, query_domains: list[str] | None = None) -> tuple[str, list[str]]:
+def _prepare_tavily_query(
+    query: Any, query_domains: list[str] | None = None
+) -> tuple[str, list[str], list[str]]:
     """Normalize a query for Tavily: translate Google-style site: operators into
-    include_domains (which Tavily rejects inline), collapse whitespace, and cap
-    length at Tavily's 400-character limit."""
+    include_domains / exclude_domains (which Tavily rejects inline), collapse
+    whitespace, and cap length at Tavily's 400-character limit.
+
+    Only HARD site: targets become `include_domains`. `include_domains` is a
+    filter, not a preference: passing a guessed publisher there deletes every
+    other candidate from the result set, and an empty result was then treated as
+    a provider failure and charged to the circuit breaker. Jurisdiction-grounded
+    targets still filter (the question named the country, so its own agencies are
+    the answer's home); every other site: term is stripped from the query text
+    and re-applied as a ranking preference in `_score_result`, where a wrong
+    guess costs nothing. See `sources.partition_site_targets`.
+
+    `-site:` terms become `exclude_domains`. They were previously left in the
+    query text as literal punctuation, so a corroboration query asking for an
+    INDEPENDENT publisher reached Tavily with a dangling `-site:example.com`
+    that filtered nothing — the exclusion silently did not happen.
+    """
     text = query if isinstance(query, str) else str(query or "")
+    split = partition_site_targets(text)
     domains: list[str] = []
 
     def _add_domain(candidate: Any) -> None:
@@ -724,14 +780,30 @@ def _prepare_tavily_query(query: Any, query_domains: list[str] | None = None) ->
             if domain and domain not in domains:
                 domains.append(domain)
 
+    # Caller-supplied domains are an explicit request from our own code (used
+    # for first-party lookups), so they are honoured as filters.
     for candidate in list(query_domains or []):
         _add_domain(candidate)
-    for match in _SITE_OPERATOR_RE.findall(text):
-        _add_domain(match)
+    for term in split.hard:
+        _add_domain(term)
+    excluded = [d for d in split.excluded if d not in domains]
     text = _SITE_OPERATOR_RE.sub("", text)
-    text = re.sub(r"\s+\bOR\b\s*$", "", text, flags=re.IGNORECASE)
+    # Strip the grouping punctuation that only existed to hold the site:
+    # clause. Leaving it behind sent Tavily queries like
+    # "exports official report ( OR OR -", which reads as noise.
+    text = text.replace("(", " ").replace(")", " ")
+    # The `-` of a stripped `-site:` clause leaves a dangling token. It must go
+    # BEFORE the trailing-OR strip, or it hides the ORs behind it: with the
+    # dash still there the string ends in `-`, not `OR`, and a three-host
+    # clause leaves two bare `OR`s in the query sent to the provider.
+    text = re.sub(r"(?:^|\s)-\s*$", " ", text)
+    while True:
+        stripped = re.sub(r"\s+\bOR\b\s*$", "", text, flags=re.IGNORECASE)
+        if stripped == text:
+            break
+        text = stripped
     text = re.sub(r"\s+", " ", text).strip()
-    return text[:_TAVILY_MAX_QUERY_CHARS], domains
+    return text[:_TAVILY_MAX_QUERY_CHARS], domains, excluded
 
 
 def _split_query(query: Any) -> tuple[str, str]:
@@ -1093,9 +1165,19 @@ class SearchClient:
 
         from app.agents.evidence_type import classify_evidence_need
 
+        # Publishers the queries steered toward but did not hard-filter on.
+        # Recovered from the queries actually issued, so the preference always
+        # describes what was asked rather than what was intended.
+        preferred: List[str] = []
+        for q in queries:
+            for term in partition_site_targets(q).soft:
+                if term not in preferred:
+                    preferred.append(term)
+
         ranked = _deduplicate_and_rank(
             collected, question_text, max_results, search_type,
             need=classify_evidence_need(question_text),
+            preferred=tuple(preferred),
         )
         await self._attach_content(ranked)
 
@@ -1505,7 +1587,9 @@ class SearchClient:
         repeated ones, and falls back to DDG — a paid call must never leave the
         run worse off than the free path."""
         api_key = _real_key(self.settings.tavily_api_key)
-        clean_query, include_domains = _prepare_tavily_query(query, query_domains)
+        clean_query, include_domains, exclude_domains = _prepare_tavily_query(
+            query, query_domains
+        )
         topic = str(topic or "general").strip().lower() or "general"
         if topic not in ("general", "news"):
             topic = "general"
@@ -1522,6 +1606,7 @@ class SearchClient:
                         "max_results": 8,
                         "include_answer": False,
                         "include_domains": include_domains or None,
+                        "exclude_domains": exclude_domains or None,
                         "use_cache": True,
                     },
                 )
