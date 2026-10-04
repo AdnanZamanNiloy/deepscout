@@ -196,6 +196,13 @@ class Settings(BaseSettings):
     # Self-confidence at/above which the model's direct-answer clearance is
     # trusted. Below it, research.
     router_min_direct_confidence: float = 0.75
+    # Higher bar for clearing a question whose only objection was a question
+    # SHAPE ("how many X", a comparative framing). Those are overridable — a
+    # textbook constant like "how many legs does a spider have" needs no
+    # source — but the model must be markedly more certain when a
+    # deterministic signal disagreed with it. Freshness, contested, decision
+    # and ambiguity are absolute and no confidence clears them.
+    router_min_direct_confidence_clearing_blocker: float = 0.90
     # Direct answers carry no sources, so their delivered confidence is
     # capped strictly below SUFFICIENCY_THRESHOLD (0.75): an ungrounded
     # answer must never be mistakable for a researched one.
