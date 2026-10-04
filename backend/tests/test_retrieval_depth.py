@@ -24,7 +24,14 @@ def _result(i: int, tag: str) -> SearchResult:
     return SearchResult(
         title=f"Result {i}: {topic}",
         url=f"https://example-{i}.com/{tag}",
-        snippet=f"Article {i} covering {topic} with measurements",
+        # A real provider answering this query returns pages that engage it, and
+        # the topicality floor discards documents about a different subject.
+        # The stub must therefore mention the query's subject words, or this
+        # test would be measuring the floor instead of fetch breadth.
+        snippet=(
+            f"Article {i} covering {topic} with measurements, "
+            f"retrieved for retrieval study {tag}"
+        ),
         provider="test",
     )
 

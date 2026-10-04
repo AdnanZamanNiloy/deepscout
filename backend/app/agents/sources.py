@@ -1622,6 +1622,132 @@ def definition_misfit(title: str, snippet: str, asks_definition: bool) -> float:
     return -0.30 if looks_like_definition_page(title, snippet) else 0.0
 
 
+# ---------------------------------------------------------------------------
+# TOPICALITY
+#
+# Authority answers "how much should we trust this publisher". It does not
+# answer "does this document address what was asked" — and adding the second as
+# a small bonus does not fix that, because the two are not the same magnitude.
+# Authority spans 0.0-0.95 while relevance could only ever contribute 0.25, so
+# an authoritative page about an entirely different subject outranked the
+# on-topic answer by ~0.37. Nothing anywhere dropped it: the ranker filtered
+# blocked hosts and duplicates, never irrelevance.
+#
+# So topicality is applied MULTIPLICATIVELY to authority. A document that
+# engages none of the question's subject keeps only TOPICALITY_AUTHORITY_FLOOR
+# of its authority credit, and one that engages it fully keeps all of it. That
+# is what makes relevance able to outrank a tier gap when it must, while leaving
+# on-topic ranking order otherwise unchanged.
+# ---------------------------------------------------------------------------
+
+# Fraction of a result's authority credit that survives ZERO topical engagement.
+TOPICALITY_AUTHORITY_FLOOR = 0.35
+
+# Below this share of the question's subject words a result counts as engaging
+# nothing at all. Low on purpose: the floor exists to remove documents about a
+# different subject, not to second-guess the ranker about weak matches. A page
+# that lands one substantive subject word still counts as relevant and is
+# ranked normally.
+MIN_TOPICAL_ENGAGEMENT = 0.10
+
+# Function words carry no subject. Excluded from the overlap denominator so
+# "what is the population of Malawi" is not scored on "what/is/the/of".
+_TOPICAL_STOPWORDS: frozenset = frozenset({
+    "a", "about", "an", "and", "are", "as", "at", "be", "been", "by", "compared",
+    "did", "do", "does", "during", "explain", "for", "from", "give", "has",
+    "have", "how", "in", "into", "is", "it", "its", "list", "many", "much",
+    "of", "on", "or", "overview", "per", "report", "summarize", "summarise",
+    "than", "that", "the", "their", "them", "there", "these", "this", "those",
+    "to", "was", "were", "what", "when", "where", "which", "who", "why",
+    "with", "within", "without",
+    # Meta-questions about the subject rather than the subject itself. "define
+    # RAG" is a question ABOUT the term "RAG"; scoring a page on having the
+    # word "define" would rate every glossary page as on-topic.
+    "define", "defined", "defines", "definition", "mean", "means", "meaning",
+    "called", "known", "term", "actually", "really",
+})
+
+
+def _topical_words(text: str) -> Set[str]:
+    return {
+        w for w in re.findall(r"[a-z0-9][a-z0-9'&.-]*", (text or "").lower())
+        if w not in _TOPICAL_STOPWORDS and len(w) > 1
+    }
+
+
+def topical_engagement(
+    query: str, text: str, entity_tokens: Sequence[str] = ()
+) -> float:
+    """How much of the question's subject a result actually engages, 0.0-1.0.
+
+    Two independent readings, because either alone is easy to fool:
+
+      * CONTENT-WORD OVERLAP — the share of the question's subject words that
+        appear in the result. Fails on paraphrases and on proper nouns the
+        result abbreviates.
+      * ENTITY ENGAGEMENT — whether any subject the question NAMED (a person,
+        an organisation, an acronym, a figure) appears at all. Survives
+        paraphrase, and catches the page that shares the question's wording
+        while being about something else.
+
+    The entity reading wins when the question named anything, because a named
+    subject is the part a substitute page is most likely to drop. A question
+    with no nameable subject ("what is a quark") falls back to overlap alone.
+
+    0.0 when the query carries no subject to engage with, so callers must treat
+    it as "cannot judge" rather than "irrelevant" — the ranking floor checks the
+    query is substantive before discarding anything on this basis.
+    """
+    q_words = _topical_words(query)
+    t_words = _topical_words(text)
+    lexical = (len(q_words & t_words) / len(q_words)) if q_words else 0.0
+    if entity_tokens:
+        low = (text or "").lower()
+        named = 1.0 if any(tok.lower() in low for tok in entity_tokens) else 0.0
+        return max(lexical, named)
+    return lexical
+
+
+def is_topically_irrelevant(query: str, text: str, entity_tokens: Sequence[str] = ()) -> bool:
+    """Does this result engage NOTHING the question is about?
+
+    The floor rule, kept separate from `topical_engagement` because it answers a
+    different question. Engagement is a continuous score for ranking; this is
+    the binary "is this document about a different subject" test that justifies
+    discarding the result entirely.
+
+    When the question named a subject, a hit on ANY of it is enough to keep the
+    result, because a substitute page is most likely to drop the name while
+    keeping the surrounding vocabulary. Only when every named subject is absent
+    AND the remaining word overlap is negligible is it discarded. Requiring both
+    is what keeps a real-but-partial match ("forward guidance" for a question
+    about revenue guidance) in the pool for the ranker to place, while still
+    removing a Mars-rover page returned to a question about Malawian air
+    pollution deaths.
+    """
+    overlap = topical_engagement(query, text, ())
+    if overlap >= MIN_TOPICAL_ENGAGEMENT:
+        return False
+    if entity_tokens:
+        low = (text or "").lower()
+        return not any(tok.lower() in low for tok in entity_tokens)
+    return True
+
+
+def topicality_floor_applies(query: str, entity_tokens: Sequence[str] = ()) -> bool:
+    """Is this query specific enough that irrelevance is detectable?
+
+    A question has to say something before "not about it" means anything.
+    "population of Malawi" is two content words and entirely judgeable; "what is
+    it" is not, and filtering on engagement there would discard results for no
+    reason. The bar is deliberately low and only asks whether the query carries
+    a subject at all.
+    """
+    if entity_tokens:
+        return True
+    return len(_topical_words(query)) >= 2
+
+
 def entity_miss(query: str, tokens: Sequence[str], text: str) -> float:
     """Penalty when a result engages none of the question's subject tokens.
 
