@@ -232,6 +232,95 @@ async def test_rate_limited_retry_after_is_honoured(monkeypatch):
     assert sleeps == [5.0]
 
 
+async def test_an_oversized_retry_after_cannot_buy_60_seconds(monkeypatch):
+    """A publisher sending `Retry-After: 52` must not spend 52 seconds of a
+    research run on one page. The header may SHORTEN a wait; it may never extend
+    it past the loop's own backoff ceiling. The host cooldown is the right
+    response to a publisher that needs longer."""
+    sleeps: list = []
+
+    async def _record_sleep(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(search_mod.asyncio, "sleep", _record_sleep)
+
+    with respx.mock(assert_all_called=False) as mock:
+        mock.get("https://busysite.com/h").mock(
+            side_effect=[
+                httpx.Response(429, headers={"Retry-After": "52"}),
+                httpx.Response(200, headers={"content-type": "text/html"},
+                               text="<html><body>ok body text here</body></html>"),
+            ]
+        )
+        outcome = await _fetch_content_outcome(
+            httpx.AsyncClient(), "https://busysite.com/h", max_attempts=3)
+    assert outcome.ok is True
+    assert sleeps == [search_mod.FETCH_RETRY_AFTER_CAP_SEC]
+    assert sleeps[0] <= 6.0
+
+
+async def test_retry_after_respects_the_calling_policy_ceiling():
+    """The measured failure: a Wikipedia 429 carrying `Retry-After: 52`
+    overrode that leg's own `max_delay` of 3.0s and slept 52 seconds inside a
+    single contract search, on an optional enrichment provider."""
+    from app.agents.reliability import retry_after_seconds
+
+    class _Resp:
+        headers = {"Retry-After": "52"}
+
+    class _Exc(Exception):
+        response = _Resp()
+
+    assert retry_after_seconds(_Exc(), cap=3.0) == 3.0
+    # A short Retry-After is still honoured — the provider's answer wins when it
+    # fits inside the budget, which is the whole point of reading the header.
+    class _Short:
+        headers = {"Retry-After": "1"}
+
+    class _Exc2(Exception):
+        response = _Short()
+
+    assert retry_after_seconds(_Exc2(), cap=3.0) == 1.0
+
+
+async def test_search_provider_retry_is_bounded_by_its_policy():
+    """End to end through retry_async: the sleep must respect the policy."""
+    from app.agents.reliability import RetryPolicy, retry_async
+
+    class _Resp:
+        headers = {"Retry-After": "52"}
+
+    class _Throttled(Exception):
+        response = _Resp()
+
+    slept: list = []
+
+    async def _record_sleep(seconds):
+        slept.append(seconds)
+
+    calls = {"n": 0}
+
+    async def _boom():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise _Throttled("429")
+        return "ok"
+
+    import app.agents.reliability as rel
+    original = rel.asyncio.sleep
+    rel.asyncio.sleep = _record_sleep
+    try:
+        out = await retry_async(
+            _boom, policy=RetryPolicy(attempts=2, base_delay=0.5, max_delay=3.0),
+            label="probe",
+        )
+    finally:
+        rel.asyncio.sleep = original
+
+    assert out == "ok"
+    assert slept == [3.0], f"slept {slept} instead of the policy ceiling"
+
+
 async def test_rate_limited_exhaustion_marks_failure_and_cooldown(monkeypatch):
     async def _no_sleep(_):
         return None
