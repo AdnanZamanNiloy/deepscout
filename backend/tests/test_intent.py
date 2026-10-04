@@ -245,6 +245,11 @@ class _FakeSearchClient:
             "url": "https://arxiv.org/abs/1706.03762",
         }]
 
+    # The planner's grounding search uses the cheap entry point; it returns the
+    # same provider snippets, just without the page-body fetch.
+    async def run_grounding_search(self, query):
+        return await self.run_search([query])
+
 
 async def test_graph_runs_intent_before_planner(monkeypatch):
     """Full-graph wiring: intent resolves first, its context search is shared,

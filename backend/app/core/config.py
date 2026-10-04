@@ -138,6 +138,17 @@ class Settings(BaseSettings):
 
     # Timeouts (seconds)
     llm_timeout_sec: float = 25.0
+    # How long an LLM provider's circuit breaker stays OPEN after `threshold`
+    # consecutive failures. Sized against the request budget a user actually
+    # waits on: a healthy direct answer is ~2-3s end to end, so the previous
+    # 60s window meant one upstream 503 degraded the whole chain for a full
+    # minute — measured as a 68s wait for a one-line answer. Short enough that a
+    # transient blip clears inside a user's patience, long enough not to hammer
+    # a provider that is genuinely down (a 429 still does NOT open the breaker
+    # — see CircuitBreaker.note_throttled).
+    llm_breaker_cooldown_sec: float = 15.0
+    # Consecutive failures before a provider's breaker opens.
+    llm_breaker_threshold: int = 3
     # Slower OpenAI-compatible providers take 15-30s on planner-sized
     # prompts (measured live). 60s gives 2-3x headroom while halving the
     # cost of a stalled provider: a free proxy that will not answer at all

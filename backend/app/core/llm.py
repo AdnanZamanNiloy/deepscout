@@ -364,8 +364,8 @@ class LLMClient:
             logger.warning("llm cache configure failed: %s", exc)
         # Breaker state lives on the client instance (created once at app
         # startup), is bounded, and resets on success — not per-request state.
-        self.groq_breaker = CircuitBreaker(threshold=3, cooldown_sec=60.0)
-        self.custom_breaker = CircuitBreaker(threshold=3, cooldown_sec=60.0)
+        self.groq_breaker = CircuitBreaker(**self._breaker_kwargs())
+        self.custom_breaker = CircuitBreaker(**self._breaker_kwargs())
         # Concurrency cap across ALL LLM calls (planner, N summarizer workers,
         # critic, synthesizer). Without it, one expansion pass fires up to
         # max_parallel_agents simultaneous prompts — the observed cause of
@@ -644,11 +644,31 @@ class LLMClient:
             })
         return configs
 
+    def _breaker_kwargs(self) -> dict:
+        """Circuit-breaker geometry, from Settings.
+
+        The cooldown used to be a literal 60.0 at four construction sites. Sized
+        against what a user waits for, 60s is indefensible: a healthy direct
+        answer is ~2-3s end to end, so one upstream 503 parked the whole chain
+        for a minute — observed as a 68s wait for a one-line answer. Now
+        configurable, and short enough that a transient blip clears inside a
+        user's patience.
+
+        A 429 still does NOT open the breaker (see `CircuitBreaker.note_throttled`)
+        — this is for outages, not throttling.
+        """
+        return {
+            "threshold": int(getattr(self.settings, "llm_breaker_threshold", 3) or 3),
+            "cooldown_sec": float(
+                getattr(self.settings, "llm_breaker_cooldown_sec", 15.0) or 15.0
+            ),
+        }
+
     def _chain_breaker(self, config: Dict[str, str]) -> CircuitBreaker:
         identity = (config["endpoint"], config["model"])
         breaker = self._chain_breakers.get(identity)
         if breaker is None:
-            breaker = CircuitBreaker(threshold=3, cooldown_sec=60.0)
+            breaker = CircuitBreaker(**self._breaker_kwargs())
             self._chain_breakers[identity] = breaker
         return breaker
 
@@ -792,7 +812,7 @@ class LLMClient:
         # keeps any pre-existing state — only a real switch resets.
         identity = (custom["endpoint"], custom["model"]) if custom else None
         if identity is not None and self._custom_identity is not None and identity != self._custom_identity:
-            self.custom_breaker = CircuitBreaker(threshold=3, cooldown_sec=60.0)
+            self.custom_breaker = CircuitBreaker(**self._breaker_kwargs())
         self._custom_identity = identity
 
         # ---- Response cache: exact-prompt hits skip providers entirely ----
