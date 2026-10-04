@@ -277,13 +277,17 @@ def test_definition_pages_still_win_when_a_definition_was_asked_for() -> None:
 def test_republications_of_one_study_are_capped() -> None:
     """Five outlets quoting one study must not fill the result set."""
     doi = "10.1038/s41586-020-2649-2"
+    # Each outlet snippet names the study's subject as a real report would. The
+    # topicality floor drops documents that engage nothing the question is
+    # about, so a fixture whose snippets are bare DOIs would measure the floor
+    # rather than the independence cap.
     results = [
         _r("Original study", f"https://doi.org/{doi}", "the study on remote work and productivity"),
-        _r("Outlet A", "https://a.com/1", f"reporting on doi:{doi}"),
-        _r("Outlet B", "https://b.com/2", f"summary of {doi}"),
-        _r("Outlet C", "https://c.net/3", f"doi:{doi} findings"),
-        _r("Outlet D", "https://d.org/4", f"paper {doi}"),
-        _r("Outlet E", "https://e.com/5", f"coverage of {doi}"),
+        _r("Outlet A", "https://a.com/1", f"reporting on doi:{doi} and remote work evidence"),
+        _r("Outlet B", "https://b.com/2", f"summary of {doi} on remote work and productivity"),
+        _r("Outlet C", "https://c.net/3", f"doi:{doi} findings on remote work evidence"),
+        _r("Outlet D", "https://d.org/4", f"paper {doi} about remote work productivity evidence"),
+        _r("Outlet E", "https://e.com/5", f"coverage of {doi} and the remote work evidence"),
     ]
     selected = _deduplicate_and_rank(results, "evidence on remote work", 10, "academic")
     # The original is exempt from the cap, so it survives plus ORIGIN_CAP others.
@@ -343,3 +347,101 @@ def test_preference_never_outranks_topicality() -> None:
         preferred=("worldbank.org",),
     )
     assert [r.url for r in ranked][0] == on_topic.url
+
+
+# ---------------------------------------------------------------------------
+# Topicality: authority must not buy a pass for an off-topic document
+# ---------------------------------------------------------------------------
+
+
+def test_topical_engagement_reads_content_words_and_named_subjects() -> None:
+    from app.agents.sources import topical_engagement
+
+    q = "How many deaths were attributed to air pollution in Malawi in 2024?"
+    on = "Malawi recorded 12000 deaths attributed to air pollution in 2024"
+    off = "Curiosity rover discovered organic molecules on the Martian surface"
+    assert topical_engagement(q, on, ("Malawi", "2024")) > 0.5
+    assert topical_engagement(q, off, ("Malawi", "2024")) == 0.0
+
+
+def test_topical_engagement_ignores_function_words() -> None:
+    """Scoring on 'what/is/the/of' would make every page look equally relevant."""
+    from app.agents.sources import topical_engagement
+
+    q = "what is the population of Malawi"
+    about = "the population of Malawi is estimated"
+    assert topical_engagement(q, about, ()) == 1.0
+
+
+def test_authoritative_off_topic_page_loses_to_weak_on_topic_page() -> None:
+    """The failure this fixes: authority spans 0.95 and relevance could only
+    ever add 0.25, so an authoritative page about a different subject beat the
+    on-topic answer by ~0.37 and nothing dropped it."""
+    question = "How many deaths were attributed to air pollution in Malawi in 2024?"
+    need = classify_evidence_need(question)
+    off_topic = _r(
+        "Mars rover findings",
+        "https://www.nasa.gov/mars-rover",
+        "Curiosity rover discovered organic molecules on the Martian surface",
+    )
+    on_topic = _r(
+        "Malawi air pollution deaths 2024",
+        "https://news-site.com/malawi-deaths",
+        "Malawi recorded 12000 deaths attributed to air pollution in 2024",
+    )
+    assert _score_result(off_topic, question, need) < _score_result(on_topic, question, need)
+
+
+def test_off_topic_results_are_discarded_before_synthesis() -> None:
+    question = "How many deaths were attributed to air pollution in Malawi in 2024?"
+    need = classify_evidence_need(question)
+    results = [
+        _r("Mars rover", "https://www.nasa.gov/mars", "Curiosity rover organic molecules"),
+        _r("Mars geology", "https://science.org/mars", "Martian soil chemistry and craters"),
+        _r("Venus clouds", "https://noaa.gov/venus", "Venus cloud structure observations"),
+        _r("Malawi deaths", "https://news-site.com/mw",
+           "Malawi recorded 12000 deaths attributed to air pollution in 2024"),
+    ]
+    ranked = _deduplicate_and_rank(results, question, 10, "statistical", need)
+    assert [r.url for r in ranked] == ["https://news-site.com/mw"]
+
+
+def test_one_off_topic_result_survives_when_nothing_is_relevant() -> None:
+    """Returning nothing from a non-empty provider response is a retrieval
+    decision, not a quality one — but it must be the CLOSEST thing found, not
+    whichever page happened to have the highest authority."""
+    question = "How many deaths were attributed to air pollution in Malawi in 2024?"
+    need = classify_evidence_need(question)
+    results = [
+        _r("Mars rover", "https://science.org/mars", "Martian soil chemistry"),
+        _r("Venus clouds", "https://noaa.gov/venus", "Venus cloud structure observations"),
+    ]
+    ranked = _deduplicate_and_rank(results, question, 10, "statistical", need)
+    assert len(ranked) == 1
+
+
+def test_a_partial_match_is_kept_for_the_ranker() -> None:
+    """The floor removes documents about a different subject; it must not
+    second-guess the ranker about weak-but-real matches."""
+    question = (
+        "What is the latest revenue guidance for Nvidia from its most recent earnings filing?"
+    )
+    need = classify_evidence_need(question)
+    definition_page = _r(
+        "Forward Guidance | Meaning",
+        "https://www.britannica.com/money/forward-guidance",
+        "what forward guidance means",
+    )
+    assert definition_page.url in [
+        r.url for r in _deduplicate_and_rank([definition_page], question, 10, "general", need)
+    ]
+
+
+def test_floor_is_not_applied_to_a_question_with_no_subject() -> None:
+    """There is nothing to be irrelevant to, so nothing may be discarded."""
+    from app.agents.sources import topicality_floor_applies
+
+    assert topicality_floor_applies("what is it", ()) is False
+    assert topicality_floor_applies("define RAG", ()) is False
+    assert topicality_floor_applies("population of Malawi", ()) is True
+    assert topicality_floor_applies("anything at all", ("Malawi",)) is True

@@ -75,6 +75,7 @@ from app.agents.retrieval_health import (
     failure_is_transient,
 )
 from app.agents.sources import (
+    TOPICALITY_AUTHORITY_FLOOR,
     build_dimension_primary_query,
     build_substitution_query,
     canonical_url,
@@ -82,7 +83,10 @@ from app.agents.sources import (
     extract_domain as _host,
     freshness_score,
     is_primary_source,
+    is_topically_irrelevant,
     partition_site_targets,
+    topical_engagement,
+    topicality_floor_applies,
 )
 
 logger = get_logger(__name__)
@@ -300,7 +304,8 @@ def _score_result(result: SearchResult, query: str, need=None, preferred=()) -> 
     haystack = f"{result.title or ''} {snippet} {content}"
 
     richness = min(0.10, len(snippet) / 1500)
-    relevance = _relevance_score(query, snippet + " " + content)
+    entity_tokens = need.entity_tokens if need is not None else ()
+    engagement = topical_engagement(query, haystack, entity_tokens)
     content_bonus = 0.06 if result.is_content_fetched else 0.0
     primary_bonus = 0.10 if profile.is_primary else 0.0
     recency = freshness_score(result.published_at, result.search_type or "default")
@@ -317,9 +322,18 @@ def _score_result(result: SearchResult, query: str, need=None, preferred=()) -> 
     wiki_penalty = 0.15 if "wikipedia.org" in (result.url or "") and not want_encyclopedic else 0.0
 
     total = (
-        base
+        # Authority is discounted by how much of the question's subject this
+        # document engages. Additive relevance could never do this: authority
+        # spans 0.95 while a relevance bonus spanned 0.25, so an authoritative
+        # page about a different subject beat the on-topic answer by ~0.37 and
+        # nothing dropped it. Multiplying means irrelevance can outrank a tier
+        # gap, while on-topic ordering is otherwise unchanged.
+        (base * (
+            TOPICALITY_AUTHORITY_FLOOR
+            + (1.0 - TOPICALITY_AUTHORITY_FLOOR) * engagement
+        ))
         + richness
-        + (relevance * 0.25)
+        + (engagement * 0.25)
         + content_bonus
         + primary_bonus
         + (recency * recency_weight)
@@ -352,6 +366,67 @@ def _score_result(result: SearchResult, query: str, need=None, preferred=()) -> 
 # =============================================================================
 # RANK + DEDUP
 # =============================================================================
+
+def _apply_topical_floor(ranked, query, need) -> list:
+    """Discard results that do not engage the question's subject at all.
+
+    Ranking cannot do this job on its own. Even with authority discounted by
+    topicality, a provider that returns eight off-topic pages still puts one in
+    front of the fetch budget, and the summarizer then spends its context
+    reading it. The recorded failure mode is concrete: a Bangladesh query
+    surfaced a Malawi electrification paragraph, and because extractive fallback
+    claims self-verify, the confidence engine scored the result "High".
+
+    So relevance is enforced as a floor, not a preference. Results that engage
+    nothing the question is about are dropped before ranking output.
+
+    Two guards keep this from becoming a recall bug:
+      * a query with no substantive subject is never filtered — there is
+        nothing to be irrelevant to;
+      * if EVERY result is below the floor, the single most-engaging one is
+        kept. Returning nothing from a non-empty provider response is a
+        retrieval decision, not a quality one, and an honest weak result beats
+        a silently empty evidence base. It is logged, because "we only found
+        something off-topic" is exactly what a report should not hide.
+    """
+    if not ranked:
+        return ranked
+    entity_tokens = need.entity_tokens if need is not None else ()
+    if not topicality_floor_applies(query, entity_tokens):
+        return ranked
+
+    kept, below = [], []
+    for r in ranked:
+        text = f"{r.title or ''} {r.snippet or ''} {r.content or ''}"
+        if is_topically_irrelevant(query, text, entity_tokens):
+            below.append(r)
+        else:
+            kept.append(r)
+    if below and not kept:
+        best = below[-1]  # `ranked` is score-descending; the floor only reorders
+        for r in below:
+            if topical_engagement(
+                query,
+                f"{r.title or ''} {r.snippet or ''} {r.content or ''}",
+                entity_tokens,
+            ) > topical_engagement(
+                query,
+                f"{best.title or ''} {best.snippet or ''} {best.content or ''}",
+                entity_tokens,
+            ):
+                best = r
+        logger.info(
+            "[Search] no result engaged the query's subject; keeping the closest of %d",
+            len(below),
+        )
+        return [best]
+    if below:
+        logger.info(
+            "[Search] dropped %d off-topic result(s) below the engagement floor",
+            len(below),
+        )
+    return kept
+
 
 def _deduplicate_and_rank(results, query, max_results=10, search_type: str = "", need=None,
                           preferred=()):
@@ -387,6 +462,7 @@ def _deduplicate_and_rank(results, query, max_results=10, search_type: str = "",
         r.reliability_score = _score_result(r, query, need, preferred)
 
     ranked = sorted(filtered, key=lambda r: r.reliability_score, reverse=True)
+    ranked = _apply_topical_floor(ranked, query, need)
 
     # Near-duplicate snippets. Restricted to same-domain pairs plus very high
     # overlap across domains: two independent publishers describing the same
