@@ -96,16 +96,6 @@ class PrioritizedMaterial:
         }
 
 
-def _brief_thesis(brief: Any) -> str:
-    if brief is None:
-        return ""
-    try:
-        data = brief.to_dict()
-    except Exception:  # a brief that cannot serialize is treated as absent
-        return ""
-    return str(data.get("thesis", "") or "").strip()
-
-
 def _classified(
     plan: Any,
     brief: Any,
