@@ -5,7 +5,7 @@
  * Docs read the same key on boot, so persistence is automatic; the
  * postMessage hop exists only to live-sync an already-open docs iframe. */
 
-export const THEME_KEY = "deepscout-docs-theme";
+const THEME_KEY = "deepscout-docs-theme";
 
 /* Resolve once, in this order: an explicit stored choice, then the OS
    preference, then dark. This must match the inline bootstrap in index.html

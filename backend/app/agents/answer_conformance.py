@@ -176,10 +176,6 @@ def _count_distinct_markers(text: str, markers: Sequence[str]) -> int:
     return sum(1 for m in markers if m in lowered)
 
 
-def _has_citation(sentence: str) -> bool:
-    return bool(re.search(r"\[\d+\]", sentence or ""))
-
-
 @dataclass
 class ConformanceReport:
     """How well the finished answer fits the question it was asked."""
