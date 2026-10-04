@@ -297,3 +297,49 @@ def test_ranking_is_unchanged_when_no_evidence_need_is_supplied() -> None:
     question = "What is the latest revenue guidance for Nvidia?"
     result = _r("Forward Guidance | Meaning", "https://www.britannica.com/money/forward-guidance", "what forward guidance means")
     assert _score_result(result, question) == _score_result(result, question, None)
+
+
+# ---------------------------------------------------------------------------
+# Soft site: targets steer ranking instead of filtering the provider
+# ---------------------------------------------------------------------------
+
+
+def test_preferred_publisher_gets_a_ranking_bonus() -> None:
+    """A `site:` hint the provider no longer filters on must still buy
+    something, or removing the filter would have thrown the steering away."""
+    question = "global AI capital expenditure 2025"
+    result = _r("AI capex", "https://data.worldbank.org/ai", "AI capital expenditure")
+    assert _score_result(result, question, None, ("worldbank.org",)) > _score_result(
+        result, question, None
+    )
+
+
+def test_preference_matches_subdomains() -> None:
+    from app.agents.search import _preferred_domain_bonus
+
+    assert _preferred_domain_bonus("https://bbs.gov.bd/report", ("gov.bd",)) > 0
+    assert _preferred_domain_bonus("https://data.worldbank.org/x", ("worldbank.org",)) > 0
+    assert _preferred_domain_bonus("https://unrelated.org/x", ("worldbank.org",)) == 0
+
+
+def test_preference_never_outranks_topicality() -> None:
+    """A preferred publisher that does not discuss the question must still lose
+    to one that does. Otherwise removing the provider filter would have
+    reintroduced the mis-ranking it was meant to fix, one layer later."""
+    question = "How many deaths were attributed to air pollution in Malawi in 2024?"
+    need = classify_evidence_need(question)
+    on_topic = _r(
+        "Malawi air pollution deaths",
+        "https://www.who.int/malawi/air-pollution",
+        "Malawi recorded 12000 deaths attributed to air pollution in 2024",
+    )
+    preferred_but_off_topic = _r(
+        "AI capex outlook",
+        "https://worldbank.org/ai-capex",
+        "Global artificial intelligence capital expenditure projections",
+    )
+    ranked = _deduplicate_and_rank(
+        [preferred_but_off_topic, on_topic], question, 10, "statistical", need,
+        preferred=("worldbank.org",),
+    )
+    assert [r.url for r in ranked][0] == on_topic.url
