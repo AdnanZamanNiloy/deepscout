@@ -755,3 +755,355 @@ def clean_writer_prose(text: str) -> str:
     body = re.sub(r"\(\s*,\s*", "(", body)
     body = re.sub(r"\s+,", ",", body)
     return body.strip()
+
+
+# ---------------------------------------------------------------------------
+# EVIDENCE-TYPE FIT
+#
+# Authority answers "how much does this publisher's word carry". Type fit
+# answers the different question that actually decides usability: "is this the
+# KIND of document the question needs?". An encyclopedia is a high-authority
+# publisher and the wrong source for a revenue filing, a dataset, or a court
+# ruling — and because it is high-authority it used to rank ABOVE the real
+# primary source and crowd it out of the fetch budget.
+#
+# Values are additive adjustments applied to a result's score, keyed by tier.
+# Negative entries are the load-bearing part: they push a confidently
+# irrelevant publisher down instead of merely failing to promote a good one.
+# ---------------------------------------------------------------------------
+
+TIER_FIT: Dict[str, Dict[str, float]] = {
+    # a filing/official disclosure is the record itself
+    "filing": {
+        TIER_OFFICIAL: +0.30, TIER_INDUSTRY: +0.10,
+        TIER_REFERENCE: -0.35, TIER_PEER_REVIEWED: -0.20, TIER_PREPRINT: -0.20,
+        TIER_MEDIA: -0.15, TIER_SECONDARY: -0.10,
+    },
+    # official counts and datasets
+    "statistical": {
+        TIER_OFFICIAL: +0.30, TIER_REFERENCE: +0.10, TIER_INDUSTRY: +0.05,
+        TIER_PEER_REVIEWED: -0.10, TIER_MEDIA: -0.10, TIER_SECONDARY: -0.05,
+    },
+    # studies and trials
+    "academic": {
+        TIER_PEER_REVIEWED: +0.30, TIER_PREPRINT: +0.22, TIER_REFERENCE: +0.05,
+        TIER_OFFICIAL: -0.10, TIER_MEDIA: -0.20, TIER_SECONDARY: -0.15,
+        TIER_LOW: -0.30,
+    },
+    # statutes, regulations, rulings
+    "legal": {
+        TIER_OFFICIAL: +0.35,
+        TIER_REFERENCE: -0.20, TIER_MEDIA: -0.15, TIER_SECONDARY: -0.15,
+        TIER_LOW: -0.30,
+    },
+    # what just happened
+    "current": {
+        TIER_MEDIA: +0.25, TIER_OFFICIAL: +0.20, TIER_INDUSTRY: +0.10,
+        TIER_REFERENCE: -0.20, TIER_PEER_REVIEWED: -0.10,
+    },
+    # weighed against alternatives
+    "comparison": {
+        TIER_INDUSTRY: +0.22, TIER_OFFICIAL: +0.20, TIER_PEER_REVIEWED: +0.10,
+        TIER_REFERENCE: -0.05, TIER_LOW: -0.25,
+    },
+    # definitions and orientation
+    "encyclopedic": {
+        TIER_REFERENCE: +0.28, TIER_OFFICIAL: +0.12,
+        TIER_LOW: -0.30, TIER_SECONDARY: -0.10,
+    },
+}
+
+
+def evidence_fit(profile: "SourceProfile", evidence_types: Iterable[str]) -> Tuple[float, Tuple[str, ...]]:
+    """How well a source's tier matches the evidence the question demands.
+
+    Returns the summed adjustment and the reason strings, so a low-scoring
+    result can be explained rather than silently discarded. An empty
+    requirement (question type not recognised) fits everything: this steers
+    ranking, it never blocks retrieval on its own.
+    """
+    total = 0.0
+    why: List[str] = []
+    for ev in evidence_types or ():
+        table = TIER_FIT.get(ev)
+        if not table:
+            continue
+        delta = table.get(profile.tier, 0.0)
+        if delta:
+            total += delta
+            why.append(f"{ev} fit {profile.tier} {delta:+.2f}")
+    return round(total, 3), tuple(why)
+
+
+# ---------------------------------------------------------------------------
+# ORIGINAL-SOURCE RESOLUTION
+#
+# A secondary page that cites a study is not independent evidence from the
+# study itself. Detecting the identifiers lets the ranker prefer the original
+# and lets corroboration counting treat republications of one original as one.
+# ---------------------------------------------------------------------------
+
+_DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:a-z0-9]+\b", re.I)
+_ARXIV_RE = re.compile(r"\barxiv[:\s/]*(\d{4}\.\d{4,5}(?:v\d+)?)\b", re.I)
+_DOI_URL_RE = re.compile(r"doi\.org/(10\.\d{4,9}/[^\s\"'<>]+)", re.I)
+_ARXIV_URL_RE = re.compile(r"arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5})", re.I)
+_PMID_RE = re.compile(r"\bpmid[:\s]*(\d{6,9})\b", re.I)
+_ISBN_RE = re.compile(r"\bisbn[:\s]*((?:97[89])?\d{9}[\dxX])\b", re.I)
+
+
+def detect_primary_refs(*texts: str) -> Tuple[str, ...]:
+    """Stable identifiers for originals referenced in the given text.
+
+    Looks at URLs and bare strings alike, so "as shown in doi:10.1234/x" and a
+    doi.org link resolve the same. Normalised (DOIs lower-cased, arXiv version
+    suffixes dropped) so the same original found two ways collapses to one key.
+    """
+    blob = " ".join(t for t in texts if t)
+    if not blob:
+        return ()
+    found: List[str] = []
+
+    for m in _DOI_URL_RE.finditer(blob):
+        found.append("doi:" + m.group(1).rstrip(".,;)").lower())
+    for m in _DOI_RE.finditer(blob):
+        found.append("doi:" + m.group(0).rstrip(".,;)").lower())
+
+    for m in _ARXIV_URL_RE.finditer(blob):
+        found.append("arxiv:" + m.group(1))
+    for m in _ARXIV_RE.finditer(blob):
+        ver = m.group(1)
+        found.append("arxiv:" + ver.split("v")[0])
+
+    for rx, pre in ((_PMID_RE, "pmid:"), (_ISBN_RE, "isbn:")):
+        for m in rx.finditer(blob):
+            found.append(pre + m.group(1).lower())
+
+    return tuple(dict.fromkeys(found))
+
+
+def underlying_source_key(url: str, title: str = "", snippet: str = "", content: str = "") -> str:
+    """Identity of the UNDERLYING source, not of the page quoting it.
+
+    Preference order matters: an explicit identifier names the original
+    outright, so it beats a title guess. Two pages carrying the same key are
+    republications of one source and must not be counted as independent
+    corroboration.
+    """
+    refs = detect_primary_refs(url, title, snippet, content)
+    if refs:
+        return refs[0]
+    return canonical_url(url) or (url or "").strip().lower()
+
+
+def is_original_source(url: str, title: str = "", snippet: str = "", content: str = "") -> bool:
+    """True when this page IS the original rather than a page about it."""
+    domain = extract_domain(url)
+    refs = detect_primary_refs(url, title, snippet, content)
+    if not refs:
+        # No identifier to check against: judge by whether the host is itself a
+        # recognised original-publisher or repository.
+        prof = classify_source(url)
+        return prof.tier in (TIER_OFFICIAL, TIER_PEER_REVIEWED, TIER_PREPRINT)
+    host = domain.lower()
+    if refs[0].startswith("doi:"):
+        return "doi.org" in host
+    if refs[0].startswith("arxiv:"):
+        return "arxiv.org" in host
+    if refs[0].startswith("pmid:"):
+        return any(d in host for d in ("pubmed.ncbi.nlm.nih.gov", "ncbi.nlm.nih.gov"))
+    return False
+
+
+# ---------------------------------------------------------------------------
+# ON-TOPIC CHECK
+#
+# The failure this exists to prevent: a question about one company's filing
+# retrieving encyclopedia pages that define a phrase the question happens to
+# use. Those pages score well on wording overlap while engaging none of the
+# question's subject matter.
+# ---------------------------------------------------------------------------
+
+# Publishers label orientation pages in many ways: "Meaning", "How It Works",
+# "Explained", "Glossary". Requiring one exact phrase missed the majority of the
+# pages that actually caused the failure.
+_DEFINITION_TITLE = re.compile(
+    r"\b(what (?:is|are|was|were)\b|definition\b|definitions\b|meaning\b|"
+    r"explained\b|glossary\b|overview\b|introduction\b|described as\b|"
+    r"how (?:it|they) work\b|simple explanation\b|what does .{0,40}\bmean\b|"
+    r"everything you need to know\b|commonly confused\b)",
+    re.I,
+)
+
+
+def looks_like_definition_page(title: str, snippet: str = "") -> bool:
+    """A glossary/definition page rather than a document about the subject."""
+    blob = f"{title or ''} {snippet or ''}"
+    return bool(_DEFINITION_TITLE.search(blob))
+
+
+def definition_misfit(title: str, snippet: str, asks_definition: bool) -> float:
+    """Penalty for a definition page returned to a non-definition question.
+
+    0.0 when the page is on-type, or when the reader actually asked what
+    something is — in which case a definition page is precisely the right hit.
+    """
+    if asks_definition:
+        return 0.0
+    return -0.30 if looks_like_definition_page(title, snippet) else 0.0
+
+
+def entity_miss(query: str, tokens: Sequence[str], text: str) -> float:
+    """Penalty when a result engages none of the question's subject tokens.
+
+    Wording overlap alone can carry a result to the top while the document is
+    about something else entirely. Requiring at least one subject token keeps
+    the genuinely on-topic primary source competitive with it.
+    """
+    if not tokens:
+        return 0.0
+    low = (text or "").lower()
+    if any(tok.lower() in low for tok in tokens):
+        return 0.0
+    # Scale with how much of the question's subject we are missing.
+    return -0.22 if len(tokens) == 1 else -0.30
+
+
+# ---------------------------------------------------------------------------
+# FIRST-PARTY SOURCES
+#
+# An issuer's own domain is the primary source for that issuer's disclosures,
+# and no static registry can know every issuer. It can be derived: if a result's
+# host CONTAINS a subject token the question named ("Nvidia" -> nvidia.com,
+# "investor.nvidia.com"), then that host is first-party for that subject.
+#
+# This is what lets an unlisted issuer's investor-relations page outrank an
+# established financial aggregator when the question asked for the issuer's own
+# filing, without hardcoding a single company.
+# ---------------------------------------------------------------------------
+
+_HOST_SPLIT = re.compile(r"[.\-_]+")
+
+
+def _host_labels(domain: str) -> Set[str]:
+    """Candidate tokens for a host, ignoring the public suffix.
+
+    `investor.nvidia.com` -> {investor, nvidia, com}. Public suffixes are not
+    excluded by a full list (that would need a dependency); instead a token is
+    only usable if it is not a bare TLD, which is enough to stop ".com" from
+    matching a question that happens to contain "com".
+    """
+    labels: Set[str] = set()
+    for part in _HOST_SPLIT.split((domain or "").lower()):
+        if len(part) >= 3 and not part.isdigit():
+            labels.add(part)
+    return labels
+
+
+def first_party_match(url: str, entity_tokens: Sequence[str]) -> Optional[str]:
+    """The subject token this host is first-party for, if any.
+
+    Requires the token to be at least 4 characters so a short acronym does not
+    match by accident, and to appear as a whole host label.
+    """
+    if not entity_tokens:
+        return None
+    labels = _host_labels(extract_domain(url))
+    if not labels:
+        return None
+    for tok in entity_tokens:
+        t = re.sub(r"[^\w]+", "", (tok or "").lower())
+        if len(t) >= 4 and t in labels:
+            return t
+    return None
+
+
+def first_party_bonus(url: str, entity_tokens: Sequence[str]) -> float:
+    """Reward a host that belongs to the question's own subject.
+
+    Small and unconditional on tier: it says "this publisher is the subject",
+    which is orthogonal to how authoritative it is. An issuer's own IR page and
+    an official statistics agency are both first-party for their question.
+    """
+    return 0.22 if first_party_match(url, entity_tokens) else 0.0
+
+
+# ---------------------------------------------------------------------------
+# INDEPENDENCE
+#
+# Corroboration is only evidence when the agreeing sources are INDEPENDENT.
+# Five outlets running the same wire story, or five summaries of one study, are
+# one source repeated — counting them as five agreeing sources inflates
+# confidence on a single unverified claim.
+#
+# These helpers group facts by the original they ultimately rest on, so
+# confidence is computed over independent sources rather than over pages.
+# ---------------------------------------------------------------------------
+
+
+def underlying_groups(
+    items: Iterable[Tuple[str, str, str, str]],
+) -> List[List[str]]:
+    """Group (url, title, snippet, content) tuples by underlying source.
+
+    Returns the groups in first-seen order. Anything without a usable URL forms
+    its own group so an unidentifiable fact is never silently merged away.
+    """
+    order: List[str] = []
+    groups: Dict[str, List[str]] = {}
+    for url, title, snippet, content in items or ():
+        u = (url or "").strip()
+        if not u:
+            order.append(f"\x00anon{len(order)}")
+            groups[order[-1]] = [u]
+            continue
+        key = underlying_source_key(u, title or "", snippet or "", content or "")
+        if key not in groups:
+            order.append(key)
+            groups[key] = []
+        groups[key].append(u)
+    return [groups[k] for k in order]
+
+
+def independence_ratio(
+    items: Iterable[Tuple[str, str, str, str]],
+) -> float:
+    """Independent sources / total facts. 1.0 = every fact stands alone.
+
+    A report built from one study plus four summaries of it scores 0.2; the
+    same five documents retrieved as five genuinely separate findings scores
+    1.0. This is what stops repetition from reading as corroboration.
+    """
+    rows = [t for t in (items or ()) if (t[0] or "").strip()]
+    if not rows:
+        return 1.0
+    groups = underlying_groups(rows)
+    if not groups:
+        return 1.0
+    return len(groups) / len(rows)
+
+
+def independent_primary_share(
+    items: Iterable[Tuple[str, str, str, str]],
+) -> float:
+    """Share of INDEPENDENT sources that are primary or first-rate authority.
+
+    The independence-aware counterpart to `primary_source_share`: one primary
+    study quoted by four aggregators scores 1.0 here (one independent source,
+    and it is primary) while counting four separate primaries, which is the
+    number that actually flattered the old measure.
+    """
+    rows = [t for t in (items or ()) if (t[0] or "").strip()]
+    if not rows:
+        return 0.0
+    groups = underlying_groups(rows)
+    if not groups:
+        return 0.0
+    good = 0
+    for group in groups:
+        url = group[0]
+        prof = classify_source(url)
+        # Prefer the strongest document in the group: a group containing the
+        # original is as primary as its original.
+        if prof.is_primary or prof.authority >= 0.85:
+            good += 1
+    return good / len(groups)

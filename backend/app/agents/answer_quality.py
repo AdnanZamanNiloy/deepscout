@@ -30,7 +30,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
-from app.agents.sources import primary_source_share, strip_machine_sections
+from app.agents.sources import (
+    independent_primary_share,
+    independence_ratio,
+    primary_source_share,
+    strip_machine_sections,
+)
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -390,11 +395,44 @@ def evaluate_answer(
     cited_n = sum(1 for s in disambig_free_units if re.search(r"\[\d+\]", s))
     density = cited_n / len(disambig_free_units) if disambig_free_units else 0.0
     urls = [str(f.get("source", "")) for f in facts if isinstance(f, dict) and f.get("source")]
+    # Evidence is scored over INDEPENDENT sources, not pages. Five citations
+    # that all trace back to one study are one source cited five times; treating
+    # them as five agreeing documents inflated the evidence sub-score on
+    # exactly the reports least able to support their own conclusions.
+    # `primary` stays on the legacy per-URL measure so existing thresholds keep
+    # their meaning; `independence` and `indep_primary` carry the new signal.
+    evidence_rows = [
+        (
+            str(f.get("source", "") or ""),
+            str(f.get("statement") or f.get("claim") or f.get("title") or ""),
+            str(f.get("snippet") or f.get("text") or ""),
+            "",
+        )
+        for f in facts
+        if isinstance(f, dict) and f.get("source")
+    ]
     primary = primary_source_share(urls)
+    independence = independence_ratio(evidence_rows)
+    indep_primary = independent_primary_share(evidence_rows)
     health = (citation_health or {}).get("summary") or {}
     health_total = sum(int(health.get(k, 0) or 0) for k in ("ok", "warn", "broken", "bad", "unchecked"))
     health_ok = (int(health.get("ok", 0) or 0) / health_total) if health_total else 0.6
-    evidence = round(100 * (0.40 * density + 0.30 * verified_share + 0.15 * primary + 0.15 * health_ok))
+    # Weights sum to 1.0. Density and verified-share give up part of their share
+    # to two independence-aware terms, so a report whose citations are mostly
+    # republications of one original has to earn that ground back with real
+    # independent primaries. Citation health keeps a slightly smaller share than
+    # before because health is already largely implied by the other factors.
+    evidence = round(
+        100
+        * (
+            0.32 * density
+            + 0.24 * verified_share
+            + 0.10 * primary
+            + 0.12 * independence
+            + 0.12 * indep_primary
+            + 0.10 * health_ok
+        )
+    )
 
     # ---- Clarity: readability, length band, signal density, no data dumps ----
     # Structural compliance is deliberately NOT scored. The old formula gave
