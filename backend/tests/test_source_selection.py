@@ -445,3 +445,92 @@ def test_floor_is_not_applied_to_a_question_with_no_subject() -> None:
     assert topicality_floor_applies("define RAG", ()) is False
     assert topicality_floor_applies("population of Malawi", ()) is True
     assert topicality_floor_applies("anything at all", ("Malawi",)) is True
+
+
+# ---------------------------------------------------------------------------
+# Unregistered domains: citable on evidence, not on TLD
+# ---------------------------------------------------------------------------
+
+
+def test_every_unregistered_dotcom_clears_the_same_gates() -> None:
+    """The reason this exists. 0.58 clears is_high_quality_domain (authority >
+    0.0), verifier's 0.55, and the summarizer filter's 0.55 fallback — the
+    fallback that engages on exactly the hard queries where junk matters most."""
+    from app.agents.sources import UNDOCUMENTED_AUTHORITY
+
+    junk = UNDOCUMENTED_AUTHORITY
+    assert junk < 0.55, "junk must fall below the verifier's source gate"
+    assert junk < 0.55, "junk must fall below the summarizer filter's fallback"
+    assert junk < 0.60 and junk < 0.62, "junk must fall below the strong cuts"
+
+
+def test_affiliate_and_buying_guide_pages_are_demoted() -> None:
+    from app.agents.sources import UNDOCUMENTED_AUTHORITY, documentary_authority
+
+    assert documentary_authority(
+        "https://random-blog.com/post",
+        "Our buying guide: what to look for when you buy solar panels",
+    ) == UNDOCUMENTED_AUTHORITY
+    assert documentary_authority(
+        "https://best-deals.com/x", "Buy now! 50% discount on all products. Free shipping."
+    ) == UNDOCUMENTED_AUTHORITY
+
+
+def test_keyword_stuffed_hostnames_are_demoted() -> None:
+    from app.agents.sources import UNDOCUMENTED_AUTHORITY, documentary_authority
+
+    assert documentary_authority(
+        "https://best-solar-panel-installers-uk.com/x", "Solar panels are great"
+    ) == UNDOCUMENTED_AUTHORITY
+
+
+def test_ordinary_journalism_on_an_unlisted_domain_stays_citable() -> None:
+    """The failure mode of the first attempt at this rule: demoting on the
+    ABSENCE of documentary markers pushed every unlisted news outlet below the
+    citable bar and discarded legitimate reporting along with the junk."""
+    from app.agents.sources import documentary_authority
+
+    assert documentary_authority(
+        "https://news-site.com/malawi-deaths",
+        "Malawi recorded 12000 deaths attributed to air pollution in 2024",
+    ) > 0.55
+
+
+def test_a_two_word_hyphenated_brand_is_not_keyword_stuffing() -> None:
+    from app.agents.sources import looks_keyword_stuffed
+
+    assert looks_keyword_stuffed("https://solar-panel-installers.co.uk/x") is False
+    assert looks_keyword_stuffed("https://bbc.co.uk/news") is False
+    assert looks_keyword_stuffed("https://best-solar-panel-installers-uk.com/x") is True
+
+
+def test_documentary_evidence_rescues_a_promotional_looking_page() -> None:
+    """An official statistics page that also asks for newsletter signups is
+    still a source."""
+    from app.agents.sources import documentary_authority
+
+    score = documentary_authority(
+        "https://data-portal.example.com/series",
+        "Subscribe to our newsletter. Official statistics, methodology and sample size.",
+    )
+    assert score > 0.55
+
+
+def test_registered_publishers_are_never_demoted() -> None:
+    """The tier registries already say what a publisher is; promotional-looking
+    text on an official page must not change that."""
+    from app.agents.sources import documentary_authority
+
+    assert documentary_authority(
+        "https://www.nasa.gov/mars", "Buy now! Discount! Sponsored content."
+    ) == 0.95
+    assert documentary_authority("https://arxiv.org/abs/2401.00001", "") == 0.88
+
+
+def test_no_text_means_no_judgement() -> None:
+    """classify_source stays a pure URL classifier, so every legacy score holds
+    for callers that have no text to offer."""
+    from app.agents.sources import authority_score, documentary_authority
+
+    for url in ("https://example.com/a", "https://random-blog.com/post"):
+        assert documentary_authority(url) == authority_score(url)

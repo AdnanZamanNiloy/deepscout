@@ -80,6 +80,7 @@ from app.agents.sources import (
     build_substitution_query,
     canonical_url,
     classify_source,
+    documentary_authority,
     extract_domain as _host,
     freshness_score,
     is_primary_source,
@@ -297,7 +298,9 @@ def _score_result(result: SearchResult, query: str, need=None, preferred=()) -> 
     remains, but does not apply when Wikipedia is the right answer.
     """
     profile = classify_source(result.url)
-    base = profile.authority
+    base = documentary_authority(
+        result.url, result.title or "", result.snippet or "", result.content or ""
+    )
 
     snippet = result.snippet or ""
     content = result.content or ""
