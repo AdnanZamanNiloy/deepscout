@@ -43,7 +43,11 @@ from app.core.logging import get_logger
 from app.core.schemas import PlannerOutputModel, PlanningDirectiveModel
 from app.core.usage import set_stage_hint
 
-from app.agents.sources import build_dimension_primary_query, primary_source_hints
+from app.agents.sources import (
+    build_dimension_primary_query,
+    grounded_site_targets,
+    primary_source_hints,
+)
 
 logger = get_logger(__name__)
 
@@ -1082,7 +1086,15 @@ def _contract(
     )
     domain = normalize_domain(domain)
     specialist = DOMAIN_TO_SPECIALIST.get(domain, "general")
-    hints = list(primary_source_hints(search_type, domain))
+    # Publisher preferences are GROUNDED in the question, not looked up from the
+    # (search_type, domain) bucket alone: a contract about Bangladesh gets
+    # Bangladesh's own official suffix family alongside whichever registered
+    # hints are not bound to a different country. Same resolver the primary
+    # query uses, so the two cannot drift apart.
+    hints = list(
+        grounded_site_targets(question.strip(), search_type, domain, max_sites=3)
+        or primary_source_hints(search_type, domain)
+    )
     return {
         "id": index,
         "question": question.strip(),

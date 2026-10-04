@@ -81,10 +81,16 @@ async def test_planner_uses_llm_for_non_trivial_query():
             # v3 contract enrichment: specialist overlay + primary-source
             # steering from the source registry.
             "specialist": "financial",
-            "preferred_domains": ["worldbank.org", "imf.org", "oecd.org"],
+            # Publisher preferences are grounded in the question's own
+            # jurisdiction: a Bangladesh question leads with Bangladesh's
+            # official suffix family, then keeps the hint that is not bound to
+            # another country. Before this, `statistical:economics` sent every
+            # Bangladesh question to the World Bank/IMF and excluded the
+            # Bangladeshi publishers that actually hold the figures.
+            "preferred_domains": ["gov.bd", "worldbank.org", "imf.org"],
             "primary_source_query": (
                 "Levelized cost per MWh of nuclear vs solar in Bangladesh 2024 "
-                "site:worldbank.org OR site:imf.org"
+                "site:gov.bd OR site:worldbank.org"
             ),
             "wave": 0,
             "sense": "",
@@ -106,10 +112,10 @@ async def test_planner_uses_llm_for_non_trivial_query():
         "scope": [],
         "output_format": "structured_findings",
         "specialist": "financial",
-        "preferred_domains": ["reuters.com", "apnews.com", "ft.com"],
+        "preferred_domains": ["gov.bd", "reuters.com", "apnews.com"],
         "primary_source_query": (
             "Financing structure of the Rooppur nuclear plant in Bangladesh "
-            "site:reuters.com OR site:apnews.com"
+            "site:gov.bd OR site:reuters.com"
         ),
         "wave": 0,
         "sense": "",
