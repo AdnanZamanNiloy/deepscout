@@ -104,6 +104,11 @@ class ResearchState(TypedDict, total=False):
     # controller's _searched_queries() reader already consults.
     executed_queries: List[str]
     coverage_searched: List[str]
+    # Query-anchored focus assessment (app/agents/focus.py): coverage,
+    # concentration and drift measured against the ORIGINAL question, plus the
+    # redirect queries the next pass should issue. Process metadata — it belongs
+    # to the audit, never to the primary answer.
+    focus: Dict[str, Any]
 
 
 class PlannerUpdate(TypedDict):
@@ -148,6 +153,8 @@ class CriticUpdate(TypedDict):
     counter_evidence_attempted: bool
     corroboration_registry: Dict[str, Dict[str, Any]]
     investigation_state: Dict[str, Dict[str, Any]]
+    # Query-anchored focus assessment for this pass (app/agents/focus.py).
+    focus: Dict[str, Any]
 
 
 class SynthesizerUpdate(TypedDict):

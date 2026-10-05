@@ -259,21 +259,18 @@ def _six_question_plan():
 
 
 async def test_planner_honours_target_count():
-    """The orchestrator's budget caps the MODEL's plan. The mandatory frontier
-    tracks are then appended on top (they are never subject to the target)."""
+    """The orchestrator's budget caps the MODEL's plan. Frontier tracks, when
+    the question warrants them, are appended on top (never subject to target).
+
+    QUERY is a comparison, so the conditional frontier injection does not apply
+    and the model plan is trimmed to the target and nothing else."""
     from app.agents.planner import COUNTER_EVIDENCE_AXIS, FRONTIER_AXES
 
     llm = FakeLLM(_six_question_plan())
     result = await planner_agent(llm, QUERY, target_count=3)
-    model_contracts = [
-        c for c in result
-        if str(c.get("axis", "")) not in set(FRONTIER_AXES) | {COUNTER_EVIDENCE_AXIS}
-    ]
+    frontier = set(FRONTIER_AXES) | {COUNTER_EVIDENCE_AXIS}
+    model_contracts = [c for c in result if str(c.get("axis", "")) not in frontier]
     assert len(model_contracts) <= 3
-    # Every mandatory track is present regardless of the target.
-    axes = {str(c.get("axis", "")) for c in result}
-    assert set(FRONTIER_AXES) <= axes
-    assert COUNTER_EVIDENCE_AXIS in axes
 
 
 async def test_planner_enforces_required_axes():

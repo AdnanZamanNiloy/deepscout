@@ -44,8 +44,10 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from app.agents.sources import (
     LOW_TRUST_DOMAINS,
+    TIER_PEER_REVIEWED,
     authority_score,
     canonical_url,
+    classify_source,
     documentary_authority,
     evidence_freshness,
     extract_domain as _extract_domain,
@@ -1229,6 +1231,10 @@ def evidence_stats(facts: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     non_western_count = sum(
         1 for f in facts if _is_non_western_source(str(f.get("source", "") or ""))
     )
+    peer_reviewed_count = sum(
+        1 for f in facts
+        if classify_source(str(f.get("source", "") or "")).tier == TIER_PEER_REVIEWED
+    )
 
     return {
         "total": len(facts),
@@ -1250,6 +1256,12 @@ def evidence_stats(facts: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         "freshness": evidence_freshness(facts),
         "regulation_share": round(regulation_count / len(facts), 4) if facts else 0.0,
         "non_western_share": round(non_western_count / len(facts), 4) if facts else 0.0,
+        # Share of evidence from peer-reviewed literature. Exists so a
+        # source-class dominance check can see that a report drew on
+        # scholarship, not only on regulation or on raw primary documents —
+        # a literature review that never consulted data and a legal summary
+        # that never consulted research are different failures.
+        "peer_reviewed_share": round(peer_reviewed_count / len(facts), 4) if facts else 0.0,
     }
 
 

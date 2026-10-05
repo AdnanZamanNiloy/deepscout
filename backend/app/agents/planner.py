@@ -130,10 +130,16 @@ VALID_AXES = {
     "counter_evidence",
 }
 
-# The six mandatory frontier-research tracks for "current state and trends of
-# AI" style queries. Equal weight: every plan must carry at least one contract
-# per axis, regardless of how many the model volunteers. Counter-evidence is
-# forced on EVERY query, not only ambiguous ones.
+# The six research tracks that "current state and trends of <field>" queries
+# benefit from. Equal weight, used ONLY when the planner's dynamic dimension
+# directive asks for a trends-style scope (see _trends_scope_wanted).
+#
+# HISTORY, because this is a live bug and not a design choice: this tuple was
+# previously forced onto EVERY query regardless of subject, with literal AI
+# search strings below. Asked "population of Malawi in 2024" it produced six
+# contracts about model capability and GPU supply chains, and the critic then
+# refused to finalize until each had primary sources. The question was
+# unanswerable by construction. Dimensions now come from the query.
 FRONTIER_AXES: Tuple[str, ...] = (
     "capability",
     "infrastructure",
@@ -144,7 +150,8 @@ FRONTIER_AXES: Tuple[str, ...] = (
 )
 # Always-on adversarial sub-track. This is the axis that keeps a report from
 # being a press release: it searches specifically for over-hype, plateau,
-# ROI-negative and capability-overstated arguments.
+# ROI-negative and overstated-claim arguments. Domain-agnostic by wording; it
+# is applied to any subject the planner has classified as contested.
 COUNTER_EVIDENCE_AXIS = "counter_evidence"
 
 # Membership set for the front-half of the frontier taxonomy; the counter-
@@ -177,44 +184,99 @@ AXIS_SEARCH_TYPE: Dict[str, str] = {
     "counter_evidence": "academic",
 }
 
-# Literal search questions for each frontier track. Used both to synthesize a
-# missing contract and as the canonical wording the axis-coverage gate matches
-# against. Each is phrased to pull PRIMARY and non-Western material where it
-# exists, per the source-integrity requirement.
+# Search-question SCAFFOLDS for the optional frontier tracks. Each names the
+# AXIS and what kind of document answers it, and every one carries a {subject}
+# placeholder that is filled from the user's own query.
+#
+# Previously these were fully-written AI strings ("frontier AI model capability
+# trajectory and benchmark results..."), so asking about grid redesign searched
+# for AI benchmarks. A scaffold is domain-agnostic by construction: it cannot
+# assert a subject the user never mentioned.
 FRONTIER_AXIS_QUESTIONS: Dict[str, str] = {
     "capability": (
-        "frontier AI model capability trajectory and benchmark results "
-        "(reasoning, coding, multimodal, agentic, long-context, "
-        "inference-time scaling) primary technical reports"
+        "{subject} capability and performance: measured results, benchmarks, "
+        "demonstrated limits and primary technical reports"
     ),
     "infrastructure": (
-        "AI compute infrastructure and constraints: chips, datacenters, "
-        "energy and power demand, supply chain, manufacturing capacity "
-        "official reports and statistics"
+        "{subject} infrastructure and physical constraints: facilities, "
+        "supply chains, manufacturing capacity and bottlenecks official "
+        "reports and statistics"
     ),
     "economics": (
-        "AI economics and investment: capex, funding, valuations, ROI, "
-        "enterprise pilot success and failure rates, bubble indicators "
+        "{subject} economics and investment: capital cost, funding, "
+        "valuation, measured return on investment, success and failure rates "
         "financial filings and investor reports"
     ),
     "adoption": (
-        "AI adoption and diffusion: enterprise, consumer, education, "
-        "geographic and demographic unevenness official surveys and statistics"
+        "{subject} adoption and diffusion: who uses it, at what rate, and "
+        "which groups or regions are left uneven official surveys and "
+        "statistics"
     ),
     "regulation": (
-        "AI governance and regulation as reactive context: US, EU, China and "
-        "global rules, enforcement and compliance official regulatory texts"
+        "{subject} regulation, policy and governance as reactive context: "
+        "rules, enforcement, standards and compliance official regulatory "
+        "and institutional texts"
     ),
     "safety": (
-        "AI safety, alignment and risk: progress versus capability, "
-        "incidents, evaluations and open debates primary research"
+        "{subject} safety, harm and risk: incidents, evaluations, failure "
+        "modes and open debates primary research"
     ),
     "counter_evidence": (
-        "skeptical AI analysis: over-hype, capability plateau, scaling limits, "
-        "ROI-negative enterprise results, replication failures and strongest "
-        "counterarguments from independent researchers"
+        "critical and sceptical analysis of {subject}: overstatement, "
+        "plateaus, negative or null results, replication failures and the "
+        "strongest published counterarguments"
     ),
 }
+
+
+# Queries that ask about a field's current state warrant the full frontier
+# spread. A narrow factual or comparison query does not, and forcing it on one
+# is what made the taxonomy a bug. Keyed on the QUERY'S OWN words: there is no
+# subject list, so this stays domain-agnostic.
+# Multi-word phrases only. A bare year or "now" is NOT a trends signal: "Who is
+# the CEO of Siemens and when did he start?" contains "when" and a year, and
+# treating that as a trends question is how a narrow factual query acquired six
+# research contracts.
+_TRENDS_SCOPE_PHRASES = (
+    "current state", "state of the", "state of play", "current trends",
+    "latest trends", "trends in", "trend in", "future of", "outlook for",
+    "landscape of", "state-of-the-art", "state of the art", "trajectory of",
+    "roadmap for", "where the field", "emerging trends", "current landscape",
+    "everything about", "overview of", "overview of the", "general overview",
+    "current adoption", "current state of", "how is the field",
+)
+# The same phrases, anchored so that a following word is required. Guards the
+# case where the phrase is the subject being defined rather than a request.
+_TRENDS_RE = re.compile(
+    "|".join(re.escape(p) for p in _TRENDS_SCOPE_PHRASES) + r"\b\s+\S"
+)
+
+# Survey-noun phrases. "What are the CURRENT TRENDS in AI?" asks for a survey of
+# a field, so the interrogative is just the wh-word and must not veto. These
+# therefore win over a soft narrow veto.
+_STRONG_TRENDS_RE = re.compile(
+    r"\b("
+    r"trends?\s+(?:in|of)|(?:current|latest|emerging)\s+trends?|"
+    r"future\s+of|outlook\s+for|landscape\s+of|state[- ]of[- ]the[- ]art|"
+    r"trajectory\s+of|roadmap\s+for|overview\s+of|general\s+overview|"
+    r"everything\s+about"
+    r")\b"
+)
+# Shapes that mark the WHOLE question as single-dimension, whatever else it
+# contains. "How do I renew a passport in Kenya?" and "malawi vs mozambique
+# population" are one question with one answer, so they never get six research
+# contracts. These veto the trends phrases.
+_HARD_NARROW_TOKENS = (
+    "how do i", "how to", "vs", "versus", "compared to", "compare",
+    "difference between", "better than", "is it legal", "is it safe",
+    "how much does", "how much is", "calculate", "formula for",
+    "definition of", "define",
+)
+# Weaker question-forms: "who is the CEO and when did he start" is narrow, but
+# "what are the current trends in AI" is NOT a definition question — the
+# interrogative is asking FOR the trends. So these only veto when no trends
+# phrase is present.
+_SOFT_NARROW_TOKENS = ("what is", "what are", "who is", "when did", "when is")
 
 
 # Domain -> specialist overlay in summarizer.SPECIALIST_PROMPT_ADDITIONS.
@@ -1382,6 +1444,62 @@ def enforce_axis_coverage(
     return plan, injected
 
 
+def _subject_phrase(query: str, limit: int = 7) -> str:
+    """The query's own subject, for filling scaffold placeholders.
+
+    Content words only. It must never invent a subject, so it cannot fall back
+    to a default topic — an empty result leaves the scaffold unsatisfiable and
+    the caller skips injection rather than searching for the wrong thing.
+    """
+    words = [
+        w for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9'&.-]*", query or "")
+        if w.lower() not in _QUESTION_FILLER_WORDS and len(w) > 1
+    ]
+    return " ".join(words[:limit])
+
+
+# Function/meta words stripped from a query when building a search scaffold, so
+# "What are the current trends in AI?" searches "current trends AI" rather than
+# "What are the current trends in AI?".
+_QUESTION_FILLER_WORDS = frozenset({
+    "a", "an", "the", "is", "are", "was", "were", "do", "does", "did", "what",
+    "which", "who", "whom", "whose", "when", "where", "why", "how", "that",
+    "this", "these", "those", "in", "on", "at", "of", "for", "to", "from",
+    "with", "and", "or", "but", "it", "its", "be", "been", "about", "as",
+    "should", "would", "could", "can", "will", "me", "i", "we", "us", "you",
+    "please", "tell", "explain", "describe", "give", "list", "any", "some",
+})
+
+
+def _trends_scope_wanted(query: str) -> bool:
+    """Does this question ask about a subject's current state and direction?
+
+    This replaces the unconditional frontier injection that made the planner
+    AI-shaped. A trends question ("current state of X", "future of X") genuinely
+    benefits from capability/infrastructure/economics/adoption/regulation/safety
+    spread, in ANY field. A narrow question ("what is TCP congestion control",
+    "population of Malawi 2024") does not, and giving it six extra contracts is
+    precisely how a research loop drifts away from what was asked.
+
+    Narrow question-shape tokens veto the trends tokens, because "what is the
+    current state of TCP congestion control" is still a definition question.
+    """
+    low = (query or "").lower()
+    if any(tok in low for tok in _HARD_NARROW_TOKENS):
+        return False
+    # A survey noun ("trends in AI", "outlook for solar") is what the user is
+    # ASKING FOR, so a leading "what are" is only the wh-word and must not veto.
+    if _STRONG_TRENDS_RE.search(low):
+        return True
+    # Weaker phrases like "current state of X" also occur inside the noun
+    # phrase being defined, so they require a following word AND no leading
+    # interrogative: "what is the current state of TCP congestion control" is a
+    # definition question wearing a trends phrase.
+    if _TRENDS_RE.search(low):
+        return not any(tok in low for tok in _SOFT_NARROW_TOKENS)
+    return False
+
+
 def enforce_frontier_axes(
     plan: List[Dict[str, Any]],
     query: str,
@@ -1392,19 +1510,24 @@ def enforce_frontier_axes(
     axes: Sequence[str] = FRONTIER_AXES,
     include_counter_evidence: bool = True,
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """Guarantee one contract per mandatory frontier axis, plus counter-evidence.
+    """Add frontier-track contracts, but only when the question warrants them.
 
-    The six frontier tracks are equal-weight and never optional. This runs AFTER
-    the model's plan and `enforce_axis_coverage`, appending a literal, primary-
-    source-seeking contract for any missing track. It never reorders or removes
-    the model's contracts, so a plan that already covers all six is unchanged.
+    The six frontier tracks are equal weight WHEN THEY APPLY. Previously this
+    ran unconditionally on every query, which made every plan an AI-trends plan.
+    It now runs only for a trends-style question about the user's own subject
+    (`_trends_scope_wanted`), and each injected contract is built from a scaffold
+    filled with the query's own words.
 
-    Counter-evidence is forced even when the model planned a `criticism` angle:
-    the two are not the same search. `criticism` asks for limitations of the
-    subject; the counter-evidence track asks for arguments that the whole
-    prevailing narrative is wrong (over-hype, plateau, negative ROI), which is
-    the one thing a hype-heavy corpus will never surface on its own.
+    Counter-evidence still gets its own track where the subject is contested:
+    `criticism` asks for limitations of the subject, whereas the counter-evidence
+    track asks for arguments that the prevailing narrative is wrong, which a
+    hype-heavy corpus will never surface on its own. It is no longer forced onto
+    questions that have no prevailing narrative to argue against.
     """
+    subject = _subject_phrase(query)
+    if not subject:
+        return plan, []
+
     present = {str(item.get("axis", "")) for item in plan}
     # Also honour contracts the model labelled with a frontier synonym:
     # dimension_to_axis maps "ai safety" -> risk and "counter argument" ->
@@ -1424,9 +1547,10 @@ def enforce_frontier_axes(
     for axis in wanted:
         if axis in normalized_present:
             continue
-        question = FRONTIER_AXIS_QUESTIONS.get(axis, "").strip()
-        if not question:
+        scaffold = FRONTIER_AXIS_QUESTIONS.get(axis, "").strip()
+        if not scaffold:
             continue
+        question = scaffold.format(subject=subject)
         plan.append(
             _contract(
                 index=next_id,
@@ -1435,7 +1559,7 @@ def enforce_frontier_axes(
                 search_type=axis_search_type(axis),
                 priority=1,
                 domain=domain,
-                coverage_goal=f"mandatory frontier track: {axis}",
+                coverage_goal=f"frontier track: {axis}",
                 minimum_sources=minimum_sources,
             )
         )
@@ -1444,7 +1568,10 @@ def enforce_frontier_axes(
         next_id += 1
 
     if injected:
-        logger.info("[Planner] injected frontier tracks: %s", ", ".join(injected))
+        logger.info(
+            "[Planner] injected frontier tracks for trends-scope question: %s",
+            ", ".join(injected),
+        )
     return plan, injected
 
 
@@ -1558,6 +1685,18 @@ def fallback_plan(
         (f"{concept} real world applications examples compared", "application", "comparison", 2),
         (f"{concept} recent developments outlook{year}", "outlook", "news", 3),
     ]
+    # A trends-style question gets the frontier spread even on the deterministic
+    # path, so a degraded run answers "current state of X" with the same breadth
+    # a model plan would. Same conditional as the model path: the SPREAD is
+    # earned by the question's shape, never applied to a narrow one.
+    if _trends_scope_wanted(query):
+        for axis in (*FRONTIER_AXES, COUNTER_EVIDENCE_AXIS):
+            scaffold = FRONTIER_AXIS_QUESTIONS.get(axis, "")
+            if not scaffold:
+                continue
+            blueprint.append(
+                (scaffold.format(subject=concept), axis, axis_search_type(axis), 3)
+            )
     ordered = [b for b in blueprint if b[1] in set(required_axes or ())] + [
         b for b in blueprint if b[1] not in set(required_axes or ())
     ]
@@ -1874,23 +2013,23 @@ Return JSON only.
         required_questions=required_questions,
     )
 
-    # Select BEFORE frontier enforcement: the six mandatory tracks are not
-    # subject to the target budget, so truncating after injection would drop
-    # exactly the axes the frontier requirement exists to guarantee. The
-    # model's own plan is trimmed first, then the mandatory tracks are added on
-    # top — the plan may exceed `target` by at most the missing frontier count.
     final = select_plan(cleaned, target, required_axes)
-    # Mandatory six-axis coverage + the always-on counter-evidence track. Quick
-    # mode skips the mandatory tracks (latency-sensitive by design) but still
-    # gets counter-evidence, because a report with no opposing view is not a
-    # research report.
-    final, frontier_injected = enforce_frontier_axes(
-        final, query,
-        domain=dominant_domain,
-        minimum_sources=minimum_sources,
-        today=today,
-        include_counter_evidence=True,
-    )
+
+    # Frontier tracks and counter-evidence are CONDITIONAL on the question's
+    # own shape, decided in _trends_scope_wanted. They are injected after
+    # select_plan because when they apply they are not subject to the target
+    # budget; when they do not apply the plan is exactly what was planned.
+    trends_scope = _trends_scope_wanted(query)
+    if trends_scope:
+        final, frontier_injected = enforce_frontier_axes(
+            final, query,
+            domain=dominant_domain,
+            minimum_sources=minimum_sources,
+            today=today,
+            include_counter_evidence=True,
+        )
+    else:
+        frontier_injected = []
     injected = [*injected, *frontier_injected]
     final = sanitize_dependencies(final)
     final = _assign_intent_senses(final, intent)

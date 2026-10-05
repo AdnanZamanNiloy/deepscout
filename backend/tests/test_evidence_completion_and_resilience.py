@@ -444,31 +444,61 @@ def test_counterargument_guard_clean_only_when_searched_and_no_gap():
         usable_facts=[], contradictions=[],
     )
     assert "returned no credible" in out
+def test_missing_primary_sources_are_derived_from_the_plan_not_a_topic_list():
+    """The requirement is structural: every dimension the PLAN declared needs a
+    primary source behind it.
 
-
-def test_missing_required_primary_sources_blocks_all_three():
+    The old gate demanded primary sources on three fixed AI questions for every
+    query, so "population of Malawi 2024" could never finalize. Same protection
+    against a commentary-only report, with no topic list anywhere.
+    """
     from app.agents.critic import _missing_required_primary_sources
 
-    missing = _missing_required_primary_sources([
-        {"claim": "AI capability and benchmarks", "sub_question": "capability",
-         "source": "https://blog.example/x"},
-        {"claim": "Datacenter energy and power demand", "sub_question": "infrastructure",
-         "source": "https://news.example/y"},
-        {"claim": "Enterprise ROI and pilot failures", "sub_question": "economics",
-         "source": "https://medium.example/z"},
-    ])
-    assert set(missing) == {
-        "frontier_capability_2025_26",
-        "energy_compute_constraints",
-        "roi_or_pilot_failure",
-    }
+    plan = [
+        {"axis": "evidence", "question": "measured outcomes"},
+        {"axis": "cost", "question": "cost data"},
+        {"axis": "regulation", "question": "regulatory framework"},
+    ]
+    facts = [
+        {"claim": "commentary only", "axis": "evidence", "source": "https://blog.example/x"},
+        {"claim": "official statistics", "axis": "cost", "source": "https://data.worldbank.org/indicator/x"},
+        {"claim": "official regulation", "axis": "regulation",
+         "source": "https://www.ecfr.gov/title-x"},
+    ]
+    missing = _missing_required_primary_sources(facts, plan)
+    # evidence has only a blog behind it; cost and regulation have primary sources.
+    assert missing == ["primary_source_for:evidence"]
+
+
+def test_no_plan_means_no_primary_requirements():
+    """The critic cannot invent requirements it was never told about."""
+    from app.agents.critic import _missing_required_primary_sources
+
+    assert _missing_required_primary_sources([{"claim": "x", "source": "https://a.org"}]) == []
 
 
 def test_required_primary_source_satisfied_by_a_paper():
     from app.agents.critic import _missing_required_primary_sources
 
+    plan = [{"axis": "risk", "question": "failure modes"}]
     missing = _missing_required_primary_sources([
-        {"claim": "frontier model reasoning benchmark results",
+        {"claim": "primary study of failure modes", "axis": "risk",
          "source": "https://arxiv.org/abs/2501.00001"},
-    ])
-    assert "frontier_capability_2025_26" not in missing
+    ], plan)
+    assert missing == []
+
+
+def test_primary_requirement_is_domain_agnostic():
+    """A non-AI plan's dimensions get the same protection as an AI one."""
+    from app.agents.critic import _missing_required_primary_sources
+
+    plan = [
+        {"axis": "definition", "question": "term meanings"},
+        {"axis": "history", "question": "how the term arose"},
+    ]
+    facts = [
+        {"claim": "definition", "axis": "definition",
+         "source": "https://www.nature.com/articles/d"},
+        {"claim": "history", "axis": "history", "source": "https://arxiv.org/abs/2401.1"},
+    ]
+    assert _missing_required_primary_sources(facts, plan) == []
