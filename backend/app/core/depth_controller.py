@@ -30,7 +30,7 @@ deterministically at report time so limitations can name the stop cause.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List, Literal, Sequence
 
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
@@ -518,7 +518,53 @@ def _focus_checks(state: Dict[str, Any]) -> Dict[str, Any]:
         "drifted": drifted,
         "concentrated": concentrated,
         "coverage": float(report.get("coverage", 0.0) or 0.0),
+        # Dimensions the plan requires but has no evidence for. A redirect can
+        # only act on these; if none are left actionable the redirect has run out
+        # of things to correct.
+        "uncovered_priorities": list(report.get("missing") or ())
+        + list(report.get("thin") or ()),
+        "actionable_left": any(
+            _dimension_attempts_left(state, d)
+            for d in list(report.get("missing") or ())
+            + list(report.get("thin") or ())
+        ),
     }
+
+
+def _dimension_attempts_left(state: Dict[str, Any], dimension: str) -> bool:
+    """Has this dimension any search budget left?
+
+    Reads the same ledger the candidate generator consults, so the stopping
+    decision and the selection decision can never disagree about whether a gap is
+    still worth a pass. Unknown dimension (no entry) counts as budget left.
+    """
+    try:
+        from app.core.investigation_state import dimension_key
+
+        investigation = state.get("investigation_state") or {}
+        if not isinstance(investigation, dict):
+            return True
+        entry = investigation.get(dimension_key(str(dimension or "")))
+        if not isinstance(entry, dict):
+            return True
+        if str(entry.get("status", "")) == "exhausted":
+            return False
+        max_attempts = max(1, int(entry.get("max_attempts", 1) or 1))
+        return int(entry.get("attempts", 0) or 0) < max_attempts
+    except Exception as exc:  # a ledger bug must not stop a run
+        logger.warning("dimension_attempts_check_failed", error=str(exc), exc_info=exc)
+        return True
+
+
+def _actionable_uncovered_axes(
+    state: Dict[str, Any], uncovered_axes: Sequence[str]
+) -> List[str]:
+    """Uncovered planned axes that still have search budget.
+
+    An axis searched to exhaustion is not actionable: the evidence does not exist
+    in the reachable sources, so another pass cannot fill it.
+    """
+    return [a for a in uncovered_axes if _dimension_attempts_left(state, a)]
 
 
 def _confidence_target(state: Dict[str, Any], settings: Settings) -> float:
@@ -754,16 +800,41 @@ def decide_with_checks(
     # prevent.
     focus = _focus_checks(state)
     if focus["redirect"]:
+        # A redirect is only useful if there is somewhere NEW to redirect to. If
+        # every uncovered/high-priority dimension has already been searched to
+        # exhaustion, the drift cannot be corrected by more searching; finalize
+        # with the gap recorded rather than spending another pass re-confirming
+        # it. This is the convergence condition: drift forces a corrective pass,
+        # and a correction that has been attempted and failed stops being forced.
+        if focus["uncovered_priorities"] and not focus["actionable_left"]:
+            return _with_reason(
+                "finalize",
+                "drift detected but every uncovered high-priority dimension has "
+                "already been searched to exhaustion; recording as a limitation",
+            )
         return _with_reason("expand", focus["decision_reason"])
 
     if checks["uncovered_axes"]:
         # A planned angle with zero verified facts is a hole, not a rounding
-        # error. Expanding is the only way to fill it.
+        # error. Expanding is the only way to fill it — UNLESS that angle has
+        # already been searched to exhaustion, in which case the hole is a
+        # finding (the question is not answerable from available sources) and
+        # re-searching it buys nothing. Without this gate an unsupported axis
+        # forced a pass every round forever.
+        actionable = _actionable_uncovered_axes(state, checks["uncovered_axes"])
+        if not actionable:
+            return _with_reason(
+                "finalize",
+                f"{len(checks['uncovered_axes'])} uncovered planned axe"
+                + ("s" if len(checks["uncovered_axes"]) != 1 else "")
+                + " but all have been searched to exhaustion; recorded as "
+                "limitations",
+            )
         return _with_reason(
             "expand",
-            f"{len(checks['uncovered_axes'])} uncovered planned axe"
-            + ("s" if len(checks["uncovered_axes"]) != 1 else "")
-            + ": " + ", ".join(checks["uncovered_axes"][:3]),
+            f"{len(actionable)} uncovered planned axe"
+            + ("s" if len(actionable) != 1 else "")
+            + ": " + ", ".join(actionable[:3]),
         )
 
     # Only ACTIVE (non-exhausted) corroboration gaps block a stop or force a
