@@ -125,6 +125,15 @@ class Settings(BaseSettings):
     # publisher's text counts as independent corroboration.
     max_corroboration_attempts: int = 2
     corroboration_similarity: float = 0.55
+    # How many times a research DIMENSION (plan axis) may be searched before it
+    # is marked exhausted and stops generating candidates. The dimension-level
+    # counterpart of max_corroboration_attempts, and the main convergence lever:
+    # without it a dimension that yields no evidence is re-searched every round
+    # (the run reached 80 sources with the same gaps open). Kept low because the
+    # goal is the best-supported answer, not an exhaustive map — two differently
+    # angled searches that both fail are strong evidence the material is not
+    # there, and the gap is then reported as a limitation.
+    max_dimension_attempts: int = 2
     # ------------------------------------------------------------------
     # SearXNG: the self-hosted metasearch backend (primary web search).
     #

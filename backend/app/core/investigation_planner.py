@@ -348,14 +348,20 @@ def _corroboration_candidates(
 
 
 def _primary_source_candidates(
-    state: Dict[str, Any], *, limit: int
+    state: Dict[str, Any], *, limit: int, entries: Optional[Dict[str, Dict[str, Any]]] = None
 ) -> List[Dict[str, Any]]:
     """Targeted primary-source queries for primary-thin / uncovered dimensions.
 
     Reuses ``dimension_primary_share`` + the authoritative query builder, i.e.
     the exact generator ``evidence_completion.primary_source_followups`` uses.
-    Dimensions are not claims, so investigation state does not apply them.
+
+    Dimensions are not claims, but they DO share the investigation ledger (under
+    a namespaced key), so an exhausted dimension stops generating primary-source
+    queries too. Previously this channel ignored the ledger while the
+    dimension-coverage channel honoured it, which let an exhausted dimension keep
+    consuming budget through this second door.
     """
+    entries = entries if isinstance(entries, dict) else {}
     facts = [f for f in state.get("facts", []) or [] if isinstance(f, dict)]
     if not facts:
         return []
@@ -401,6 +407,11 @@ def _primary_source_candidates(
         item = by_dim.get(dim)
         if not isinstance(item, dict):
             continue
+        gain = _expected_gain(entries.get(_dimension_entry_key(str(item.get("axis", "") or dim))))
+        if gain <= 0.0:
+            # Exhausted dimension: its evidence does not exist in reachable
+            # sources, so a primary-source query for it is a guaranteed no-op.
+            continue
         try:
             query = build_dimension_primary_query(
                 str(item.get("question", "") or ""),
@@ -421,7 +432,7 @@ def _primary_source_candidates(
                 impact=max(0.2, min(1.0, 1.0 - share)),
                 uncertainty=UNCERTAINTY_THIN_DIMENSION,
                 gap=GAP_PRIMARY_THIN,
-                gain=EXPECTED_GAIN_OPEN,
+                gain=gain,
                 reason="planned dimension is thin on primary/official publishers",
             )
         )
@@ -430,8 +441,24 @@ def _primary_source_candidates(
     return out
 
 
+def _dimension_entry_key(dimension: str) -> str:
+    """Ledger key for a dimension, so this channel shares the attempt accounting.
+
+    Falls back to the raw normalized name when the helper is unavailable, so a
+    keying failure degrades to "always selectable" rather than crashing the
+    channel (AGENTS.md 4.7).
+    """
+    try:
+        from app.core.investigation_state import dimension_key
+
+        return dimension_key(dimension)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("dimension_entry_key_failed", error=str(exc), exc_info=exc)
+        return _normalize(dimension)
+
+
 def _dimension_coverage_candidates(
-    state: Dict[str, Any], *, limit: int
+    state: Dict[str, Any], *, limit: int, entries: Optional[Dict[str, Dict[str, Any]]] = None
 ) -> List[Dict[str, Any]]:
     """Targeted follow-up for dimensions that are CENTRAL but under-researched.
 
@@ -450,7 +477,12 @@ def _dimension_coverage_candidates(
 
     Reuses `build_synthesis_plan` and the planner's own sub-question text — no
     new evidence logic, no new LLM call.
+
+    `entries` is the shared investigation ledger. A dimension listed as
+    `exhausted` there yields no candidate, which is what stops an unsupported
+    dimension from being re-searched every round.
     """
+    entries = entries if isinstance(entries, dict) else {}
     facts = [f for f in state.get("facts", []) or [] if isinstance(f, dict)]
     if not facts:
         return []
@@ -509,6 +541,19 @@ def _dimension_coverage_candidates(
         question = question.strip()
         if not question:
             return
+
+        # DIMENSION EXHAUSTION. A dimension that has been searched repeatedly and
+        # produced nothing stops being a candidate instead of being re-issued
+        # forever. The old code had no dimension-level memory at all, so it
+        # appended "(attempt N)" each round — which also defeated the
+        # executed-query filter, since every round's text was new. That is how a
+        # run reached 80 sources with the same gaps still open.
+        axis = str(item.get("axis", "") or "") if isinstance(item, dict) else ""
+        entry = entries.get(_dimension_entry_key(axis or label))
+        gain = _expected_gain(entry)
+        if gain <= 0.0:
+            return
+
         query = question if attempt == 0 else f"{question} (attempt {attempt + 1})"
         if _normalize(query) in seen:
             return
@@ -524,7 +569,7 @@ def _dimension_coverage_candidates(
                     GAP_UNCOVERED_DIMENSION if uncovered
                     else GAP_UNDER_RESEARCHED_DIMENSION
                 ),
-                gain=EXPECTED_GAIN_OPEN,
+                gain=gain,
                 reason=(
                     "a dimension the question requires has no evidence at all"
                     if uncovered
@@ -716,8 +761,12 @@ def select_investigations(
             ),
             lambda: _counter_evidence_candidates(state, entries, limit=generation_limit),
             lambda: _corroboration_candidates(state, entries, limit=generation_limit),
-            lambda: _primary_source_candidates(state, limit=generation_limit),
-            lambda: _dimension_coverage_candidates(state, limit=generation_limit),
+            lambda: _primary_source_candidates(
+                state, limit=generation_limit, entries=entries
+            ),
+            lambda: _dimension_coverage_candidates(
+                state, limit=generation_limit, entries=entries
+            ),
         ):
             try:
                 candidates.extend(generator() or [])

@@ -94,6 +94,75 @@ def _new_entry(claim: str, max_attempts: int) -> Dict[str, Any]:
     }
 
 
+# Dimensions share the ledger with claims but live under their own key space, so
+# a dimension named "regulation" can never join against a claim whose text is
+# "regulation". Both use the same entry shape and status vocabulary, which is
+# what lets one gap exhaust while the other stays open.
+DIMENSION_KEY_PREFIX = "dimension::"
+
+# A dimension gets fewer tries than a claim: a claim is a specific assertion a
+# second publisher might genuinely hold, whereas a dimension that has produced
+# nothing after two differently-angled searches is far more likely to be
+# unsupported than one search away. Bounded on purpose — the goal is the best
+# supported answer, not an exhaustive map.
+DEFAULT_DIMENSION_ATTEMPTS = 2
+
+
+def dimension_key(dimension: str) -> str:
+    """Stable key for a research DIMENSION (plan axis), run-consistent.
+
+    Namespaced so it cannot collide with a claim key. Empty input yields "".
+    """
+    try:
+        from app.agents.planner import normalize_text
+
+        name = normalize_text(str(dimension or ""))
+    except Exception as exc:  # a keying bug must never raise into the loop
+        logger.warning("dimension_key_failed", error=str(exc), exc_info=exc)
+        name = " ".join(str(dimension or "").lower().split())
+    return f"{DIMENSION_KEY_PREFIX}{name}" if name else ""
+
+
+def record_dimension_attempts(
+    state: Any,
+    dimensions: Sequence[str],
+    *,
+    max_attempts: int = DEFAULT_DIMENSION_ATTEMPTS,
+) -> Dict[str, Dict[str, Any]]:
+    """Mark that a targeted search was issued for each of `dimensions`.
+
+    The dimension-level counterpart of `record_attempts`. Without it a missing
+    dimension is re-searched every round forever: the dimension-coverage channel
+    only ever saw the CLAIM ledger, so a dimension that failed to produce
+    evidence was regenerated with a fresh `(attempt N)` query that no
+    executed-query memory could match. The source count climbed while the gap
+    stayed open.
+
+    After `max_attempts` the dimension is EXHAUSTED and stops being a candidate,
+    so the run reports the gap as a limitation instead of paying for the same
+    dead end again.
+
+    Total: blank or malformed entries are skipped, never raised on. Returns a NEW
+    state dict; the input is not mutated.
+    """
+    out = sanitize_investigation_state(state, max_attempts=max_attempts)
+    for dimension in dimensions or ():
+        key = dimension_key(str(dimension or ""))
+        if not key:
+            continue
+        entry = out.get(key) or _new_entry(str(dimension or "").strip(), max_attempts)
+        entry["claim"] = entry.get("claim") or str(dimension or "").strip()
+        entry["attempts"] = _as_int(entry.get("attempts", 0)) + 1
+        budget = max(1, _as_int(entry.get("max_attempts", max_attempts), max_attempts))
+        if entry["attempts"] >= budget:
+            entry["status"] = STATUS_EXHAUSTED
+            entry["last_outcome"] = "no_new_evidence"
+        elif entry["status"] == STATUS_OPEN:
+            entry["status"] = STATUS_ATTEMPTED
+        out[key] = entry
+    return out
+
+
 def _sanitize_entry(entry: Any, key: str, max_attempts: int) -> Dict[str, Any]:
     """Coerce a possibly hand-built/legacy entry into the canonical shape."""
     if not isinstance(entry, dict):

@@ -1349,6 +1349,44 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
                 queries_by_claim=queries_by_claim,
                 max_attempts=inv_max_attempts,
             )
+            # DIMENSION attempts, in the same ledger and under a namespaced key.
+            # Every dimension this pass actually searched is charged one attempt;
+            # after its budget the dimension is exhausted and stops generating
+            # candidates. Without this, a dimension that never yields evidence is
+            # re-searched indefinitely — the run reached 80 sources with the same
+            # gaps open, because the channel regenerated the question with a new
+            # "(attempt N)" suffix that no query memory could match.
+            from app.core.investigation_state import record_dimension_attempts
+
+            searched_dimensions: List[str] = []
+            for _query_text in (state.get("coverage_searched") or []) + (
+                state.get("executed_queries") or []
+            ):
+                _text = str(_query_text or "").lower()
+                for _dim in (
+                    list((state.get("focus") or {}).get("report", {}).get("missing") or ())
+                    + list((state.get("focus") or {}).get("report", {}).get("thin") or ())
+                ):
+                    _name = str(_dim or "").replace("_", " ")
+                    if _name and _name in _text and _dim not in searched_dimensions:
+                        searched_dimensions.append(_dim)
+            # Fall back to the measured gap sets when query text matching finds
+            # nothing: the report already says these are uncovered, and they were
+            # the target of this pass's gap contracts.
+            if not searched_dimensions:
+                searched_dimensions = list(
+                    (state.get("focus") or {}).get("report", {}).get("missing") or ()
+                ) + list(
+                    (state.get("focus") or {}).get("report", {}).get("thin") or ()
+                )
+            if searched_dimensions:
+                inv_state = record_dimension_attempts(
+                    inv_state,
+                    searched_dimensions,
+                    max_attempts=max(
+                        1, int(getattr(settings_for_inv, "max_dimension_attempts", 2) or 2)
+                    ),
+                )
             inv_state = reconcile_outcomes(
                 inv_state, state.get("facts", []), max_attempts=inv_max_attempts
             )
