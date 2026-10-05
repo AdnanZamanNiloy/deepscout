@@ -419,6 +419,9 @@ def assess_focus(
     fact_list = [f for f in (facts or ()) if isinstance(f, Mapping)]
 
     plan_by_question: Dict[str, str] = {}
+    # The plan's own per-dimension source requirement. This is the standard the
+    # answer is held to; nothing here overrides it with a constant.
+    per_dimension_min: Dict[str, int] = {}
     for item in plan or ():
         if not isinstance(item, Mapping):
             continue
@@ -426,6 +429,15 @@ def assess_focus(
         q = _normalize(str(item.get("question", "") or ""))
         if axis and q:
             plan_by_question[q] = axis
+        if axis:
+            try:
+                declared_min = int(item.get("minimum_sources", 0) or 0)
+            except (TypeError, ValueError):
+                declared_min = 0
+            if declared_min > 0:
+                per_dimension_min[axis] = max(
+                    per_dimension_min.get(axis, 0), declared_min
+                )
 
     declared = list(scope.dimensions) or ["_unassigned"]
 
@@ -485,14 +497,25 @@ def assess_focus(
     # 40 snippets of nothing reports full coverage.
     required = scope.required or tuple(declared)
     covered = [n for n in required if buckets.get(n) and buckets[n].verified > 0]
-    # "Thin" is judged against the QUESTION's demands, not a flat constant. A
-    # question that declared ONE dimension is answered by one verified claim —
-    # calling that thin is what makes the loop widen a question the user did not
-    # ask wide. A question with several dimensions has asked for depth on each.
-    effective_min = 1 if len(required) <= 1 else max(1, min_facts)
+    # "Thin" is judged against the QUESTION's own demand for that dimension, not
+    # a flat constant. The plan states `minimum_sources` per contract — that IS
+    # the requirement, and overriding it with a fixed 2 is the same class of bug
+    # this module exists to remove (a constant dictating terms the question never
+    # set). A dimension the planner asked one source for is not thin at one
+    # source, so it does not generate follow-up work forever.
+    #
+    # `min_facts` is the fallback for a dimension with no declared requirement.
+    def _dimension_min(dimension: str) -> int:
+        declared_min = per_dimension_min.get(dimension)
+        if declared_min is not None and declared_min > 0:
+            return declared_min
+        if len(required) <= 1:
+            return 1
+        return max(1, min_facts)
+
     thin = [
         n for n in required
-        if buckets.get(n) and 0 < buckets[n].verified < effective_min
+        if buckets.get(n) and 0 < buckets[n].verified < _dimension_min(n)
     ]
     missing = [n for n in required if not (buckets.get(n) and buckets[n].verified > 0)]
     ungrounded = [
