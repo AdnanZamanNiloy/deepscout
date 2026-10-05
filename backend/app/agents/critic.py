@@ -42,6 +42,9 @@ from app.core.usage import set_stage_hint
 
 from app.agents.confidence import ConfidenceReport, SUFFICIENCY_THRESHOLD
 from app.agents.contradiction import contradiction_followups, summarize_contradictions
+# Module level so the primary-source gate below can canonicalize plan axes; it
+# was previously imported inside critic_agent(), which left it out of scope here.
+from app.agents.planner import dimension_to_axis
 from app.agents.evidence_utils import (
     dedupe_semantic_facts,
     evidence_stats,
@@ -150,11 +153,24 @@ async def critic_agent(
     confidence_target: Optional[float] = None,
     redteam_survival: Optional[float] = None,
     use_llm: bool = True,
+    focus_report: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Judge the evidence pool. Returns the verdict dict the workflow consumes.
 
     All new arguments are keyword-only and optional, so the existing call
     signature keeps working unchanged.
+
+    `focus_report` is the loop's query-anchored assessment (app/agents/focus.py):
+    coverage, concentration and drift against the ORIGINAL question. It adds two
+    gates that the evidence-size gates cannot express, because they are about
+    WHAT was researched rather than how much was found:
+      * DRIFT — most evidence barely overlaps the question. Size alone looks
+        healthy here, which is exactly how a run fills up on the wrong subject.
+      * CONCENTRATION on a broad question — one dimension holds nearly all the
+        evidence while others the plan declared are empty.
+    Deliberately NOT a gate for a narrow question: "how does TCP congestion
+    control work" is correctly answered from one dimension, and widening it
+    would be the drift this exists to catch.
     """
     target = float(
         confidence_target if confidence_target is not None else SUFFICIENCY_THRESHOLD
@@ -306,16 +322,10 @@ async def critic_agent(
     if gaps:
         gate_failures.append(f"uncovered_angles={len(gaps)}")
 
-    # --- frontier mandatory tracks (six axes + counter-evidence) -----------
-    # The plan always carries these contracts (planner.enforce_frontier_axes),
-    # but a contract with no facts is still an uncovered axis. Blocking: an AI
-    # trends report missing capability/economics/safety or the skeptical track
-    # is not decision-grade, so it can never pass on other strengths.
-    from app.agents.planner import (
-        COUNTER_EVIDENCE_AXIS,
-        FRONTIER_AXES,
-        dimension_to_axis,
-    )
+    # --- declared-dimension coverage ---------------------------------------
+    # A contract with no facts is an uncovered axis. Blocking, because the plan
+    # is the record of what this question asked to be researched.
+    from app.agents.planner import dimension_to_axis
 
     covered_axes = {
         str(f.get("sub_question", "") or "") for f in quality_facts
@@ -328,31 +338,58 @@ async def critic_agent(
         dimension_to_axis(str(c.get("axis", ""))) for c in (plan or [])
         if str(c.get("axis", "")).strip()
     }
-    for axis in FRONTIER_AXES:
-        if axis in plan_axes and axis not in covered_canonical:
-            gate_failures.append(f"frontier_axis_uncovered={axis}")
-    if COUNTER_EVIDENCE_AXIS in plan_axes and COUNTER_EVIDENCE_AXIS not in covered_canonical:
-        gate_failures.append("counter_evidence_missing")
+    # --- declared-dimension coverage ---------------------------------------
+    # Every axis the PLAN declared needs verified evidence behind it. Driven by
+    # the plan rather than a built-in list, so this holds for any subject: the
+    # plan is the record of what the question asked to be researched, and an
+    # axis that was planned but produced nothing is an unfinished answer.
+    for axis in sorted(plan_axes):
+        if axis not in covered_canonical:
+            gate_failures.append(f"planned_axis_uncovered={axis}")
 
     # --- source-ledger composition ------------------------------------------
-    # Regulation must not dominate: a report that is >60% regulation-sourced is
-    # a legal summary, not an AI-trends brief. The brief's stated ceiling is
-    # 30%; 60% is the hard block (30% is surfaced as a warning by the report),
-    # because some genuinely regulatory queries legitimately exceed 30%.
-    if stats.get("regulation_share", 0.0) > 0.60:
-        gate_failures.append(
-            f"regulation_dominance={stats['regulation_share']:.2f}>0.60"
+    # No SECONDARY source class may crowd out primary evidence. The original
+    # gate was regulation-only (a >60% regulation report is a legal summary, not
+    # a trends brief); it is generalised to the other secondary class, peer
+    # review, because a >60% literature report that never consulted data or an
+    # official series fails the same way.
+    #
+    # Primary share is deliberately NOT gated: a report that is mostly primary
+    # documents is the goal, not a defect. Gating it was a mistake in an earlier
+    # version of this change and it blocked healthy runs at 80% primary.
+    if isinstance(stats, dict):
+        _primary = float(stats.get("primary_share", 0.0) or 0.0)
+        _secondary = max(
+            float(stats.get("regulation_share", 0.0) or 0.0),
+            float(stats.get("peer_reviewed_share", 0.0) or 0.0),
         )
+        if _secondary > 0.60 and _primary < 0.60:
+            gate_failures.append(
+                f"secondary_source_dominance={_secondary:.2f}>0.60 with primary={_primary:.2f}"
+            )
 
-    # --- required primary sources per frontier requirement ------------------
-    # The brief requires at least one high-quality PRIMARY source on three
-    # specific frontier questions before finalizing. A report can be long and
-    # well-cited yet have no paper/official report/filing behind capability,
-    # compute/energy, or ROI evidence. Blocking: without these the report is
-    # secondary commentary, whatever its other strengths.
-    primary_gaps = _missing_required_primary_sources(quality_facts)
+    # --- required primary sources per declared dimension --------------------
+    # A report can be long and well-cited yet rest entirely on commentary. Every
+    # dimension the plan declared needs a primary source behind it. Blocking:
+    # without that the report is secondary whatever its other strengths.
+    primary_gaps = _missing_required_primary_sources(quality_facts, plan)
     for gap in primary_gaps:
         gate_failures.append(f"missing_primary_source={gap}")
+
+    # --- drift and concentration against the ORIGINAL question -------------
+    if focus_report:
+        if focus_report.get("drifted"):
+            gate_failures.append(
+                f"drift={float(focus_report.get('drift', 0.0)):.2f}"
+            )
+        # Concentration only blocks a BROAD question. A narrow one is supposed
+        # to be answered from a single dimension, and blocking there would push
+        # the loop to widen a question the user did not ask wide.
+        if focus_report.get("concentrated") and not focus_report.get("is_narrow"):
+            gate_failures.append(
+                f"concentration_on={focus_report.get('dominant_dimension', '?')}"
+                f"={float(focus_report.get('concentration', 0.0)):.2f}"
+            )
 
     # Measured confidence, when available, replaces the model's self-report.
     if confidence_report is not None:
@@ -405,61 +442,69 @@ async def critic_agent(
     }
 
 
-# The three frontier questions the brief requires at least one high-quality
-# PRIMARY source on before a report may finalize. Each entry is (label,
-# cue-words). A cue match on a fact's claim OR sub_question tags it to the
-# requirement; primacy is then checked on the source. Deliberately lexical and
-# recall-oriented — the gate blocks only when NO primary source exists for a
-# requirement, not on precision of the match.
-REQUIRED_PRIMARY_SOURCES: tuple = (
-    (
-        "frontier_capability_2025_26",
-        ("capability", "benchmark", "reasoning", "coding", "multimodal",
-         "agentic", "long-context", "context length", "inference-time",
-         "scaling", "frontier model"),
-    ),
-    (
-        "energy_compute_constraints",
-        ("energy", "power", "electricity", "datacenter", "data center",
-         "compute", "chip", "gpu", "supply chain", "infrastructure"),
-    ),
-    (
-        "roi_or_pilot_failure",
-        ("roi", "return on investment", "pilot", "capex", "spend", "funding",
-         "valuation", "bubble", "economics", "investment", "cost"),
-    ),
-)
+# Primary-source requirements, derived from the PLAN rather than hardcoded.
+#
+# HISTORY, because this was a live bug. The gate below used to require a primary
+# source on three fixed AI-frontier questions — model capability, compute/energy
+# constraints, and ROI or pilot failure — for EVERY query. Asked "population of
+# Malawi 2024" it blocked finalization until the report had a primary source on
+# datacenter electricity demand and enterprise AI ROI, which is not a question
+# about Malawi's population and cannot be answered by searching for it.
+#
+# The requirement is now structural: every dimension the plan declared must
+# eventually have a primary source behind it. Same protection against a report
+# that is long and well-cited but grounded only in commentary, with no
+# topic-specific list anywhere.
+#
+# One primary source per dimension, matching the gate this replaces. Requiring
+# several would make the block unreachable on narrow questions that legitimately
+# have a single authoritative source (one statute, one dataset, one paper).
+_PRIMARY_REQUIREMENT_MIN = 1
 
 
-def _missing_required_primary_sources(facts: Sequence[Dict[str, Any]]) -> List[str]:
-    """Requirements with no high-quality PRIMARY source behind them.
+def _missing_required_primary_sources(
+    facts: Sequence[Dict[str, Any]],
+    plan: Optional[Sequence[Dict[str, Any]]] = None,
+    *,
+    minimum: int = _PRIMARY_REQUIREMENT_MIN,
+) -> List[str]:
+    """Planned dimensions with no high-quality PRIMARY source behind them.
 
-    A requirement is satisfied when at least one fact attributed to it (by claim
-    or sub_question cue) cites a primary source (`is_primary_source`). Returns
-    the labels of requirements with no such source, so the critic can block
-    finalization. Deterministic and total.
+    A dimension is satisfied when at least `minimum` verified facts attributed to
+    it cite a primary source (`is_primary_source`). With no plan supplied the
+    caller gets no dimension requirements, which is the correct default: the
+    critic cannot invent requirements it was not told about. Deterministic and
+    total.
     """
     from app.agents.sources import is_primary_source
 
-    missing: List[str] = []
-    for label, cues in REQUIRED_PRIMARY_SOURCES:
-        satisfied = False
-        for fact in facts or ():
-            if not isinstance(fact, dict):
-                continue
-            text = (
-                str(fact.get("claim", "") or "") + " "
-                + str(fact.get("sub_question", "") or "")
-                + " " + str(fact.get("axis", "") or "")
-            ).lower()
-            if not any(cue in text for cue in cues):
-                continue
-            if is_primary_source(str(fact.get("source", "") or "")):
-                satisfied = True
-                break
-        if not satisfied:
-            missing.append(label)
-    return missing
+    if not plan:
+        return []
+
+    by_axis: Dict[str, List[bool]] = {}
+    axes: List[str] = []
+    for contract in plan:
+        if not isinstance(contract, dict):
+            continue
+        axis = dimension_to_axis(str(contract.get("axis", "") or ""))
+        if axis and axis not in axes:
+            axes.append(axis)
+            by_axis[axis] = []
+
+    for fact in facts or ():
+        if not isinstance(fact, dict):
+            continue
+        axis = dimension_to_axis(str(fact.get("axis", "") or ""))
+        if axis not in by_axis:
+            continue
+        if is_primary_source(str(fact.get("source", "") or "")):
+            by_axis[axis].append(True)
+
+    return [
+        f"primary_source_for:{axis}"
+        for axis in axes
+        if len(by_axis[axis]) < max(1, minimum)
+    ]
 
 
 def _compact_facts(facts: Sequence[Dict[str, Any]], limit: int = 12) -> List[Dict[str, Any]]:

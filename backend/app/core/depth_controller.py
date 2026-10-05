@@ -474,6 +474,53 @@ def _budget_checks(state: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _focus_checks(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Read the loop's focus assessment (app/agents/focus.py) for a redirect.
+
+    `focus` is written by critic_node, which computes the report once per pass
+    via `workflow._assess_focus`. A run that has not reached the critic yet has
+    no assessment and must not be redirected on absent information.
+
+    Reads only what is already on state, so this stays cheap and pure like every
+    other check here. Returns the redirect decision rather than acting on it, so
+    `evaluate` can report which rule fired.
+    """
+    focus = state.get("focus") or {}
+    report = focus.get("report") if isinstance(focus, dict) else None
+    if not isinstance(report, dict) or not report:
+        return {
+            "redirect": False,
+            "decision_reason": "",
+            "drifted": False,
+            "concentrated": False,
+            "coverage": 0.0,
+        }
+
+    drifted = bool(report.get("drifted"))
+    concentrated = bool(report.get("concentrated")) and not report.get("is_narrow")
+    redirect = bool(drifted or concentrated)
+
+    reasons: List[str] = []
+    if drifted:
+        reasons.append(
+            f"research drifted from the question (off-query share "
+            f"{float(report.get('off_query_share', 0.0)):.2f})"
+        )
+    if concentrated:
+        reasons.append(
+            f"evidence concentrated on '{report.get('dominant_dimension', '?')}' "
+            f"({float(report.get('concentration', 0.0)):.2f}) while other planned "
+            f"dimensions are uncovered"
+        )
+    return {
+        "redirect": redirect,
+        "decision_reason": "; ".join(reasons),
+        "drifted": drifted,
+        "concentrated": concentrated,
+        "coverage": float(report.get("coverage", 0.0) or 0.0),
+    }
+
+
 def _confidence_target(state: Dict[str, Any], settings: Settings) -> float:
     """Mode-aware target: audit demands more proof than quick by design."""
     try:
@@ -515,6 +562,7 @@ def evaluate(state: Dict[str, Any], settings: Settings | None = None) -> Dict[st
     uncovered = _uncovered_axes(state)
     target = _confidence_target(state, settings)
     budget = _budget_checks(state)
+    focus = _focus_checks(state)
     novel = _novel_followups(state)
     min_iters = _min_iterations(state)
     needs_corroboration = _needs_corroboration_count(state)
@@ -620,6 +668,9 @@ def evaluate(state: Dict[str, Any], settings: Settings | None = None) -> Dict[st
         "no_novel_queries": bool(improved) and not novel,
         "budget": budget,
         "budget_stop": bool(budget["exhausted"] or not budget["can_afford_pass"]),
+        # Query-anchored focus: drift and concentration against the ORIGINAL
+        # question, which no evidence-size signal above can express.
+        "focus": focus,
         # Explainability: the ordered trigger list behind the decision.
         "decision_reasons": reasons,
     }
@@ -693,6 +744,18 @@ def decide_with_checks(
     # contradiction, or a thinly-evidenced planned dimension must not finalize
     # while a useful pass can still run.
     # ------------------------------------------------------------------
+    # FOCUS GATE. Checked before the axis checks because it asks a different and
+    # prior question: is this pass still about the user's question? Drift and
+    # concentration are not "not enough evidence" — they are "the wrong
+    # evidence", and every evidence-size check below will happily pass them.
+    #
+    # A narrow question is exempt on purpose. It is SUPPOSED to be answered from
+    # one dimension, so steering it elsewhere is the drift this gate exists to
+    # prevent.
+    focus = _focus_checks(state)
+    if focus["redirect"]:
+        return _with_reason("expand", focus["decision_reason"])
+
     if checks["uncovered_axes"]:
         # A planned angle with zero verified facts is a hole, not a rounding
         # error. Expanding is the only way to fill it.

@@ -27,7 +27,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from langgraph.graph import END, START, StateGraph
 
@@ -140,6 +140,66 @@ def _unanswered_questions(sub_questions: List[Any], search_results: List[Any]) -
         text for text in (_extract_question_text(i) for i in sub_questions or [])
         if text and normalize_text(text) not in answered
     ]
+
+
+def _assess_focus(state: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    """Measure this pass against the ORIGINAL question, and aim the next one.
+
+    Returns {"report", "summary", "queries"} or None when there is nothing to
+    measure. Never raises: a failure here must not end a research run that has
+    already gathered evidence, so it logs and returns None.
+
+    The redirect is only issued when the run should actually change direction —
+    `needs_redirect` returns False for a narrow question that is already covered,
+    because widening a well-answered narrow question is the drift this is meant
+    to prevent.
+    """
+    try:
+        from app.agents.focus import (
+            ResearchScope,
+            assess_focus,
+            needs_redirect,
+            targeted_followups,
+        )
+    except Exception as exc:  # pragma: no cover - import guard
+        logger.warning("[Focus] unavailable, skipping redirect: %s", exc, exc_info=exc)
+        return None
+
+    query = str(state.get("query", "") or "")
+    plan = list(state.get("sub_questions", []) or [])
+    facts = list(state.get("facts", []) or [])
+    intent = state.get("intent") or {}
+    iteration = int(state.get("iteration", 0) or 0)
+    max_iterations = int(state.get("max_iterations", 3) or 3)
+
+    try:
+        scope = ResearchScope.from_plan(
+            query, plan,
+            query_type=str(intent.get("query_type", "") or ""),
+            domain=str(intent.get("domain", "") or ""),
+        )
+        report = assess_focus(query, plan, facts, scope=scope)
+        asked = state.get("executed_queries") or state.get("coverage_searched") or ()
+        queries: List[str] = []
+        if needs_redirect(report, iteration=iteration, max_iterations=max_iterations):
+            # Bound inline rather than through Settings: this is a per-pass
+            # steering cap, not operator-tunable configuration, and the
+            # authoritative ceiling on follow-ups remains the depth controller's
+            # budget check. Sizing it here would mean a new setting for a
+            # constant the loop already bounds elsewhere.
+            queries = targeted_followups(
+                report, plan, limit=3, already_asked=asked,
+            )
+        return {
+            "report": report.to_dict(),
+            "summary": report.summary(),
+            "queries": queries,
+        }
+    except Exception as exc:
+        logger.warning(
+            "[Focus] assessment failed, continuing without redirect: %s", exc, exc_info=exc
+        )
+        return None
 
 
 # Nodes traversed per research pass after the first (planner→search→
@@ -984,6 +1044,11 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
                         searched.append(vs)
         mode_target = MODE_CONFIDENCE_TARGET.get(str(state.get("mode", "") or "standard"))
 
+        # Focus assessment runs BEFORE the critic so the critic can gate on
+        # drift and concentration, and the same report drives the redirect
+        # queries below. Computed once per pass and reused.
+        focus_state = _assess_focus(state)
+
         critique = await critic_agent(
             llm=llm,
             query=state["query"],
@@ -1001,6 +1066,7 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
             # and measured evidence stats stand in for the model verdict —
             # one fewer serial LLM call on the latency-sensitive mode.
             use_llm=str(state.get("mode", "standard")) != "quick",
+            focus_report=(focus_state or {}).get("report") or None,
         )
 
         # Confidence Engine (Phase 2.4) replaces the inline weighted formula.
@@ -1046,6 +1112,20 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
         overall_conf = breakdown["overall"]
 
         improved = list(critique.get("improved_queries", []) or [])
+
+        # FOCUS REDIRECT (drift + concentration). Everything above asks for more
+        # evidence on what the run already found; nothing asked whether the run
+        # is still working on the user's question. When research has piled onto
+        # one dimension, or wandered off the query, these queries aim at the
+        # dimensions that are MISSING, derived from the plan for THIS question.
+        # They are placed BEFORE the evidence-first queries so a redirected
+        # search is not crowded out by corroboration work on an already-covered
+        # dimension.
+        if focus_state is not None:
+            for q in focus_state.get("queries", ()):
+                if q and q not in improved:
+                    improved.append(q)
+
         # Evidence-first: when the pool has uncorroborated or contradicted
         # claims, add disagreement-seeking queries so the expansion loop
         # researches the weakest evidence, not just more supporting pages.
@@ -1125,9 +1205,22 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
         # previously they existed only in critique_feedback and were invisible
         # to the stopping policy.
         critique["improved_queries"] = improved
+        # Persist the focus assessment so the trace shows WHERE the run was
+        # researching, not only how much it found. Kept out of the primary
+        # answer: this is process metadata and belongs to the audit.
+        focus_report = None
+        if focus_state is not None:
+            focus_report = focus_state.get("report") or {}
+            if focus_report:
+                logger.info("[Focus] %s", focus_state.get("summary", ""))
         critique_feedback = critique.get("reason", "")
         if improved:
             critique_feedback = f"{critique_feedback} Improved search focus: {'; '.join(improved)}"
+        if focus_report and (focus_report.get("concentrated") or focus_report.get("drifted")):
+            critique_feedback = (
+                f"{critique_feedback} "
+                f"Focus warning: {(focus_state or {}).get('summary', '')}"
+            )
 
         # Claim-level evidence spine (requirement 6): attach the graded record
         # to the state facts so synthesis and the report can rely on
@@ -1147,6 +1240,10 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
             "corroboration_queries": corroboration_queries,
             "corroboration_registry": corroboration_registry,
             "investigation_state": inv_state,
+            "focus": {
+                "report": focus_report or {},
+                "queries": list((focus_state or {}).get("queries", ()) or ()),
+            },
         }
 
     async def synthesizer_node(state: ResearchState) -> SynthesizerUpdate:
