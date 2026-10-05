@@ -42,11 +42,14 @@ DEFAULT_MODEL_PRICES: Dict[str, Tuple[float, float]] = {
     "default": (0.0004, 0.0008),
 }
 
-# Non-LLM unit costs. Tavily's free tier is credit-metered rather than billed,
-# but a credit is a scarce resource and belongs in the same budget.
+# Non-LLM unit costs.
+#
+# Every web-search backend is now free and self-hosted: SearXNG is our own
+# instance and the primary-source APIs are free. The keys stay because the
+# ledger reports per-provider spend, and a provider that later becomes
+# metered (or is swapped again) must not need the accounting plumbed in.
 SEARCH_UNIT_COST: Dict[str, float] = {
-    "tavily": 0.008,
-    "ddg": 0.0,
+    "searxng": 0.0,
     "wikipedia": 0.0,
     "arxiv": 0.0,
     "crossref": 0.0,

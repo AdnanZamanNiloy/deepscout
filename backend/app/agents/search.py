@@ -56,7 +56,6 @@ import httpx
 
 from app.core.cache import cache_key, get_cache
 from app.core.config import Settings
-from app.core.llm import _real_key
 from app.core.logging import get_logger
 
 from app.agents.planner import SubQuestion
@@ -95,16 +94,7 @@ logger = get_logger(__name__)
 
 # Bump when the shape of a cached search payload changes; stale entries would
 # otherwise serve pre-fix results for a full TTL.
-SEARCH_CACHE_VERSION = "search-v3"
-
-# ddgs is optional. A missing dependency should degrade one provider, not stop
-# the module from importing (which would take the whole pipeline down).
-try:  # pragma: no cover - import shape depends on environment
-    from ddgs import DDGS  # type: ignore
-except Exception:  # noqa: BLE001
-    DDGS = None  # type: ignore
-    logger.warning("[Search] ddgs unavailable; DuckDuckGo providers disabled")
-
+SEARCH_CACHE_VERSION = "search-v4"
 
 # =============================================================================
 # DATA STRUCTURE
@@ -819,66 +809,203 @@ def _domain_of(url: str) -> str:
 # =============================================================================
 
 _SITE_OPERATOR_RE = re.compile(r"site:(\S+)", re.IGNORECASE)
-_TAVILY_MAX_QUERY_CHARS = 400
+
+# SearXNG accepts long queries, but an unbounded string is both a wasted
+# upstream fan-out and a sign of a malformed query.
+_SEARXNG_MAX_QUERY_CHARS = 400
 
 
-def _prepare_tavily_query(
-    query: Any, query_domains: list[str] | None = None
-) -> tuple[str, list[str], list[str]]:
-    """Normalize a query for Tavily: translate Google-style site: operators into
-    include_domains / exclude_domains (which Tavily rejects inline), collapse
-    whitespace, and cap length at Tavily's 400-character limit.
+# =============================================================================
+# SEARXNG: the self-hosted metasearch backend
+# =============================================================================
+#
+# Replaces the Tavily / DuckDuckGo provider layer. One local HTTP service
+# aggregates many upstream engines, so the search stack needs no external
+# search API key and no per-query licence cost.
+#
+# Query shape is grounded in the SearXNG source rather than assumed:
+#
+#   GET /search?q=<query>&format=json&categories=...&language=...&pageno=...
+#
+# (`searx/webapp.py` reads `q` and `format` from the request form; the response
+# envelope comes from `webutils.get_json_response`.)
+#
+# The `site:` handling that used to be a Tavily `include_domains` list is now
+# native query syntax, which SearXNG forwards to its engines. That keeps the
+# hard/soft partition intact and actually SIMPLIFIES it: hard targets ride along
+# in the query text, soft ones never reach the provider at all and are applied
+# later as a ranking preference.
 
-    Only HARD site: targets become `include_domains`. `include_domains` is a
-    filter, not a preference: passing a guessed publisher there deletes every
-    other candidate from the result set, and an empty result was then treated as
-    a provider failure and charged to the circuit breaker. Jurisdiction-grounded
-    targets still filter (the question named the country, so its own agencies are
-    the answer's home); every other site: term is stripped from the query text
-    and re-applied as a ranking preference in `_score_result`, where a wrong
-    guess costs nothing. See `sources.partition_site_targets`.
 
-    `-site:` terms become `exclude_domains`. They were previously left in the
-    query text as literal punctuation, so a corroboration query asking for an
-    INDEPENDENT publisher reached Tavily with a dangling `-site:example.com`
-    that filtered nothing — the exclusion silently did not happen.
+def _searxng_enabled(settings: Settings) -> bool:
+    """Is the SearXNG backend switched on and pointed somewhere?"""
+    if not bool(getattr(settings, "searxng_enabled", True)):
+        return False
+    return bool(_searxng_endpoint(settings))
+
+
+def _searxng_endpoint(settings: Settings) -> str:
+    """Base URL of the SearXNG instance, without a trailing slash."""
+    base = str(getattr(settings, "searxng_url", "") or "").strip()
+    return base.rstrip("/")
+
+
+def _searxng_search_type_params(search_type: str, settings: Settings) -> Dict[str, Any]:
+    """Per-search-type category/language/time overrides for the aggregate.
+
+    A news contract wants the `news` category and a recent window; an academic
+    one wants `science`. Overriding per type is what keeps one instance usable
+    for every contract shape, which a single global category list could not do.
+    """
+    stype = (search_type or "").strip().lower()
+    configured = str(getattr(settings, "searxng_categories", "") or "").strip()
+    categories = configured or "general,science"
+    params: Dict[str, Any] = {"categories": categories}
+
+    if stype == "news":
+        # Keep `news` alongside the configured set rather than replacing it:
+        # a current-events question still benefits from the open-web engines.
+        if "news" not in categories:
+            params["categories"] = f"{categories},news"
+        params["time_range"] = "month"
+    elif stype == "academic":
+        # Scholarly indexes first; `news` and images only add noise here.
+        params["categories"] = "science"
+        # Papers do not decay in a week; do not filter them by recency.
+        params.pop("time_range", None)
+    elif stype == "statistical":
+        # Official statistics live on the open web; recency is handled by our
+        # own freshness scoring, not by discarding older documents.
+        params["categories"] = "general,science"
+
+    language = str(getattr(settings, "searxng_language", "") or "").strip()
+    if language:
+        params["language"] = language
+    return params
+
+
+def _prepare_searxng_query(
+    query: Any, search_type: str = "", settings: Optional[Settings] = None
+) -> tuple[str, Dict[str, Any]]:
+    """Normalize a query and build the SearXNG request parameters.
+
+    HARD `site:` targets are kept in the query text because SearXNG forwards
+    them to its engines natively; SOFT targets are stripped, because a guessed
+    publisher must never narrow the candidate set (that was the original bug
+    this partition exists to prevent). Excluded domains have no SearXNG
+    equivalent, so the caller applies them post-hoc -- see
+    `_searxng_to_results`.
     """
     text = query if isinstance(query, str) else str(query or "")
     split = partition_site_targets(text)
-    domains: list[str] = []
+    hard = list(split.hard)
 
-    def _add_domain(candidate: Any) -> None:
-        for part in str(candidate or "").replace(",", " ").split():
-            if part.upper() == "OR":
-                continue
-            domain = part.strip().strip(",").split("/")[0]
-            if domain and domain not in domains:
-                domains.append(domain)
+    # SearXNG understands `site:` inside the query, so a hard target is simply
+    # appended. Deduplicated and order-stable.
+    kept_terms = [t for t in hard if t]
+    stripped = _SITE_OPERATOR_RE.sub("", text)
+    stripped = stripped.replace("(", " ").replace(")", " ")
+    stripped = re.sub(r"\s+\bOR\b\s*$", "", stripped, flags=re.IGNORECASE)
+    stripped = re.sub(r"(?:^|\s)-\s*$", " ", stripped)
+    stripped = re.sub(r"\s+", " ", stripped).strip()
+    if kept_terms:
+        stripped = f"{stripped} " + " OR ".join(f"site:{t}" for t in kept_terms)
+        stripped = re.sub(r"\s+", " ", stripped).strip()
 
-    # Caller-supplied domains are an explicit request from our own code (used
-    # for first-party lookups), so they are honoured as filters.
-    for candidate in list(query_domains or []):
-        _add_domain(candidate)
-    for term in split.hard:
-        _add_domain(term)
-    excluded = [d for d in split.excluded if d not in domains]
-    text = _SITE_OPERATOR_RE.sub("", text)
-    # Strip the grouping punctuation that only existed to hold the site:
-    # clause. Leaving it behind sent Tavily queries like
-    # "exports official report ( OR OR -", which reads as noise.
-    text = text.replace("(", " ").replace(")", " ")
-    # The `-` of a stripped `-site:` clause leaves a dangling token. It must go
-    # BEFORE the trailing-OR strip, or it hides the ORs behind it: with the
-    # dash still there the string ends in `-`, not `OR`, and a three-host
-    # clause leaves two bare `OR`s in the query sent to the provider.
-    text = re.sub(r"(?:^|\s)-\s*$", " ", text)
-    while True:
-        stripped = re.sub(r"\s+\bOR\b\s*$", "", text, flags=re.IGNORECASE)
-        if stripped == text:
-            break
-        text = stripped
-    text = re.sub(r"\s+", " ", text).strip()
-    return text[:_TAVILY_MAX_QUERY_CHARS], domains, excluded
+    params: Dict[str, Any] = {}
+    if settings is not None:
+        params = _searxng_search_type_params(search_type, settings)
+    params.update({
+        "q": stripped[:_SEARXNG_MAX_QUERY_CHARS],
+        "format": "json",
+    })
+    params["pageno"] = 1
+    safe = int(getattr(settings, "searxng_safesearch", 0) or 0) if settings else 0
+    params["safesearch"] = max(0, min(2, safe))
+    # NB: there is deliberately no result-count parameter here. SearXNG has no
+    # per-request result limit -- per-engine counts live in the instance's
+    # settings.yml -- so an invented parameter would just be ignored upstream.
+    # `searxng_max_results` is applied client-side in `_searxng_search`.
+    return stripped[:_SEARXNG_MAX_QUERY_CHARS], params
+
+
+def _searxng_published(row: Dict[str, Any]) -> str:
+    """Best available publish date from a SearXNG result.
+
+    `MainResult.publishedDate` is a real datetime (serialized ISO by
+    `webutils.JSONEncoder`); paper results carry `date_of_publication`; and
+    `pubdate` is the older string form some engines still populate.
+    """
+    for key in ("publishedDate", "date_of_publication", "pubdate"):
+        value = row.get(key)
+        if isinstance(value, (list, tuple)) and value:
+            value = value[0]
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _searxng_to_results(
+    payload: Any, query: str, exclude_domains: Sequence[str] = ()
+) -> List["SearchResult"]:
+    """Map a SearXNG /search?format=json response to SearchResults.
+
+    Pure -- the network call stays in `_searxng_search` so this is testable
+    offline. Fields follow `searx.result_types.MainResult`: `title`, `content`
+    (the snippet), `url`, `publishedDate`.
+
+    Two things the metasearch makes necessary that a single-provider API did
+    not:
+      * `engine` is recorded on the provider string, so the trace can show which
+        upstream index actually produced a hit (DuckDuckGo, Mojeek, arXiv...).
+      * `-site:` exclusions are applied here, because SearXNG has no equivalent
+        request parameter for them.
+    """
+    results: List[SearchResult] = []
+    items = payload.get("results", []) if isinstance(payload, dict) else []
+    if not isinstance(items, list):
+        return results
+    blocked = {d.strip().lower().lstrip(".") for d in (exclude_domains or ()) if d}
+    for row in items:
+        if not isinstance(row, dict):
+            continue
+        url = str(row.get("url") or "").strip()
+        if not url:
+            continue
+        engine = str(row.get("engine") or "").strip()
+        if engine.startswith("plugin:"):
+            engine = engine.split(":", 1)[1]
+        provider = f"searxng:{engine}" if engine else "searxng"
+        if blocked and any(
+            _host(url) == d or _host(url).endswith(f".{d}") for d in blocked
+        ):
+            continue
+        content = str(row.get("content") or "").strip()
+        # A paper result's abstract lives in `content` too, but the journal /
+        # DOI metadata is worth carrying: `detect_primary_refs` reads a DOI out
+        # of the snippet to recognise the ORIGINAL of a study.
+        extras = []
+        for key in ("journal", "doi", "publisher"):
+            value = row.get(key)
+            if isinstance(value, (list, tuple)):
+                value = " ".join(str(v) for v in value if v)
+            value = str(value or "").strip()
+            if value:
+                extras.append(value)
+        snippet = content or str(row.get("title") or "")
+        if extras:
+            snippet = f"{snippet} [{'; '.join(extras)}]" if snippet else "; ".join(extras)
+        results.append(SearchResult(
+            title=re.sub(r"<[^>]+>", "", str(row.get("title") or "")),
+            url=url,
+            snippet=snippet[:1500],
+            content=content[:12000],
+            provider=provider,
+            published_at=_searxng_published(row),
+            matched_query=query,
+        ))
+    return results
 
 
 def _split_query(query: Any) -> tuple[str, str]:
@@ -949,38 +1076,6 @@ def contract_queries(contract: Any, max_queries: int = 3) -> List[str]:
         if len(deduped) >= budget:
             break
     return deduped
-
-
-def _has_tavily_key(settings: Settings) -> bool:
-    """A real Tavily key (not empty, not an example placeholder)."""
-    return bool(_real_key(getattr(settings, "tavily_api_key", "")))
-
-
-def _tavily_to_results(payload: Any, query: str) -> List["SearchResult"]:
-    """Map a Tavily /search response to SearchResults. Pure — the network call
-    stays in _tavily_search so this is unit-testable offline."""
-    results: List[SearchResult] = []
-    items = payload.get("results", []) if isinstance(payload, dict) else []
-    for row in items:
-        if not isinstance(row, dict) or not row.get("url"):
-            continue
-        content = str(row.get("content", "") or row.get("raw_content", "") or "")
-        snippet_source = content or str(row.get("snippet", "") or "")
-        published = (
-            str(row.get("published_date", "") or "")
-            or str(row.get("publishedDate", "") or "")
-            or str(row.get("date", "") or "")
-        )
-        results.append(SearchResult(
-            title=str(row.get("title", "") or ""),
-            url=str(row.get("url") or ""),
-            snippet=snippet_source[:1500],
-            content=content[:12000],
-            provider="tavily",
-            published_at=published,
-            matched_query=query,
-        ))
-    return results
 
 
 # =============================================================================
@@ -1359,13 +1454,8 @@ class SearchClient:
         stype = (search_type or "").strip().lower()
         tasks: List[Any] = []
 
-        if _has_tavily_key(self.settings):
-            topic = "news" if stype == "news" else "general"
-            tasks.append(self._tavily_search(query, topic=topic))
-        else:
-            tasks.append(self._ddg_text(query))
-            if stype in ("news", "", "general"):
-                tasks.append(self._ddg_news(query))
+        if _searxng_enabled(self.settings):
+            tasks.append(self._searxng_search(query, search_type=stype))
 
         if stype == "academic":
             tasks.append(self._arxiv(query))
@@ -1383,6 +1473,76 @@ class SearchClient:
                 continue
             collected.extend(batch or [])
         return collected
+
+    async def _searxng_search(self, query: str, search_type: str = "") -> List[SearchResult]:
+        """Query the self-hosted SearXNG instance. Primary web search.
+
+        Same reliability contract as the provider it replaces: bounded retries
+        with jitter, a circuit breaker, and a deterministic empty result on
+        failure so one dead backend degrades a run instead of ending it. Zero
+        usable hits counts as a FAILURE, not an answer -- an aggregate that
+        returns nothing usually means it is misconfigured or its engines are
+        all failing, and that must show up in health rather than be mistaken
+        for "no such document exists".
+        """
+        base = _searxng_endpoint(self.settings)
+        if not base:
+            logger.warning("[Search] searxng_url is not configured; skipping web search")
+            return []
+
+        clean_query, params = _prepare_searxng_query(query, search_type, self.settings)
+        if not clean_query:
+            return []
+        url = f"{base}/search"
+
+        # `-site:` has no SearXNG request parameter, so exclusions are applied
+        # to the mapped results instead of to the upstream query.
+        excluded = partition_site_targets(query).excluded
+
+        timeout = float(getattr(self.settings, "searxng_timeout_sec", 30.0) or 30.0)
+
+        async def _call() -> List[SearchResult]:
+            async with httpx.AsyncClient(
+                timeout=timeout, follow_redirects=True,
+                headers={"Accept": "application/json"},
+            ) as client:
+                r = await client.get(url, params=params)
+                r.raise_for_status()
+                payload = r.json()
+            if not isinstance(payload, dict):
+                raise ValueError("SearXNG returned a non-object payload")
+            mapped = _searxng_to_results(payload, clean_query, excluded)
+            cap = int(getattr(self.settings, "searxng_max_results", 30) or 30)
+            if cap > 0:
+                mapped = mapped[:cap]
+            if not mapped:
+                raise ValueError("SearXNG returned no usable results")
+            unresponsive = payload.get("unresponsive_engines") or []
+            if unresponsive:
+                logger.info(
+                    "[Search] searxng: %d unresponsive upstream engine(s)", len(unresponsive)
+                )
+            self._count("searxng", "ok")
+            return mapped
+
+        async def _fallback() -> List[SearchResult]:
+            self._count("searxng", "fail")
+            return []
+
+        return await call_protected(
+            _call,
+            name="searxng",
+            policy=self._retry,
+            breaker=get_breaker(
+                "searxng",
+                failure_threshold=3,
+                cooldown=float(
+                    getattr(self.settings, "search_searxng_cooldown_sec", 60.0) or 60.0
+                ),
+            ),
+            fallback=_fallback,
+        )
+
     async def _attach_content(self, ranked: List[SearchResult]) -> None:
         """Download the top N pages concurrently under a fetch bulkhead.
 
@@ -1416,10 +1576,19 @@ class SearchClient:
 
             async def _attach(r: SearchResult) -> None:
                 if r.content:
-                    # Providers that already returned text (Tavily, arXiv,
+                    # Providers that already returned text (SearXNG, arXiv,
                     # Crossref) must never be re-fetched.
                     r.content_length = len(r.content)
                     r.is_content_fetched = True
+                    # Count the ATTEMPT too. This branch used to record only a
+                    # success, so `successful_fetch_rate` divided by zero
+                    # attempts and reported 0.0 for a run where every result
+                    # arrived fully readable. That was survivable when the
+                    # primary provider rarely shipped inline text; SearXNG
+                    # ships it for most results, so the metric would have read
+                    # "0% of pages were readable" on a perfectly healthy run
+                    # and bench/eval_retrieval gates on exactly that number.
+                    self.health.record_attempt()
                     self.health.record_success(
                         domain=_domain_of(r.url),
                         primary=r.is_primary or is_primary_source(r.url),
@@ -1694,131 +1863,6 @@ class SearchClient:
     # =========================
     # PROVIDERS
     # =========================
-
-    async def _tavily_search(
-        self, query, query_domains: list[str] | None = None, topic: str = "general"
-    ) -> List[SearchResult]:
-        """Tavily web search. Retries transient failures, opens a circuit after
-        repeated ones, and falls back to DDG — a paid call must never leave the
-        run worse off than the free path."""
-        api_key = _real_key(self.settings.tavily_api_key)
-        clean_query, include_domains, exclude_domains = _prepare_tavily_query(
-            query, query_domains
-        )
-        topic = str(topic or "general").strip().lower() or "general"
-        if topic not in ("general", "news"):
-            topic = "general"
-
-        async def _call() -> List[SearchResult]:
-            async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=True) as client:
-                r = await client.post(
-                    "https://api.tavily.com/search",
-                    json={
-                        "api_key": api_key,
-                        "query": clean_query,
-                        "search_depth": str(getattr(self.settings, "tavily_search_depth", "basic") or "basic"),
-                        "topic": topic,
-                        "max_results": 8,
-                        "include_answer": False,
-                        "include_domains": include_domains or None,
-                        "exclude_domains": exclude_domains or None,
-                        "use_cache": True,
-                    },
-                )
-                r.raise_for_status()
-                payload = r.json()
-            if not isinstance(payload, dict):
-                raise ValueError("Tavily returned a non-JSON-object payload")
-            mapped = _tavily_to_results(payload, clean_query)
-            if not mapped:
-                # Zero usable hits is a failure, not an answer: the caller must
-                # still get the free fallback rather than wiki-only coverage.
-                raise ValueError("Tavily returned no usable results")
-            self._count("tavily", "ok")
-            return mapped
-
-        async def _fallback() -> List[SearchResult]:
-            self._count("tavily", "fail")
-            return await self._ddg_rescue(query)
-
-        return await call_protected(
-            _call,
-            name="tavily",
-            policy=self._retry,
-            breaker=get_breaker("tavily", failure_threshold=3, cooldown=60.0),
-            fallback=_fallback,
-        )
-
-    async def _ddg_run(self, query: str, kind: str, max_results: int) -> List[dict]:
-        if DDGS is None:
-            return []
-
-        def _search() -> List[dict]:
-            with DDGS() as ddgs:
-                method = getattr(ddgs, kind)
-                return list(method(query, max_results=max_results))
-
-        # ddgs is blocking with no timeout of its own; bound the wait so a
-        # stalled call degrades instead of hanging the run.
-        async def _call() -> List[dict]:
-            return await asyncio.wait_for(
-                asyncio.to_thread(_search), timeout=self._timeout
-            )
-
-        async def _empty() -> List[dict]:
-            self._count(f"ddg_{kind}", "fail")
-            return []
-
-        return await call_protected(
-            _call,
-            name=f"ddg_{kind}",
-            policy=RetryPolicy(attempts=2, base_delay=1.0, max_delay=4.0, timeout=self._timeout),
-            breaker=get_breaker(f"ddg_{kind}", failure_threshold=4, cooldown=45.0),
-            fallback=_empty,
-        )
-
-    async def _ddg_rescue(self, query) -> List[SearchResult]:
-        """Tavily's free fallback: DDG text + DDG news run CONCURRENTLY.
-
-        Latency (live run 0bfd5f9e): with Tavily's circuit open every
-        contract query paid text-then-news sequentially (~2-7s each) on top
-        of the provider gather — the two calls are independent, so gather
-        halves the rescue cost on the search hot path.
-        """
-        text_results, news_results = await asyncio.gather(
-            self._ddg_text(query), self._ddg_news(query)
-        )
-        text_results.extend(news_results)
-        return text_results
-
-    async def _ddg_text(self, query) -> List[SearchResult]:
-        rows = await self._ddg_run(str(query), "text", 8)
-        return [
-            SearchResult(
-                title=str(r.get("title", "") or ""),
-                url=str(r.get("href", "") or ""),
-                snippet=str(r.get("body", "") or ""),
-                provider="ddg_text",
-                published_at=str(r.get("date", "") or ""),
-                matched_query=str(query),
-            )
-            for r in rows if r.get("href")
-        ]
-
-    async def _ddg_news(self, query) -> List[SearchResult]:
-        rows = await self._ddg_run(str(query), "news", 6)
-        return [
-            SearchResult(
-                title=str(r.get("title", "") or ""),
-                url=str(r.get("url", "") or ""),
-                snippet=str(r.get("body", "") or ""),
-                provider="ddg_news",
-                search_type="news",
-                published_at=str(r.get("date", "") or ""),
-                matched_query=str(query),
-            )
-            for r in rows if r.get("url")
-        ]
 
     async def _wiki(self, query) -> List[SearchResult]:
         async def _call() -> List[SearchResult]:

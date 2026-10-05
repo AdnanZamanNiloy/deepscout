@@ -31,7 +31,6 @@ class Settings(BaseSettings):
     groq_model: str = "openai/gpt-oss-20b"
     huggingface_api_key: str = ""
     huggingface_model: str = "Qwen/Qwen2.5-7B-Instruct"
-    tavily_api_key: str = ""
     # Custom OpenAI-compatible provider (any host serving /chat/completions:
     # OpenRouter, Together, Ollama+ngrok, vLLM, LM Studio, ...). All three
     # must be set; when present it leads the chain, Groq/HF stay as fallback.
@@ -126,8 +125,39 @@ class Settings(BaseSettings):
     # publisher's text counts as independent corroboration.
     max_corroboration_attempts: int = 2
     corroboration_similarity: float = 0.55
-    # Tavily search depth ("basic" or "advanced")
-    tavily_search_depth: str = "basic"
+    # ------------------------------------------------------------------
+    # SearXNG: the self-hosted metasearch backend (primary web search).
+    #
+    # Replaces the Tavily/DuckDuckGo provider layer entirely, so the search
+    # stack needs NO external search API key. The endpoint is a plain HTTP
+    # service; run it however you like (the bundled ./searxng clone runs
+    # natively -- no container runtime required).
+    # ------------------------------------------------------------------
+    searxng_url: str = "http://localhost:8080"
+    searxng_enabled: bool = True
+    # SearXNG fans out to many upstream engines before it can answer, so it is
+    # legitimately slower than a single-provider API. Kept generous because a
+    # premature timeout here discards a whole aggregate response.
+    searxng_timeout_sec: float = 30.0
+    # Upstream result count requested from the aggregate. Higher than
+    # search_max_results on purpose: the ranker picks the best few, and a
+    # metasearch returns duplicates and low-quality engines that need
+    # something to reject.
+    searxng_max_results: int = 30
+    # `general` = open web, `science` = scholarly indexes. Science is on by
+    # default because a research system lives on primary literature; add
+    # `news` for current-events questions at the cost of noise.
+    searxng_categories: str = "general,science"
+    searxng_language: str = "en"
+    # 0=off 1=moderate 2=strict. Off: this is a research tool, and a
+    # safesearch filter silently truncates legitimate academic/medical
+    # results without telling us why they vanished.
+    searxng_safesearch: int = 0
+    # Circuit-breaker cooldown for the SearXNG backend. Longer than the LLM
+    # breaker's 15s on purpose: unlike a remote LLM endpoint this is a LOCAL
+    # service we control, so a restart is usually the fix and there is no point
+    # re-probing an instance that is down or misconfigured every 15 seconds.
+    search_searxng_cooldown_sec: float = 60.0
 
     # Research budget governor (v3 budget module; enforced only once ported)
     max_budget_usd: float = 0.50
