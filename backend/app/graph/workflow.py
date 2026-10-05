@@ -500,21 +500,30 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
         # v3 plan targets live on the orchestration dict (build_initial_state).
         orchestration = state.get("orchestration", {})
         if expanding:
-            # Per-axis expansion: the axes already under research ARE the
-            # required contract. Seeding from the orchestration's static axis
-            # list here re-injected the generic canonical axes (definition/
-            # evidence/criticism/mechanism) on every expansion pass, which put
-            # the boilerplate back alongside the dynamic-planning dimensions the
-            # first pass derived. Existing contracts carry those dimensions.
+            # FIXED: required_axes on expansion are the MISSING dimensions, not
+            # the existing ones.
+            #
+            # The previous version seeded this with every axis ALREADY under
+            # research, which told planner_agent to "guarantee a contract for
+            # each of these" — for dimensions that already had one. Because
+            # planner_agent only sees the new plan (not `existing`), it injected
+            # a fresh contract per covered axis under a different question text,
+            # which `_merge_questions` then appended as new. The plan grew to 8
+            # contracts with every axis duplicated, and each pass spent its
+            # search budget re-covering the dimensions that were already done —
+            # the exact "still searching technical capability" behaviour.
+            #
+            # The gaps come from the focus report, which derives them from the
+            # plan for THIS question (see app/agents/focus.py). Domain-agnostic.
+            focus_report = (state.get("focus") or {}).get("report") or {}
             required_axes = []
-            existing_axes = {
-                str(item.get("axis", "") or "").strip().lower()
-                for item in existing
-                if isinstance(item, dict) and str(item.get("axis", "") or "").strip()
-            }
-            for axis in existing_axes:
-                if axis and axis not in required_axes:
-                    required_axes.append(axis)
+            for dimension in (
+                list(focus_report.get("missing") or ())
+                + list(focus_report.get("thin") or ())
+            ):
+                name = str(dimension or "").strip()
+                if name and name not in required_axes:
+                    required_axes.append(name)
         else:
             required_axes = list(orchestration.get("required_axes", []) or [])
         sub_questions = await planner_agent(
@@ -540,6 +549,46 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
             sub_questions = [*existing, *added]
         else:
             sub_questions = sub_questions[: max(1, target)]
+
+        # Axes the PLANNER just proposed fresh contracts for this pass. Gap
+        # injection must not re-angle these: the planner's new question is
+        # already a fresh angle, and superseding it would discard work proposed
+        # in the same pass (it also made a fresh contract unreachable).
+        def _axis_key(value: Any) -> str:
+            """Canonical axis identity, so 'enterprise adoption' and
+            'enterprise_adoption' compare equal — the same canonicalization the
+            planner, the critic and coverage all use."""
+            from app.agents.planner import dimension_to_axis
+
+            return dimension_to_axis(
+                str(value or "").strip().lower().replace(" ", "_")
+            )
+
+        # Contracts the PLANNER just proposed this pass. Gap injection must not
+        # re-angle a dimension the planner has already produced a fresh contract
+        # for: that contract IS the new angle, and superseding it discards work
+        # proposed in the same call. Matched on the planner's OUTPUT questions,
+        # which is exact, rather than on axes, which collide when a plan labels
+        # several contracts with the same dimension.
+        if expanding:
+            prior_questions = {
+                normalize_text(str(c.get("question", "") or ""))
+                for c in (existing or [])
+                if isinstance(c, dict)
+            }
+            freshly_planned = {
+                normalize_text(str(c.get("question", "") or ""))
+                for c in (sub_questions or [])
+                if isinstance(c, dict)
+            } - prior_questions
+            freshly_planned_axes = {
+                _axis_key(c.get("axis"))
+                for c in (sub_questions or [])
+                if isinstance(c, dict)
+                and normalize_text(str(c.get("question", "") or "")) in freshly_planned
+            }
+        else:
+            freshly_planned_axes = set()
 
         # GAP → TASK CONVERSION. The reviewer measures which planned dimensions
         # have no (or thin) evidence, but a measurement is not a research task.
@@ -568,6 +617,14 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
                     ),
                     default=0,
                 )
+                gap_missing = [
+                    d for d in gap_missing
+                    if _axis_key(d) not in freshly_planned_axes
+                ]
+                gap_thin = [
+                    d for d in gap_thin
+                    if _axis_key(d) not in freshly_planned_axes
+                ]
                 gaps = gap_contracts(
                     query=state["query"],
                     missing=gap_missing,
@@ -585,14 +642,41 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
                     limit=max(1, len(gap_missing) + len(gap_thin)),
                 )
                 if gaps:
+                    # Replace, do not accumulate. A gap contract supersedes any
+                    # earlier contract for the SAME dimension: that dimension was
+                    # measured uncovered, so the older contract already failed to
+                    # produce evidence and keeping it just spends budget twice on
+                    # one dimension (the plan had reached 8 contracts with every
+                    # axis duplicated). Contracts for other dimensions are kept.
+                    gap_axes = {str(c.get("axis", "") or "") for c in gaps}
+                    # Only supersede a contract that actually FAILED to produce
+                    # results. A same-axis contract that WAS answered is kept:
+                    # the new contract re-angles the ask, which is additive
+                    # evidence, not a replacement for what already worked.
+                    answered_questions = {
+                        normalize_text(str(r.get("sub_question", "") or ""))
+                        for r in (state.get("search_results") or [])
+                        if isinstance(r, dict)
+                    } - {""}
+                    retained = [
+                        q for q in sub_questions
+                        if not (
+                            isinstance(q, dict)
+                            and str(q.get("axis", "") or "") in gap_axes
+                            and normalize_text(str(q.get("question", "") or ""))
+                            not in answered_questions
+                        )
+                    ]
+                    replaced = len(sub_questions) - len(retained)
                     # Prepend: these are this pass's priority, and search_node
                     # issues queries in plan order within its per-pass budget.
-                    sub_questions = [*gaps, *_merge_questions(sub_questions, [])]
+                    sub_questions = [*gaps, *_merge_questions(retained, [])]
                     logger.info(
                         "planner_gap_contracts",
                         missing=len(gap_missing),
                         thin=len(gap_thin),
                         injected=[c["axis"] for c in gaps],
+                        replaced=replaced,
                     )
             except Exception as exc:
                 logger.warning(

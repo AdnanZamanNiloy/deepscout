@@ -378,11 +378,36 @@ def _fact_dimension(
     so the plan is the index. Unlabelled facts fall back to their own axis
     field, then to a single synthetic bucket: an unlabelled fact is evidence for
     the question, just not attributable to one declared dimension.
+
+    Matching is TOLERANT, not exact. The summarizer's `sub_question` is taken
+    from the source record and is often a shortened or re-worded variant of the
+    contract's question ("population" for "population statistics"), plus a
+    re-angled gap contract carries different text for the same axis. Exact
+    equality silently attributed those facts to nothing, so a dimension with
+    real evidence still measured as uncovered — which is what made the reviewer
+    report the same gaps every round while coverage stayed at zero.
     """
     for key in ("sub_question", "question"):
         raw = _normalize(str(fact.get(key, "") or ""))
-        if raw and raw in plan_by_question:
+        if not raw:
+            continue
+        if raw in plan_by_question:
             return plan_by_question[raw]
+        # Containment, either direction: the contract question usually contains
+        # the shorter label, and vice versa.
+        for question, axis in plan_by_question.items():
+            if raw in question or question in raw:
+                return axis
+        # Paraphrase: strongest remaining overlap with a contract question.
+        raw_tokens = _subject_tokens(raw)
+        if raw_tokens:
+            best_axis, best_score = "", 0.0
+            for question, axis in plan_by_question.items():
+                score = _jaccard(raw_tokens, _subject_tokens(question))
+                if score > best_score:
+                    best_axis, best_score = axis, score
+            if best_score >= 0.34:
+                return best_axis
     axis = _normalize(str(fact.get("axis", "") or "")).replace(" ", "_")
     return axis or fallback
 
@@ -440,6 +465,10 @@ def assess_focus(
                 )
 
     declared = list(scope.dimensions) or ["_unassigned"]
+    # The plan's own declared set, captured before the tally loop can append to
+    # `declared` (unlabelled evidence), so "off-plan" means off-PLAN and not
+    # merely "newly seen".
+    declared_set = set(declared)
 
     # --- per-dimension tally -------------------------------------------------
     buckets: Dict[str, DimensionCoverage] = {
@@ -452,16 +481,31 @@ def assess_focus(
     verified_by_dimension: Dict[str, int] = {name: 0 for name in declared}
     off_query = 0
     scored = 0
+    off_dimension = 0
 
     from app.agents.sources import is_primary_source
 
     for fact in fact_list:
-        text = f"{fact.get('claim', '')} {fact.get('sub_question', '')}"
-        claim_tokens = _subject_tokens(text)
-        # Drift needs something to measure against. A question with no content
-        # words cannot anchor anything, so those facts are not scored.
+        # DRIFT MEASURES RESEARCH BEHAVIOUR, NOT WORDING.
+        #
+        # An earlier version compared the CLAIM's vocabulary to the query's and
+        # called a fact drifted when they shared fewer than 5% of terms. That is
+        # both insensitive and misleading. Insensitive because a report whose
+        # facts all restate the query's own words scores 0 drift no matter which
+        # dimension it actually researched. Misleading because a legitimately
+        # on-question fact ("Global AI investment reached 200bn") shares no
+        # wording with "What are the current trends in AI?" and was scored as
+        # drift, while the query's own words were reintroduced through
+        # `sub_question` (a contract question derived FROM the query), producing
+        # a number that barely moved as the run's behaviour changed.
+        #
+        # Drift is therefore distributional: it is the share of verified evidence
+        # sitting on dimensions the plan did NOT declare. The plan IS the
+        # question, decomposed, so evidence outside it is the operational
+        # definition of "the research wandered off".
         if scope.terms:
-            if _jaccard(scope.terms, claim_tokens) < 0.05:
+            text = f"{fact.get('claim', '')} {fact.get('sub_question', '')}"
+            if _jaccard(scope.terms, _subject_tokens(text)) < 0.05:
                 off_query += 1
             scored += 1
 
@@ -482,6 +526,9 @@ def assess_focus(
             cov.verified += 1
             verified_total += 1
             verified_by_dimension[dim] += 1
+            # Evidence on no declared dimension is research that left the plan.
+            if dim not in declared_set:
+                off_dimension += 1
             if is_primary_source(str(fact.get("source", "") or "")):
                 primary_by_dimension[dim] += 1
 
@@ -548,7 +595,14 @@ def assess_focus(
                 per_host[host] = per_host.get(host, 0) + 1
         host_concentration = max(per_host.values()) / host_total
 
-    drift = (off_query / scored) if scored else 0.0
+    # Drift is the share of verified evidence that left the plan. Falls back to
+    # the lexical reading ONLY when every fact is attributable, so a plan whose
+    # dimensions were never labelled still gets a usable signal instead of a
+    # silent zero.
+    if verified_total > 0:
+        drift = off_dimension / verified_total
+    else:
+        drift = (off_query / scored) if scored else 0.0
 
     return FocusReport(
         query=query,
