@@ -373,6 +373,165 @@ def test_topical_engagement_ignores_function_words() -> None:
     assert topical_engagement(q, about, ()) == 1.0
 
 
+# ---------------------------------------------------------------------------
+# Topicality: an incidental mention of the subject is not engagement
+# ---------------------------------------------------------------------------
+
+
+def test_salience_discount_fades_out_as_real_coverage_rises() -> None:
+    """A blanket salience multiplier demoted the BEST answer.
+
+    For "population total 2024 Malawi" the UN page ("total population, both
+    sexes... Malawi") matches every subject word. An earlier version still took
+    0.14 off it for mentioning Malawi peripherally while charging the
+    exact-match World Bank page 0.40 — inverting the ranking. Salience may only
+    refine a weak reading.
+    """
+    from app.agents.sources import topical_engagement
+
+    q = "population total 2024 Malawi"
+    full = "Malawi total population, both sexes, 2024"
+    # Same subject words, but the named subject only appears off to one side.
+    full_offside = "Total population 2024 by country, including Malawi"
+    strong = topical_engagement(q, full, ("Malawi", "2024"))
+    offside = topical_engagement(q, full_offside, ("Malawi", "2024"))
+    assert strong >= offside, "full coverage must never score below offside coverage"
+
+    # Nothing in common with the question: there the discount is at full weight.
+    unrelated = "Coffee exports in Brazil 1998"
+    assert topical_engagement(q, unrelated, ("Malawi", "2024")) < strong * 0.5
+
+
+def test_incidental_entity_mention_cannot_hijack_topicality() -> None:
+    """The failure this fixes, measured on a live SearXNG run.
+
+    `topical_engagement` used to be `max(lexical, any_entity_substring)`, so a
+    single incidental mention of the subject returned a PERFECT 1.0 and the
+    document passed the relevance floor. Authority is scored separately, so an
+    official-but-wrong-domain publisher then outranked the right answer.
+    """
+    from app.agents.sources import topical_engagement
+
+    q = "renewable energy capacity Germany"
+    # 'Germany' appears once, in an author affiliation. Zero subject words.
+    cellular = (
+        "Optimal Power Procurement for Green Cellular Networks: a case study in "
+        "Germany. Authors Mueller, Schmidt (TU Munich). A mixed-integer program "
+        "for green base station power procurement in dense urban sites."
+    )
+    assert topical_engagement(q, cellular, ("Germany",)) < 0.10
+
+
+def test_entity_in_a_country_table_is_demoted_not_promoted() -> None:
+    """An official publisher answering the wrong jurisdiction must not score 1.0."""
+    from app.agents.sources import topical_engagement
+
+    q = "population total 2024 Malawi"
+    census = (
+        "U.S. Population Estimated at 335,893,238 on July 1, 2025. International "
+        "tables list Nigeria, Ethiopia, Egypt and Malawi."
+    )
+    on = "Malawi's population was 21.4 million in 2024"
+    off = topical_engagement(q, census, ("Malawi", "2024"), "U.S. Population Estimated")
+    assert off < 0.5, "incidental table mention must not read as full engagement"
+    assert topical_engagement(q, on, ("Malawi", "2024")) > off
+
+
+def test_genuine_on_topic_page_still_scores_full_engagement() -> None:
+    """The demotion above must not cost the correct answer its top score."""
+    from app.agents.sources import topical_engagement
+
+    q = "renewable energy capacity Germany"
+    on = (
+        "Renewable energy in Germany. Germany generated 46% of electricity from "
+        "renewables in 2024, with wind and solar installed capacity of 165 GW."
+    )
+    assert topical_engagement(q, on, ("Germany",), "Renewable energy in Germany") == 1.0
+
+
+def test_entity_salience_prefers_headline_over_incidental_body_mention() -> None:
+    """Repeated mentions and headline placement both beat a single aside."""
+    from app.agents.sources import _entity_salience
+
+    body = "Germany " * 5
+    assert _entity_salience(body, ("Germany",)) > _entity_salience(
+        "Preface. " * 60 + "Germany", ("Germany",)
+    )
+    assert _entity_salience("anything", ("Germany",), "Germany report") == 1.0
+    assert _entity_salience("Germany is discussed", ()) == 0.0
+
+
+def test_incidental_mention_is_demoted_relative_to_a_genuine_match() -> None:
+    """The hard floor shares the lexical reading, which counts the subject word.
+
+    'Germany' is one of the question's subject words, so a page naming it has
+    non-zero lexical coverage and legitimately clears a floor deliberately set
+    at 0.10 to keep partial matches. What must not happen is it outranking the
+    document that is actually about the question.
+    """
+    from app.agents.sources import topical_engagement
+
+    q = "renewable energy capacity Germany"
+    incidental = "Green cellular networks in Germany, TU Munich"
+    genuine = "Renewable energy in Germany. Germany generated 46% of electricity"
+    assert topical_engagement(q, incidental, ("Germany",), "Green cellular networks") < 0.25
+    assert topical_engagement(q, genuine, ("Germany",), "Renewable energy in Germany") > 1.0 * 0.5
+
+
+def test_entity_miss_penalty_survives_an_incidental_mention() -> None:
+    """A single aside in the body no longer cancels the whole penalty.
+
+    Salience, not raw presence, decides: one mention deep in the body is an
+    aside, while the subject named in a sentence or published by the subject
+    itself is genuine engagement.
+    """
+    from app.agents.sources import entity_miss
+
+    aside = "Cite this work. " * 40 + "Germany"
+    assert entity_miss("q", ("Germany",), aside) < 0
+    assert entity_miss("q", ("Germany",), "Germany generated 46% of power") == 0.0
+    # A host published by the subject itself. Note the TLD alone is not enough:
+    # first_party_match requires the token as a whole host label, so a German
+    # statistics portal (.de) is not automatically first-party for "Germany".
+    assert entity_miss("q", ("Germany",), "x", "https://germany.gov.example/y") == 0.0
+    assert entity_miss("q", ("Germany",), "x", "https://statistik.de/y") < 0
+
+
+def test_first_party_publisher_counts_as_maximal_entity_engagement() -> None:
+    """An issuer's own filings index need not repeat the question's wording.
+
+    Demoting it for failing to say 'revenue guidance' is how an aggregator
+    restating the question in its own words beat the primary source.
+    """
+    from app.agents.sources import _entity_salience, topical_engagement
+
+    q = "What is the latest revenue guidance for Nvidia from its most recent filing?"
+    filings = "quarterly results and SEC filings"
+    assert _entity_salience(filings, ("Nvidia",), url="https://investor.nvidia.com/x") == 1.0
+    assert topical_engagement(
+        q, filings, ("Nvidia",), "Financial Reports", "https://investor.nvidia.com/x"
+    ) > topical_engagement(
+        q, filings, ("Nvidia",), "Financial Reports", "https://www.aggregator.com/x"
+    )
+
+
+def test_negation_words_are_never_stopwords() -> None:
+    """AGENTS.md: negation must never be a stopword in a similarity component.
+
+    With 'without' stopworded, a page about states WITHOUT electricity access
+    and one about states WITH access scored identically, so the ranker could
+    not tell a source proving the gap from one describing progress.
+    """
+    from app.agents.sources import _topical_words, topical_engagement
+
+    assert "without" in _topical_words("states without electricity access")
+
+    q = "countries without electricity access"
+    without = "Malawi is a country without electricity access"
+    with_access = "Malawi is a country with electricity access"
+    assert topical_engagement(q, without, ()) > topical_engagement(q, with_access, ())
+
+
 def test_authoritative_off_topic_page_loses_to_weak_on_topic_page() -> None:
     """The failure this fixes: authority spans 0.95 and relevance could only
     ever add 0.25, so an authoritative page about a different subject beat the

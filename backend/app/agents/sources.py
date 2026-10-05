@@ -30,6 +30,8 @@ from datetime import date, datetime, timezone
 from typing import Dict, Iterable, List, NamedTuple, Optional, Sequence, Set, Tuple
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 
+from app.core.semantic import pair_similarity
+
 # ---------------------------------------------------------------------------
 # Tiers
 # ---------------------------------------------------------------------------
@@ -1805,7 +1807,13 @@ _TOPICAL_STOPWORDS: frozenset = frozenset({
     "of", "on", "or", "overview", "per", "report", "summarize", "summarise",
     "than", "that", "the", "their", "them", "there", "these", "this", "those",
     "to", "was", "were", "what", "when", "where", "which", "who", "why",
-    "with", "within", "without",
+    "with", "within",
+    # NOT "without": negation is the one word class that must never be a
+    # stopword in a similarity component (see AGENTS.md bug history). With
+    # "without" here, a page about states WITHOUT electricity access and one
+    # about states WITH access scored identically on every overlap signal, so
+    # the ranker could not tell a source proving the gap from one describing
+    # progress. core.semantic keeps the same rule via _NEGATION_TOKENS_ENGINE.
     # Meta-questions about the subject rather than the subject itself. "define
     # RAG" is a question ABOUT the term "RAG"; scoring a page on having the
     # word "define" would rate every glossary page as on-topic.
@@ -1821,8 +1829,89 @@ def _topical_words(text: str) -> Set[str]:
     }
 
 
+# How prominently a named subject appears in a document, 0.0-1.0.
+#
+# This exists because "does the name appear ANYWHERE" is not the same question
+# as "is this document about that subject". A 4,000-character haystack contains
+# a country name in an author affiliation, a funding acknowledgement, a
+# references list or a "selected countries" table without the document being
+# about it at all. Under the old any-match rule such a document scored a
+# PERFECT topicality, and because authority is scored separately, the wrong
+# document from an official publisher outranked the right one.
+_ENTITY_TITLE_SALIENCE = 1.0    # the subject is in the headline
+_ENTITY_REPEAT_SALIENCE = 0.65  # named several times in the body
+_ENTITY_ONCE_SALIENCE = 0.25    # named once: probably an incidental mention
+_ENTITY_HEAD_CHARS = 600        # lead paragraph region
+
+# Engagement credited to any document published by the question's own subject.
+#
+# The subject's own site is about the subject by definition, so this is set at
+# the midpoint of the scale rather than just above the discard floor: it has to
+# be decisive enough that an issuer's filings index beats a third party that
+# merely restates the question's wording, while still leaving the lexical axis
+# free to order two first-party pages against each other.
+_FIRST_PARTY_ENGAGEMENT_FLOOR = 0.5
+
+# How far a weakly-engaged document is discounted for naming the subject only
+# incidentally, and how quickly that discount fades as real coverage rises.
+# At full coverage (base >= 0.5) the discount is _SALIENT_DISCOUNT; at zero
+# coverage it is 1.0 and the full penalty applies.
+_SALIENT_MAX_PENALTY = 0.40
+_SALIENT_DISCOUNT = 0.25
+
+
+def _entity_salience(
+    text: str,
+    entity_tokens: Sequence[str],
+    title: str = "",
+    url: str = "",
+) -> float:
+    """How prominently the question's named subjects appear in `text`, 0.0-1.0.
+
+    Presence in the headline counts most, repeated body mentions count next, a
+    single mention counts least. Averaged over the entities actually found, so
+    a question naming three subjects is not fully satisfied by one of them.
+
+    `url` is consulted for the strongest signal of all: a document published BY
+    the named subject. An issuer's own filings index does not have to repeat the
+    question's wording to be about the issuer, and demoting it for that is how
+    an aggregator restating the question beat the primary source.
+    """
+    if not entity_tokens:
+        return 0.0
+    low = (text or "").lower()
+    head = low[:_ENTITY_HEAD_CHARS]
+    low_title = (title or "").lower()
+
+    scores: List[float] = []
+    for tok in entity_tokens:
+        needle = (tok or "").strip().lower()
+        if not needle:
+            continue
+        if first_party_match(url, (tok,)):
+            scores.append(1.0)
+            continue
+        if needle in low_title:
+            scores.append(_ENTITY_TITLE_SALIENCE)
+            continue
+        hits = low.count(needle)
+        if hits >= 2:
+            scores.append(_ENTITY_REPEAT_SALIENCE)
+        elif hits == 1:
+            # A single mention in the lead paragraph is about as close to
+            # incidental as a single mention can get while still being real.
+            scores.append(_ENTITY_ONCE_SALIENCE if needle in head else 0.0)
+        else:
+            scores.append(0.0)
+    return (sum(scores) / len(scores)) if scores else 0.0
+
+
 def topical_engagement(
-    query: str, text: str, entity_tokens: Sequence[str] = ()
+    query: str,
+    text: str,
+    entity_tokens: Sequence[str] = (),
+    title: str = "",
+    url: str = "",
 ) -> float:
     """How much of the question's subject a result actually engages, 0.0-1.0.
 
@@ -1843,18 +1932,77 @@ def topical_engagement(
     0.0 when the query carries no subject to engage with, so callers must treat
     it as "cannot judge" rather than "irrelevant" — the ranking floor checks the
     query is substantive before discarding anything on this basis.
+
+    WHY THE ENTITY READING NO LONGER REPLACES THE LEXICAL ONE
+    --------------------------------------------------------
+    The original rule was `max(lexical, named)` with `named` a boolean
+    any-substring-match, which handed one incidental mention absolute veto
+    power. Measured on a live SearXNG run:
+
+        "renewable energy capacity Germany" vs a cellular-network paper
+            lexical 0.000 -> reported 1.000 (Germany was in an affiliation)
+        "population total 2024 Malawi" vs a US census.gov page
+            lexical 0.250 -> reported 1.000 (Malawi was in a country table)
+
+    Authority is scored separately, so a perfect topicality score on an
+    official-but-wrong-domain publisher is exactly how an NCBI paper on green
+    base-station power outranked the German renewables statistics page.
+
+    The rescue this rule was invented for — a genuine paraphrase that shares no
+    surface words — is now done properly by the hybrid similarity signal, which
+    is idf-weighted and negation-aware, and the entity reading only ever
+    MODULATES a document that already engages the subject:
+
+        engagement = base * (0.6 + 0.4 * salience)
+
+    so naming the subject can lift a partial match by up to 40% but can never
+    promote a document that engages nothing.
     """
     q_words = _topical_words(query)
     t_words = _topical_words(text)
     lexical = (len(q_words & t_words) / len(q_words)) if q_words else 0.0
-    if entity_tokens:
-        low = (text or "").lower()
-        named = 1.0 if any(tok.lower() in low for tok in entity_tokens) else 0.0
-        return max(lexical, named)
-    return lexical
+    if not entity_tokens:
+        return lexical
+
+    # Paraphrase rescue: weak surface overlap but genuinely the same subject.
+    base = max(lexical, pair_similarity(query, text))
+
+    # A document published BY the named subject is about it regardless of
+    # wording. This has to be a floor rather than a multiplier, because such a
+    # page is often exactly the case the multiplier cannot help: an issuer's
+    # filings index shares no subject word with a question about "latest revenue
+    # guidance" ("quarterly results and SEC filings"). Multiplying zero by any
+    # salience still yields zero, which is how an aggregator restating the
+    # question in its own words came to beat the primary source.
+    first_party = first_party_match(url, entity_tokens) is not None
+    if first_party:
+        base = max(base, _FIRST_PARTY_ENGAGEMENT_FLOOR)
+
+    salience = _entity_salience(text, entity_tokens, title, url)
+
+    # Salience refines a WEAK reading; it must not re-judge a strong one.
+    #
+    # An earlier version applied base * (0.6 + 0.4 * salience) unconditionally
+    # and that was measurably wrong: for "population total 2024 Malawi" the UN
+    # page ("total population, both sexes... Malawi") matches every subject
+    # word, yet a peripheral mention of Malawi elsewhere cost it 0.14 while the
+    # exact-match World Bank page lost 0.40 — demoting the better answer. A
+    # document that already covers the question's subject is relevant; where the
+    # subject is mentioned is a different, weaker question.
+    #
+    # So the discount fades out as coverage rises: none at solid coverage, full
+    # weight only when there is nothing else to go on.
+    discount = _SALIENT_DISCOUNT + (1.0 - _SALIENT_DISCOUNT) * min(1.0, base * 2.0)
+    return base * (1.0 - _SALIENT_MAX_PENALTY * (1.0 - salience) * discount)
 
 
-def is_topically_irrelevant(query: str, text: str, entity_tokens: Sequence[str] = ()) -> bool:
+def is_topically_irrelevant(
+    query: str,
+    text: str,
+    entity_tokens: Sequence[str] = (),
+    title: str = "",
+    url: str = "",
+) -> bool:
     """Does this result engage NOTHING the question is about?
 
     The floor rule, kept separate from `topical_engagement` because it answers a
@@ -1862,22 +2010,19 @@ def is_topically_irrelevant(query: str, text: str, entity_tokens: Sequence[str] 
     the binary "is this document about a different subject" test that justifies
     discarding the result entirely.
 
-    When the question named a subject, a hit on ANY of it is enough to keep the
-    result, because a substitute page is most likely to drop the name while
-    keeping the surrounding vocabulary. Only when every named subject is absent
-    AND the remaining word overlap is negligible is it discarded. Requiring both
-    is what keeps a real-but-partial match ("forward guidance" for a question
-    about revenue guidance) in the pool for the ranker to place, while still
-    removing a Mars-rover page returned to a question about Malawian air
-    pollution deaths.
+    Both readings must fail before a document is discarded. A genuine
+    paraphrase ("forward guidance" for a question about revenue guidance) is
+    rescued by the similarity signal, and a document that genuinely discusses
+    the named subject is rescued by the lexical reading because the subject is
+    part of the question text and so counts toward its word coverage.
+
+    The old rule instead kept any document merely CONTAINING a named subject,
+    which is why the cellular-network paper above (zero subject-word overlap)
+    was never discarded at all.
     """
-    overlap = topical_engagement(query, text, ())
-    if overlap >= MIN_TOPICAL_ENGAGEMENT:
+    if topical_engagement(query, text, entity_tokens, title, url) >= MIN_TOPICAL_ENGAGEMENT:
         return False
-    if entity_tokens:
-        low = (text or "").lower()
-        return not any(tok.lower() in low for tok in entity_tokens)
-    return True
+    return topical_engagement(query, text, ()) < MIN_TOPICAL_ENGAGEMENT
 
 
 def topicality_floor_applies(query: str, entity_tokens: Sequence[str] = ()) -> bool:
@@ -1894,17 +2039,21 @@ def topicality_floor_applies(query: str, entity_tokens: Sequence[str] = ()) -> b
     return len(_topical_words(query)) >= 2
 
 
-def entity_miss(query: str, tokens: Sequence[str], text: str) -> float:
+def entity_miss(query: str, tokens: Sequence[str], text: str, url: str = "") -> float:
     """Penalty when a result engages none of the question's subject tokens.
 
     Wording overlap alone can carry a result to the top while the document is
     about something else entirely. Requiring at least one subject token keeps
     the genuinely on-topic primary source competitive with it.
+
+    A single incidental mention cancels the penalty, so salience decides: a
+    subject named in the headline or repeatedly is genuinely engaged, while a
+    name appearing once deep in the body — an affiliation, a country table, a
+    reference — is not, and leaves the full penalty in force.
     """
     if not tokens:
         return 0.0
-    low = (text or "").lower()
-    if any(tok.lower() in low for tok in tokens):
+    if _entity_salience(text, tokens, url=url) >= _ENTITY_ONCE_SALIENCE:
         return 0.0
     # Scale with how much of the question's subject we are missing.
     return -0.22 if len(tokens) == 1 else -0.30

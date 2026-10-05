@@ -291,7 +291,9 @@ def _score_result(result: SearchResult, query: str, need=None, preferred=()) -> 
 
     richness = min(0.10, len(snippet) / 1500)
     entity_tokens = need.entity_tokens if need is not None else ()
-    engagement = topical_engagement(query, haystack, entity_tokens)
+    engagement = topical_engagement(
+        query, haystack, entity_tokens, result.title or "", result.url
+    )
     content_bonus = 0.06 if result.is_content_fetched else 0.0
     primary_bonus = 0.10 if profile.is_primary else 0.0
     recency = freshness_score(result.published_at, result.search_type or "default")
@@ -339,7 +341,7 @@ def _score_result(result: SearchResult, query: str, need=None, preferred=()) -> 
         fit, _why = evidence_fit(profile, wanted)
         total += fit
         total += definition_misfit(result.title or "", snippet, need.asks_definition)
-        total += entity_miss(query, need.entity_tokens, haystack)
+        total += entity_miss(query, need.entity_tokens, haystack, result.url)
         total += first_party_bonus(result.url, need.entity_tokens)
         # Prefer the original document over a page quoting it — but only when
         # the document is the KIND asked for. A study is the original source of
@@ -384,7 +386,7 @@ def _apply_topical_floor(ranked, query, need) -> list:
     kept, below = [], []
     for r in ranked:
         text = f"{r.title or ''} {r.snippet or ''} {r.content or ''}"
-        if is_topically_irrelevant(query, text, entity_tokens):
+        if is_topically_irrelevant(query, text, entity_tokens, r.title or "", r.url):
             below.append(r)
         else:
             kept.append(r)
@@ -395,10 +397,14 @@ def _apply_topical_floor(ranked, query, need) -> list:
                 query,
                 f"{r.title or ''} {r.snippet or ''} {r.content or ''}",
                 entity_tokens,
+                r.title or "",
+                r.url,
             ) > topical_engagement(
                 query,
                 f"{best.title or ''} {best.snippet or ''} {best.content or ''}",
                 entity_tokens,
+                best.title or "",
+                best.url,
             ):
                 best = r
         logger.info(
