@@ -1403,27 +1403,96 @@ def gap_contracts(
     index = int(start_index)
     for dimension in wanted[: max(1, limit)]:
         axis = dimension_to_axis(dimension)
+
         if axis in present:
-            # The dimension has a contract but no verified evidence. Re-issuing
-            # the same question would return the same pages, so aim the
-            # contract at the dimension with the query's concept, which is what
-            # synthesize_dimension_contract does when the label is used.
-            pass
-        contract = synthesize_dimension_contract(
-            index=index,
-            dimension=dimension,
-            query=query,
-            domain=domain,
-            minimum_sources=minimum_sources,
-            today=today,
-            coverage_goal=f"close measured coverage gap: {dimension}",
-        )
-        if normalize_text(contract["question"]) in planned_questions:
+            # The dimension HAS a contract but produced no verified evidence.
+            # Skipping it would leave the gap forever (the convergence failure);
+            # re-issuing the identical question returns the identical pages (the
+            # non-convergence failure). So widen the ask: same dimension, angled
+            # at a DIFFERENT source class, which is what surfaces evidence the
+            # first angle missed.
+            #
+            # This is checked BEFORE the question-dedup below, because the
+            # re-angle is precisely the case where the base synthesized question
+            # collides with the existing contract's text — deduping first would
+            # discard the re-angle and leave the dimension uncovered.
+            widened = _widen_dimension_query(
+                dimension=dimension, query=query, axis=axis, today=today
+            )
+            if not widened:
+                continue
+            contract = _contract(
+                index=index,
+                question=widened,
+                axis=axis,
+                search_type=_alternate_search_type(axis),
+                priority=1,
+                domain=domain,
+                coverage_goal=f"re-angle uncovered dimension: {dimension}",
+                minimum_sources=minimum_sources,
+            )
+        else:
+            contract = synthesize_dimension_contract(
+                index=index,
+                dimension=dimension,
+                query=query,
+                domain=domain,
+                minimum_sources=minimum_sources,
+                today=today,
+                coverage_goal=f"close measured coverage gap: {dimension}",
+            )
+
+        question_key = normalize_text(contract["question"])
+        if question_key in planned_questions:
             continue
         out.append(contract)
         present.add(axis)
+        planned_questions.add(question_key)
         index += 1
     return out
+
+
+# Source classes to try in order when a dimension's first angle found nothing.
+# Ordered from most authoritative to most general so the re-angle widens the
+# net rather than repeating it. DOMAIN-AGNOSTIC: these are search TYPES, not
+# subjects — the dimension label and the user's query supply the subject.
+_REANGLE_SEARCH_TYPES: Tuple[str, ...] = (
+    "statistical", "news", "encyclopedia", "academic", "general",
+)
+
+
+def _alternate_search_type(axis: str) -> str:
+    """A search_type different from the axis default, to widen a retry."""
+    default = axis_search_type(axis)
+    for candidate in _REANGLE_SEARCH_TYPES:
+        if candidate != default:
+            return candidate
+    return default
+
+
+def _widen_dimension_query(
+    *, dimension: str, query: str, axis: str, today: str = ""
+) -> str:
+    """Re-phrase an uncovered dimension at a different angle.
+
+    Built from the dimension label, the query's concept and a source-class word
+    ("official data", "reporting", "analysis"), so the retry targets material the
+    first angle would not have returned. No subject is hardcoded: every word
+    here is generic and the subject comes from the caller.
+    """
+    concept = _query_concept(query)
+    label = str(dimension or "").replace("_", " ").strip()
+    if not label or not concept:
+        return ""
+    angle = {
+        "statistical": "official statistics and measured data",
+        "news": "recent reporting and developments",
+        "encyclopedia": "background and overview",
+        "academic": "peer-reviewed research and analysis",
+        "general": "documented evidence and case studies",
+    }.get(_alternate_search_type(axis), "documented evidence")
+    year = _year_from(today)
+    return f"{concept} {label} {angle}{year}".strip()
 
 
 # Legacy axis->keyword template. Retained ONLY for the no-dimension fallback

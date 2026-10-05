@@ -361,3 +361,153 @@ def test_search_node_issues_the_gap_questions():
         assert dimension.replace("_", " ") in issued, (
             f"gap dimension '{dimension}' was planned but never searched"
         )
+
+
+# ---------------------------------------------------------------------------
+# Convergence: the same gaps must not be reported round after round
+# ---------------------------------------------------------------------------
+
+
+def test_covered_dimensions_do_not_regenerate_contracts():
+    """A dimension with verified evidence must produce NO follow-up work.
+
+    Re-issuing it is the wasted budget that starves the missing dimensions.
+    """
+    settings = _settings()
+    plan = [
+        {"id": 1, "axis": "capability", "question": "capability benchmark results",
+         "minimum_sources": 1},
+        {"id": 2, "axis": "regulation", "question": "regulatory framework",
+         "minimum_sources": 1},
+    ]
+    facts = [
+        {"claim": "a capability benchmark result", "source": "https://a.example/1",
+         "sub_question": "capability benchmark results", "verified": True},
+    ]
+    from app.agents.focus import assess_focus
+    from app.agents.planner import gap_contracts
+
+    report = assess_focus("capability and regulation of X", plan, facts)
+    assert "capability" not in report.missing, "covered dimension reported missing"
+
+    gaps = gap_contracts(
+        query="capability and regulation of X",
+        missing=list(report.missing),
+        thin=list(report.thin),
+        existing=plan,
+        start_index=3,
+    )
+    assert {c["axis"] for c in gaps} == {"regulation"}
+    assert not any(c["axis"] == "capability" for c in gaps)
+
+
+def test_gap_contracts_never_duplicate_an_axis():
+    """One contract per axis: a duplicate cannot add coverage and wastes budget."""
+    from app.agents.planner import gap_contracts
+
+    plan = [{"id": 1, "axis": "capability", "question": "capability benchmarks"}]
+    gaps = gap_contracts(
+        query="current state of X",
+        missing=["capability", "regulation", "capability"],
+        existing=plan,
+        start_index=2,
+    )
+    axes = [c["axis"] for c in gaps]
+    assert len(axes) == len(set(axes)), f"duplicate axes issued: {axes}"
+    assert "capability" in axes  # re-angled, not skipped
+    assert "regulation" in axes
+
+
+def test_reangled_contract_asks_something_different():
+    """A dimension with a contract but no evidence must be re-angled.
+
+    Repeating the identical question returns the identical pages; skipping it
+    leaves the gap forever. Both are non-convergence.
+    """
+    from app.agents.planner import gap_contracts
+
+    plan = [{"id": 1, "axis": "regulation",
+             "question": "the current state of X regulation", "minimum_sources": 1}]
+    gaps = gap_contracts(
+        query="the current state of X", missing=["regulation"],
+        existing=plan, start_index=2,
+    )
+    assert len(gaps) == 1
+    assert gaps[0]["question"] != plan[0]["question"]
+    assert gaps[0]["axis"] == "regulation"
+
+
+def test_drift_reflects_behaviour_not_query_wording():
+    """Drift must move when research leaves the PLAN, and stay put when it does not.
+
+    The earlier lexical implementation compared claim vocabulary to the query and
+    was blind to which dimension was actually researched: a fact about GPU
+    benchmarks shared the query's word "AI" and scored as on-question, so the
+    number barely moved as behaviour changed.
+    """
+    from app.agents.focus import assess_focus
+
+    query = "What are the current trends in artificial intelligence?"
+    plan = [
+        {"axis": "economics", "question": "AI economics", "minimum_sources": 1},
+        {"axis": "capability", "question": "AI capability", "minimum_sources": 1},
+    ]
+    on_plan = [
+        {"claim": "investment reached 200bn", "source": "https://a.example/1",
+         "sub_question": "AI economics", "verified": True},
+        {"claim": "latency improved", "source": "https://b.example/1",
+         "sub_question": "AI capability", "verified": True},
+    ]
+    off_plan = on_plan + [
+        {"claim": "an unrelated subject was also researched",
+         "source": "https://c.example/1", "sub_question": "medieval poetry",
+         "axis": "poetry", "verified": True},
+    ]
+    stayed = assess_focus(query, plan, on_plan)
+    wandered = assess_focus(query, plan, off_plan)
+    assert stayed.drift == 0.0, "on-plan research must not register as drift"
+    assert wandered.drift > stayed.drift, "off-plan research must raise drift"
+
+
+def test_drift_falls_as_missing_dimensions_get_covered():
+    """The property the user asked to verify: drift responds to progress."""
+    from app.agents.focus import assess_focus
+
+    query = "current state of X"
+    plan = [
+        {"axis": "a", "question": "a topic", "minimum_sources": 1},
+        {"axis": "b", "question": "b topic", "minimum_sources": 1},
+        {"axis": "c", "question": "c topic", "minimum_sources": 1},
+    ]
+    only_a = [{"claim": "a finding", "source": "https://a.example/1",
+               "sub_question": "a topic", "verified": True}]
+    all_covered = [
+        {"claim": f"{d} finding", "source": f"https://{d}.example/1",
+         "sub_question": f"{d} topic", "verified": True}
+        for d in ("a", "b", "c")
+    ]
+    partial = assess_focus(query, plan, only_a)
+    full = assess_focus(query, plan, all_covered)
+    assert partial.coverage < full.coverage
+    assert not full.missing and not full.thin
+    assert full.complete, "a fully covered on-plan run must read as complete"
+
+
+def test_search_priority_gap_dimensions_are_ordered_first():
+    """Missing dimensions must outrank covered ones in the pass's query order.
+
+    'Covered dimensions receive lower priority' is satisfied structurally: gap
+    contracts carry priority 1 and are prepended, and search issues the plan in
+    order.
+    """
+    settings = _settings()
+    state = _planned_state(["enterprise_adoption", "regulation", "labour_impact"])
+    out = asyncio.run(_run_planner(settings, state))
+    plan = out["sub_questions"]
+    gap_axes = {"enterprise_adoption", "regulation", "labour_impact"}
+    leading = [c["axis"] for c in plan[: len(gap_axes)]]
+    assert set(leading) == gap_axes, (
+        f"gap dimensions must lead the plan; got {[c['axis'] for c in plan]}"
+    )
+    for contract in plan[: len(gap_axes)]:
+        assert int(contract.get("priority", 9)) <= 1

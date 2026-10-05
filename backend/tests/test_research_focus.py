@@ -434,3 +434,35 @@ def test_frontier_question_text_is_derived_from_the_user_query():
         assert "coffee" in question
         assert "ai " not in question and "ai(" not in question
         assert "datacenter" not in question and "gpu" not in question
+
+
+def test_fact_attribution_is_tolerant_of_a_shortened_sub_question():
+    """The summarizer's sub_question is often a re-worded variant, not the
+    contract text. Exact matching attributed real evidence to nothing, so a
+    covered dimension still measured as uncovered — which is what made the
+    reviewer report the same gaps every round while coverage stayed at zero.
+    """
+    query = "population of Malawi in 2024"
+    plan = [{"axis": "evidence", "question": "population statistics", "minimum_sources": 1}]
+    shortened = [_fact("Malawi population 21.4 million", "https://wb.example/1", "population")]
+    exact = [_fact("Malawi population 21.4 million", "https://wb.example/1",
+                   "population statistics")]
+    for facts in (shortened, exact):
+        report = assess_focus(query, plan, facts)
+        assert report.coverage == 1.0, f"not attributed: {facts[0]['sub_question']!r}"
+        assert not report.drifted
+        assert not report.missing
+
+
+def test_reangled_contract_for_the_same_axis_still_attributes():
+    """A gap re-angle changes the question text but not the axis, so its facts
+    must still land on the right dimension."""
+    query = "current state of X"
+    plan = [{"axis": "regulation",
+             "question": "current state of X regulation official statistics",
+             "minimum_sources": 1}]
+    facts = [_fact("a regulatory finding", "https://gov.example/1",
+                   "current state of X regulation")]
+    report = assess_focus(query, plan, facts)
+    assert report.coverage == 1.0
+    assert not report.missing
