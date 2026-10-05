@@ -47,15 +47,14 @@ def _run_fetch_count(monkeypatch, tmp_path, top_n: int, pool: int = 8) -> int:
     client = SearchClient(settings)
     calls = []
 
-    async def fake_provider(self, query):
+    async def fake_provider(self, query, search_type=""):
         return [_result(i, tag) for i in range(pool)]
 
     async def fake_fetch(url: str, client=None):
         calls.append(url)
         return "full page content here", ""
 
-    monkeypatch.setattr(SearchClient, "_ddg_text", fake_provider)
-    monkeypatch.setattr(SearchClient, "_ddg_news", fake_provider)
+    monkeypatch.setattr(SearchClient, "_searxng_search", fake_provider)
     monkeypatch.setattr(SearchClient, "_wiki", fake_provider)
     monkeypatch.setattr(search_mod, "_fetch_content", fake_fetch)
 

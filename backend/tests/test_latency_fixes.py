@@ -111,34 +111,39 @@ def test_section_wise_writes_run_concurrently():
 # Tavily -> DDG rescue: text and news overlap
 # ---------------------------------------------------------------------------
 
-async def test_ddg_rescue_runs_text_and_news_concurrently():
-    client = SearchClient(_settings())
+async def test_searxng_and_primary_legs_run_concurrently():
+    """The provider fan-out must stay concurrent: SearXNG plus the free
+    primary legs (arXiv/Crossref/Wikipedia) are independent HTTP calls, so
+    awaiting them one at a time would serialise the search node.
+
+    This replaces the old DuckDuckGo text+news concurrency test, which no
+    longer had a subject once DDG was replaced by a single self-hosted
+    aggregate.
+    """
+    from app.agents.search import SearchClient
+
     state = {"in_flight": 0, "peak": 0}
+    settings = Settings(groq_api_key="k", _env_file=None)
+    client = SearchClient(settings)
 
-    async def _slow_text(query):
+    async def _slow(name, search_type="academic"):
         state["in_flight"] += 1
         state["peak"] = max(state["peak"], state["in_flight"])
         try:
             await asyncio.sleep(0.05)
-            return [_result("https://text.example/a")]
+            return [_result(f"https://{name}.example/a", search_type=search_type)]
         finally:
             state["in_flight"] -= 1
 
-    async def _slow_news(query):
-        state["in_flight"] += 1
-        state["peak"] = max(state["peak"], state["in_flight"])
-        try:
-            await asyncio.sleep(0.05)
-            return [_result("https://news.example/b", search_type="news")]
-        finally:
-            state["in_flight"] -= 1
+    client._searxng_search = lambda q, search_type="": _slow("searxng", search_type)
+    client._arxiv = lambda q: _slow("arxiv")
+    client._crossref = lambda q: _slow("crossref")
 
-    client._ddg_text = _slow_text
-    client._ddg_news = _slow_news
-    results = await client._ddg_rescue("some query")
-    assert state["peak"] >= 2, "ddg text and news ran serially"
-    # Concatenation order stays text-then-news (stable ranking input).
-    assert [r.url for r in results] == ["https://text.example/a", "https://news.example/b"]
+    results = await client._providers_for("some query", "academic")
+    assert state["peak"] >= 3, "provider legs ran serially"
+    assert {r.url for r in results} == {
+        "https://searxng.example/a", "https://arxiv.example/a", "https://crossref.example/a"
+    }
 
 
 # ---------------------------------------------------------------------------
