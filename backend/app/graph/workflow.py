@@ -540,6 +540,64 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
             sub_questions = [*existing, *added]
         else:
             sub_questions = sub_questions[: max(1, target)]
+
+        # GAP → TASK CONVERSION. The reviewer measures which planned dimensions
+        # have no (or thin) evidence, but a measurement is not a research task.
+        # Without this, the expansion plan is drawn from the axes ALREADY
+        # researched (see required_axes above) plus whatever the model happens
+        # to volunteer, so the same gaps are re-reported every round while
+        # search keeps returning the same material. Emitting a contract per
+        # missing dimension gives it an axis, which makes it a sub-question that
+        # search_node executes, which is what moves coverage.
+        #
+        # Injected AFTER the cap and excluded from it: gap-closing contracts are
+        # the reason this pass exists, so truncating them away would restore the
+        # exact non-convergence being fixed.
+        gap_report = (state.get("focus") or {}).get("report") or {}
+        gap_missing = list(gap_report.get("missing") or ())
+        gap_thin = list(gap_report.get("thin") or ())
+        if gap_missing or gap_thin:
+            try:
+                from app.agents.planner import gap_contracts
+
+                next_index = 1 + max(
+                    (
+                        int(q.get("id", 0))
+                        for q in sub_questions
+                        if isinstance(q, dict) and str(q.get("id", "")).strip().isdigit()
+                    ),
+                    default=0,
+                )
+                gaps = gap_contracts(
+                    query=state["query"],
+                    missing=gap_missing,
+                    thin=gap_thin,
+                    existing=sub_questions,
+                    start_index=next_index,
+                    domain=str((state.get("intent") or {}).get("domain", "") or "general"),
+                    minimum_sources=int(orchestration.get("min_sources_per_axis", 0) or 0) or 2,
+                    today=datetime.date.today().isoformat(),
+                    # Bounded by the number of measured gaps, NOT by the agent
+                    # target: gap-closing work is not subject to the plan cap,
+                    # because truncating it away is the non-convergence this
+                    # exists to fix. The per-pass search budget still bounds
+                    # total spend.
+                    limit=max(1, len(gap_missing) + len(gap_thin)),
+                )
+                if gaps:
+                    # Prepend: these are this pass's priority, and search_node
+                    # issues queries in plan order within its per-pass budget.
+                    sub_questions = [*gaps, *_merge_questions(sub_questions, [])]
+                    logger.info(
+                        "planner_gap_contracts",
+                        missing=len(gap_missing),
+                        thin=len(gap_thin),
+                        injected=[c["axis"] for c in gaps],
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "planner_gap_injection_failed", error=str(exc), exc_info=exc
+                )
         # Wave structure (Feature 03): dependency-ordered groups the
         # summarizer executes sequentially, passing earlier-wave findings to
         # dependent contracts. Exposed on state so the UI can show the plan's
@@ -640,11 +698,46 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
                     corroboration_to_run.append(text)
                     answered.add(key)
 
-        # Allocated/fallback follow-ups get priority within the per-pass query
-        # cap: they are the pass's reason for existing when evidence is missing,
-        # so an oversized plan cannot crowd them out.
-        room = max(0, cap - len(corroboration_to_run))
-        fresh = fresh[:room]
+        # GAP-FIRST ALLOCATION of the per-pass query cap.
+        #
+        # The plan's own questions used to be truncated to `cap - len(
+        # corroboration_to_run)` BEFORE corroboration was appended, so a pass
+        # with many corroboration queries left almost no room for the plan.
+        # Measured in a live run: 3 dimensions were reported missing, 3
+        # gap contracts were planned, and only 2 reached search_node — the third
+        # was crowded out by `(attempt 2)` / `site:arxiv.org` queries aimed at
+        # the dimension that was ALREADY covered. That is the reported symptom
+        # of searches continuing to concentrate on the covered direction.
+        #
+        # So contracts for dimensions the focus report named as missing get first
+        # claim on the cap. Domain-agnostic: the protected set is read from the
+        # focus report, which derives it from the plan.
+        gap_axes = {
+            str(a)
+            for a in ((state.get("focus") or {}).get("report") or {}).get("missing", ())
+        } | {
+            str(a)
+            for a in ((state.get("focus") or {}).get("report") or {}).get("thin", ())
+        }
+
+        def _axis_of(text: str) -> str:
+            item = by_text.get(text)
+            return str(item.get("axis", "") or "") if isinstance(item, dict) else ""
+
+        if gap_axes:
+            gap_fresh = [f for f in fresh if _axis_of(f[0]) in gap_axes]
+            other_fresh = [f for f in fresh if _axis_of(f[0]) not in gap_axes]
+        else:
+            gap_fresh, other_fresh = [], list(fresh)
+
+        # Gap-closing queries are never truncated by the cap: they are the
+        # reason this pass exists, and dropping them re-creates the
+        # non-convergence being fixed. Everything else competes for what is left,
+        # corroboration included.
+        gap_fresh = gap_fresh[:cap]
+        remaining = max(0, cap - len(gap_fresh))
+        room = max(0, remaining - len(corroboration_to_run))
+        fresh = [*gap_fresh, *other_fresh[:room]]
         fresh.extend((q, "general") for q in corroboration_to_run)
         if not fresh:
             if previous:

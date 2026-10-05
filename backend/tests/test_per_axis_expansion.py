@@ -97,9 +97,15 @@ async def test_expansion_searches_only_new_questions(monkeypatch):
     assert search_inputs[0] == ["What is RAG?"], search_inputs
     assert search_inputs[1] == [("What is RAG today?", "encyclopedia"),
                                 ("How does dense retrieval work now?", "encyclopedia")]
-    assert search_inputs[2] == [("What are RAG benchmarks this year?", "encyclopedia")], search_inputs
-    assert len(final["sub_questions"]) == 3
-    assert len(final["search_results"]) == 3
+    # Pass 2 searches the new gap question. It MAY also carry an injected
+    # gap-closing contract for a dimension the focus report found uncovered —
+    # that is the gap→task conversion, and those contracts take priority. What
+    # must never happen is re-issuing an already-answered question.
+    pass2 = [q[0] for q in search_inputs[2]]
+    assert "What are RAG benchmarks this year?" in pass2, search_inputs
+    assert "What is RAG today?" not in pass2, search_inputs
+    assert "How does dense retrieval work now?" not in pass2, search_inputs
+    assert len(final["search_results"]) >= 3
     assert final["final_report"] == final["synthesized_answer"]
 
 

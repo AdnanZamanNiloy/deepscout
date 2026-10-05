@@ -1346,6 +1346,86 @@ def synthesize_dimension_contract(
     )
 
 
+def gap_contracts(
+    *,
+    query: str,
+    missing: Sequence[str] = (),
+    thin: Sequence[str] = (),
+    existing: Sequence[Dict[str, Any]] = (),
+    start_index: int = 0,
+    domain: str = "general",
+    minimum_sources: int = DEFAULT_MINIMUM_SOURCES,
+    today: str = "",
+    limit: int = 4,
+) -> List[Dict[str, Any]]:
+    """Turn measured coverage gaps into search-ready contracts.
+
+    THIS IS THE STEP THE LOOP WAS MISSING. The reviewer reported missing
+    dimensions every pass, but nothing converted them into research tasks: on an
+    expansion pass `planner_node` seeded `required_axes` from the axes ALREADY
+    researched and appended only what the model volunteered, so a plan could be
+    drawn entirely from the direction that had already been explored. The
+    reported gaps stayed textual — a sentence in `critique_feedback` for the
+    next LLM call to ignore — and the run re-discovered the same holes each
+    round while search kept returning the same technical material.
+
+    Taking `missing`/`thin` from the focus report (app/agents/focus.py) and
+    emitting a real contract per dimension makes the gap EXECUTABLE: the
+    contract carries its own axis, so it becomes a sub-question, gets searched
+    by `search_node`, and its facts land against that axis in the next coverage
+    measurement. That is the loop closing.
+
+    Domain-agnostic by construction: the dimension labels come from the plan,
+    and each question is built from the label plus the query's own concept.
+    Nothing here knows what the subject is.
+    """
+    wanted: List[str] = []
+    for dimension in (*missing, *thin):
+        name = str(dimension or "").strip()
+        if name and name not in wanted:
+            wanted.append(name)
+    if not wanted:
+        return []
+
+    # Never duplicate a dimension the plan already carries a contract for.
+    present = {
+        dimension_to_axis(str(item.get("axis", "") or ""))
+        for item in existing or ()
+        if isinstance(item, dict)
+    }
+    planned_questions = {
+        normalize_text(str(item.get("question", "") or ""))
+        for item in existing or ()
+        if isinstance(item, dict)
+    }
+
+    out: List[Dict[str, Any]] = []
+    index = int(start_index)
+    for dimension in wanted[: max(1, limit)]:
+        axis = dimension_to_axis(dimension)
+        if axis in present:
+            # The dimension has a contract but no verified evidence. Re-issuing
+            # the same question would return the same pages, so aim the
+            # contract at the dimension with the query's concept, which is what
+            # synthesize_dimension_contract does when the label is used.
+            pass
+        contract = synthesize_dimension_contract(
+            index=index,
+            dimension=dimension,
+            query=query,
+            domain=domain,
+            minimum_sources=minimum_sources,
+            today=today,
+            coverage_goal=f"close measured coverage gap: {dimension}",
+        )
+        if normalize_text(contract["question"]) in planned_questions:
+            continue
+        out.append(contract)
+        present.add(axis)
+        index += 1
+    return out
+
+
 # Legacy axis->keyword template. Retained ONLY for the no-dimension fallback
 # (a caller that requires canonical axes but supplied no dynamic dimension
 # labels). New planning flows should never reach it — required axes now come
