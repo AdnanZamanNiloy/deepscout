@@ -499,3 +499,153 @@ def is_semantic_gap(gate_failures: Sequence[str]) -> bool:
         if any(marker in text for marker in _SEMANTIC_GAP_MARKERS):
             return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# Evidence balance across readings
+# ---------------------------------------------------------------------------
+
+# Below this many facts, a reading's evidence is too thin to answer it.
+THIN_READING_EVIDENCE = 1
+# A competing reading needs at least this much MORE evidence than the chosen one
+# before it is worth surfacing as an alternative.
+ALTERNATIVE_EVIDENCE_RATIO = 2.0
+
+
+@dataclass
+class ReadingEvidence:
+    """How much evidence each reading actually gathered."""
+
+    chosen: str = ""
+    counts: Dict[str, int] = field(default_factory=dict)
+    chosen_count: int = 0
+    alternative: str = ""
+    alternative_count: int = 0
+    chosen_is_thin: bool = False
+    alternative_is_better_evidenced: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "chosen": self.chosen,
+            "counts": dict(self.counts),
+            "chosen_count": self.chosen_count,
+            "alternative": self.alternative,
+            "alternative_count": self.alternative_count,
+            "chosen_is_thin": self.chosen_is_thin,
+            "alternative_is_better_evidenced": self.alternative_is_better_evidenced,
+        }
+
+
+def _fact_reading(fact: Mapping[str, Any]) -> str:
+    """Which reading a fact was gathered for, by its sense/interpretation tag."""
+    for key in ("sense", "interpretation", "reading"):
+        value = str(fact.get(key, "") or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def assess_reading_evidence(
+    facts: Sequence[Mapping[str, Any]] | None,
+    policy: Mapping[str, Any] | None,
+) -> ReadingEvidence:
+    """Compare evidence between the chosen reading and the others.
+
+    This exists to PROTECT the chosen reading. The failure it prevents is
+    evidence availability quietly redefining the question: the run picks a
+    reading, that reading turns out to be hard to evidence, a different reading
+    is easier to find, and the answer silently becomes about the easier one. The
+    meaning of a question is decided before research, not by the search results.
+
+    So the assessment never changes the choice. It reports two facts the writer
+    needs:
+      * the chosen reading's evidence is thin — say so as an evidence gap;
+      * a competing reading is substantially better evidenced — it may be
+        offered, but ONLY as an explicitly labelled alternative, never as the
+        answer to the question that was asked.
+    """
+    policy = policy if isinstance(policy, Mapping) else {}
+    chosen = str(policy.get("assumption", "") or "").strip()
+    labels = [
+        str(x).strip()
+        for x in (policy.get("interpretations") or ())
+        if str(x).strip()
+    ]
+    counts: Dict[str, int] = {label: 0 for label in labels}
+    untagged = 0
+    for fact in facts or ():
+        if not isinstance(fact, Mapping):
+            continue
+        reading = _fact_reading(fact)
+        if reading and reading in counts:
+            counts[reading] += 1
+        elif reading:
+            counts[reading] = counts.get(reading, 0) + 1
+        else:
+            untagged += 1
+
+    chosen_count = counts.get(chosen, 0)
+    # 2.0 means "the search ran and this run gathered facts"; verified facts are
+    # preferred by the caller, so the count is a reasonable proxy for evidence.
+    alternative, alternative_count = "", 0
+    for label, count in counts.items():
+        if label == chosen:
+            continue
+        if count > alternative_count:
+            alternative, alternative_count = label, count
+
+    better = bool(
+        alternative
+        and alternative_count > 0
+        and alternative_count >= max(
+            1, int(chosen_count * ALTERNATIVE_EVIDENCE_RATIO)
+        )
+        and alternative_count > chosen_count
+    )
+    # Tagged evidence is what makes this assessment meaningful. When NO fact
+    # carries a reading tag the pool simply was not sense-labelled — that is a
+    # limitation of the labelling, not evidence that the chosen reading is thin,
+    # and reporting it as thin would tell the writer to hedge on good evidence.
+    tagged_total = sum(counts.values())
+    return ReadingEvidence(
+        chosen=chosen,
+        counts=counts,
+        chosen_count=chosen_count,
+        alternative=alternative,
+        alternative_count=alternative_count,
+        chosen_is_thin=(
+            bool(labels)
+            and chosen_count <= THIN_READING_EVIDENCE
+            and (tagged_total > 0 or not facts)
+        ),
+        alternative_is_better_evidenced=better,
+    )
+
+
+def evidence_balance_guidance(evidence: ReadingEvidence) -> str:
+    """Writer instruction when the chosen reading is short of evidence.
+
+    Names no subject. It states the epistemic rule — report the gap, never
+    silently switch — and describes how to offer a better-evidenced reading.
+    """
+    if not evidence.chosen:
+        return ""
+    parts: List[str] = []
+    if evidence.chosen_is_thin:
+        parts.append(
+            f"The chosen reading ('{evidence.chosen}') has little or no evidence "
+            "in this run. REPORT THAT AS AN EVIDENCE GAP for the reading that was "
+            "asked about. Do NOT quietly answer under a different reading just "
+            "because it has more evidence — changing the meaning of the question "
+            "to match the search results is a defect, not a result."
+        )
+    if evidence.alternative_is_better_evidenced and evidence.alternative:
+        parts.append(
+            f"The reading '{evidence.alternative}' has substantially more "
+            "evidence. You MAY present it, but ONLY in a clearly labelled "
+            f"separate subsection as an alternative reading of the question, "
+            "with one sentence saying it is not the reading being answered. "
+            "Never merge its evidence into the main answer and never let it "
+            "become the report's subject."
+        )
+    return "\n".join(parts)

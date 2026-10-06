@@ -570,6 +570,34 @@ def _measured_coverage_gaps(state: ResearchState) -> List[str]:
         gaps.extend(exhausted_limitations(state.get("investigation_state")))
     except Exception as exc:
         logger.warning("investigation_limitations_failed", error=str(exc), exc_info=exc)
+    # AMBIGUITY READING GAP. When the question was underspecified and the run
+    # chose a reading, that reading's evidence shortfall is a limitation of THIS
+    # answer — reported as such rather than quietly answered under a different
+    # reading because it had more evidence. The meaning of the question is
+    # decided before research; evidence availability cannot redefine it.
+    try:
+        from app.agents.ambiguity import assess_reading_evidence
+
+        policy = state.get("ambiguity") or {}
+        if isinstance(policy, dict) and str(policy.get("action", "") or "") in (
+            "assume",
+            "separate",
+        ):
+            balance = assess_reading_evidence(state.get("facts"), policy)
+            if balance.chosen_is_thin and balance.chosen:
+                gaps.append(
+                    f"the reading answered ('{balance.chosen}') is thin on "
+                    "evidence; the question is answered under that reading "
+                    "regardless of how much evidence was found for other readings"
+                )
+            if balance.alternative_is_better_evidenced and balance.alternative:
+                gaps.append(
+                    f"'{balance.alternative}' is a different reading of the "
+                    "question and was better evidenced; it is reported separately "
+                    "as an alternative, not as the answer"
+                )
+    except Exception as exc:
+        logger.warning("reading_gap_limitations_failed", error=str(exc), exc_info=exc)
     return gaps[:8]
 
 

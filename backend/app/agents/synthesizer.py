@@ -1023,6 +1023,29 @@ async def synthesize(
     if interpretations_block:
         length_hint = f"{length_hint}\n\n{interpretations_block}"
 
+    # EVIDENCE BALANCE ACROSS READINGS. The chosen reading is fixed before
+    # research; this ensures availability does not redefine the question. If the
+    # reading actually asked about came back thin while another gathered more,
+    # the writer must report the gap rather than quietly answer the easier one —
+    # and may offer the other only as a clearly labelled alternative.
+    try:
+        from app.agents.ambiguity import assess_reading_evidence, evidence_balance_guidance
+
+        raw_policy = ctx.get("ambiguity")
+        policy: Dict[str, Any] = raw_policy if isinstance(raw_policy, dict) else {}
+        if str(policy.get("action", "") or "") in ("assume", "separate"):
+            balance = assess_reading_evidence(facts, policy)
+            balance_guidance = evidence_balance_guidance(balance)
+            if balance_guidance:
+                length_hint = f"{length_hint}\n\n{balance_guidance}"
+            ctx["reading_evidence"] = balance.to_dict()
+    except Exception as exc:  # guidance must never break synthesis
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning(
+            "reading_evidence_assessment_failed", exc_info=exc
+        )
+
     guidance = _format_guidance(query, intent)
 
     # Evidence quality measured BEFORE the writer sees anything, because two of

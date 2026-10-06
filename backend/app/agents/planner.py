@@ -1244,20 +1244,45 @@ def _intent_research_senses(intent: Optional[Dict[str, Any]]) -> List[Tuple[str,
 
     Empty when the query is unambiguous (or intent is absent): nothing in the
     plan is sense-tagged and behaviour is exactly the pre-intent one.
+
+    Reads `senses` (the homonym path) AND the ambiguity policy's readings (the
+    under-specification path). The two are different vocabularies for the same
+    idea — "which meanings of the term are in play" — and only checking `senses`
+    left the under-specified case with NO sense tags on any contract, so facts
+    were never labelled with the reading they were gathered for and the evidence
+    could not be attributed to a reading downstream.
     """
-    if not intent or not intent.get("ambiguity"):
+    if not intent:
         return []
     senses = [
         s for s in (intent.get("senses") or [])
         if isinstance(s, dict) and str(s.get("label", "")).strip()
     ]
-    if not senses:
-        return []
-    chosen = senses[:2] if intent.get("recommended_action") == "research_both" else senses[:1]
-    return [
-        (str(s["label"]).strip(), normalize_domain(str(s.get("domain", "")) or "general"))
-        for s in chosen
-    ]
+    if senses and intent.get("ambiguity"):
+        chosen = senses[:2] if intent.get("recommended_action") == "research_both" else senses[:1]
+        return [
+            (str(s["label"]).strip(), normalize_domain(str(s.get("domain", "")) or "general"))
+            for s in chosen
+        ]
+
+    # Under-specification path: the ambiguity policy chose the reading(s). The
+    # CHOSEN reading leads, so the reading the user's question is answered under
+    # is the one the majority of contracts research.
+    policy = intent.get("ambiguity_policy")
+    if isinstance(policy, dict):
+        chosen_label = str(policy.get("assumption", "") or "").strip()
+        action = str(policy.get("action", "") or "")
+        labels: List[str] = []
+        if chosen_label:
+            labels.append(chosen_label)
+        if action == "separate":
+            labels.extend(
+                str(x).strip()
+                for x in (policy.get("interpretations") or ())
+                if str(x).strip() and str(x).strip() != chosen_label
+            )
+        return [(label, "general") for label in labels if label]
+    return []
 
 
 def _sense_concept(label: str) -> str:
