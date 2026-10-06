@@ -1101,6 +1101,37 @@ async def synthesize(
 
         _logging.getLogger(__name__).warning("convergence_contract_failed", exc_info=exc)
 
+    # REPORT-WIDE CONSISTENCY. One evidence conclusion, obeyed by EVERY section.
+    # The convergence contract above governs the answer; this names the ranking
+    # vocabulary that must not appear and the cluster wording to use instead, and
+    # it travels with each per-section prompt too — the Executive Summary obeying
+    # the conclusion while another section named a "leading" option was the
+    # reported inconsistency.
+    try:
+        from app.agents.report_consistency import (
+            report_status,
+            render_consistency_contract,
+        )
+
+        raw_convergence = ctx.get("convergence")
+        convergence_map: Dict[str, Any] = (
+            raw_convergence if isinstance(raw_convergence, dict) else {}
+        )
+        basis_map = ctx.get("ranking_basis") if isinstance(ctx.get("ranking_basis"), dict) else {}
+        status = report_status(
+            query,
+            convergence=convergence_map,
+            ranking_basis=basis_map or {},
+        )
+        consistency = render_consistency_contract(status)
+        if consistency:
+            length_hint = f"{length_hint}\n\n{consistency}"
+        ctx["report_status"] = status.to_dict()
+    except Exception as exc:  # guidance must never break synthesis
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning("report_consistency_failed", exc_info=exc)
+
     # EVIDENCE BALANCE ACROSS READINGS. The chosen reading is fixed before
     # research; this ensures availability does not redefine the question. If the
     # reading actually asked about came back thin while another gathered more,
@@ -1335,7 +1366,15 @@ def _mirror_machine_notes(ctx: Dict[str, Any], caller_ctx: Dict[str, Any]) -> No
     notes = ctx.get("synthesis_machine_notes")
     if notes is not None:
         caller_ctx["synthesis_machine_notes"] = list(notes)
-    for key in ("definition_audit", "ranking_audit", "definition_lock", "ranking_basis"):
+    for key in (
+        "definition_audit",
+        "ranking_audit",
+        "definition_lock",
+        "ranking_basis",
+        "convergence_audit",
+        "consistency_audit",
+        "report_status",
+    ):
         value = ctx.get(key)
         if value:
             caller_ctx[key] = value
@@ -1876,6 +1915,28 @@ def _finalize(
 
         _logging.getLogger(__name__).warning("convergence_audit_failed", exc_info=exc)
 
+    # REPORT-CONSISTENCY AUDIT. Which sections used ranking language the evidence
+    # cannot support. Per-section, so a violation names the section that broke
+    # consistency rather than only recording that the report did.
+    try:
+        from app.agents.report_consistency import assess_report_consistency
+
+        raw_convergence = ctx.get("convergence")
+        convergence_map: Dict[str, Any] = (
+            raw_convergence if isinstance(raw_convergence, dict) else {}
+        )
+        if convergence_map.get("identified"):
+            ctx["consistency_audit"] = assess_report_consistency(
+                query,
+                _section_map(auditable),
+                convergence=convergence_map,
+                ranking_basis=ctx.get("ranking_basis") if isinstance(ctx.get("ranking_basis"), dict) else {},
+            )
+    except Exception as exc:
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning("consistency_audit_failed", exc_info=exc)
+
     # Research-quality layer: per-citation grounding, overclaiming, internal
     # consistency and per-section coverage. Run on the WRITER's prose only
     # (machine sections are measured state, not claims to be audited) and on
@@ -2272,6 +2333,12 @@ async def _synthesize_sectioned(
         prompt = (
             f"Main query: {query}\n\n"
             f"{section_length_hint}\n\n"
+            # The report-wide contract travels with EVERY section prompt, exactly
+            # as it does with the Executive Summary prompt above. It used to be
+            # omitted here, which is how the summary obeyed the evidence
+            # conclusion while another section named a "leading" option — the
+            # inconsistency this fixes.
+            f"{length_hint}\n\n"
             + (f"{guidance}\n\n" if guidance else "")
             + (f"{quality_contract}\n\n" if quality_contract else "")
             + (
