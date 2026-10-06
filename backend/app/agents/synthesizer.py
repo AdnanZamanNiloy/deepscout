@@ -3635,10 +3635,13 @@ def _render_interpretations_block(intent: Dict[str, Any], ambiguity: Dict[str, A
             "UNDER-SPECIFIED QUERY — the question can be read in more than one "
             f"useful way. This report ANSWERS THE READING: **{assumption}**.\n"
             f"{listed}\n"
-            "Open with one sentence stating that assumption, then answer it. Do "
-            "NOT hedge across the other readings and do NOT spend sections or "
-            "citations on them — one clause acknowledging the other reading is "
-            "enough. A confident answer to a stated reading beats a cautious "
+            "Open with ONE short sentence that (a) states which reading is being "
+            "used and (b) defines the ambiguous term as it is being used here — "
+            'e.g. "Here \'<term>\' is taken to mean <the reading above>." Then '
+            "answer that reading directly. Do NOT hedge across the other "
+            "readings and do NOT spend sections or citations on them — at most "
+            "one clause acknowledging another reading exists is enough. A "
+            "confident answer to a clearly stated reading beats a cautious "
             "non-answer to all of them."
         )
 

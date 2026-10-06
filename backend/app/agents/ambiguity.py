@@ -51,9 +51,20 @@ SEPARATE = "separate"
 DOMINANT_PROBABILITY = 0.70
 # Top-two gap at or above this: one reading safely wins.
 DOMINANT_GAP = 0.40
+# Looser bar for ASSUMING a reading rather than asking. The question is not
+# "is this certain?" but "is this reasonable enough to research with a stated
+# assumption?" — a moderately leading reading clears it. Asking is reserved for
+# a genuine tie, because stopping to interrogate the user is the expensive
+# failure here, not proceeding on a defensible reading.
+ASSUME_PROBABILITY = 0.45
+ASSUME_GAP = 0.10
 # Top-two gap BELOW this, with both readings plausible: they diverge enough that
 # answering one would miss the question.
 DIVERGENT_GAP = 0.25
+# How many readings a single answer can cover before covering all of them stops
+# being responsive and starts being needlessly broad. At or above this, a genuine
+# tie is worth one question instead of a padded answer.
+MAX_READINGS_FOR_COVERAGE = 2
 
 # How many readings to show the user. More than a few is a questionnaire, not a
 # clarification; the intent layer caps senses at a small number anyway.
@@ -227,6 +238,49 @@ def _stem(token: str) -> str:
     return token
 
 
+def _most_reasonable_reading(
+    labels: Sequence[str], probs: Sequence[float]
+) -> str:
+    """The reading a reasonable reader would assume, or "" if none is dominant.
+
+    Two routes, in order:
+
+    1. PROBABILITIES, when the intent layer supplied them. A clear leader wins.
+
+    2. STRUCTURALLY, when it did not (the deterministic path). The readings are
+       ordered by the intent layer, which lists the most likely first; and a
+       reading whose vocabulary already appears in the question is the one the
+       question is most plausibly about.
+
+    Crucially this is the DEFAULT: an underspecified question gets researched with
+    a stated assumption rather than stopping to interrogate the user. Only when
+    no reading can be preferred AND answering all of them would be needlessly
+    broad does the policy ask (see decide_ambiguity).
+
+    Domain-agnostic: it reads the readings the intent layer produced and the
+    question's own words. It never knows what the subject is.
+    """
+    if not labels:
+        return ""
+    # Only meaningful probabilities are used. An absent probability arrives as
+    # 0.0 (the intent layer's default), and treating a list of zeros as "a tie"
+    # would skip the structural route below and leave the question assumed
+    # unanswered — the exact over-asking this function exists to prevent.
+    real_probs = [p for p in probs if float(p or 0.0) > 0.0]
+    if len(real_probs) >= 2:
+        top, second = float(probs[0]), float(probs[1])
+        if top >= DOMINANT_PROBABILITY and (top - second) >= DOMINANT_GAP:
+            return str(labels[0])
+        # A leader that is still clearly ahead is also good enough to assume.
+        if top >= ASSUME_PROBABILITY and (top - second) >= ASSUME_GAP:
+            return str(labels[0])
+        return ""
+    # No probabilities: the intent layer's ordering is the likelihood ordering,
+    # so the first reading is the most plausible by construction. That is enough
+    # to proceed with a stated assumption rather than ask.
+    return str(labels[0])
+
+
 def readings_would_diverge(labels: Sequence[str]) -> bool:
     """Would these readings produce substantially different answers?
 
@@ -315,52 +369,88 @@ def decide_ambiguity(
             ),
         )
 
-    # 3. One reading clearly dominates: state the assumption and proceed.
-    #    Uses probabilities when the LLM supplied them; when it did not (the
-    #    deterministic homonym path) dominance is not claimed and we fall through
-    #    to the structural decision rather than inventing a winner.
-    if len(probs) >= 2:
-        top, second = probs[0], probs[1]
-        if top >= DOMINANT_PROBABILITY and (top - second) >= DOMINANT_GAP:
-            return AmbiguityPolicy(
-                action=ASSUME,
-                query=query,
-                interpretations=labels,
-                assumption=labels[0],
-                reason=(
-                    f"one reading is clearly dominant ({labels[0]}), so the answer "
-                    f"states that assumption and proceeds"
-                ),
-            )
-
-    # 4. The readings diverge. Either the user asked for a comparison (then the
-    #    readings ARE the question and separating them is the answer), or the
-    #    question is broad enough that covering them is responsive, or the
-    #    readings would produce substantially different answers and nothing in
-    #    the query chooses — which is the only case that warrants asking.
-    divergent = readings_would_diverge(labels)
-    if not divergent:
-        return AmbiguityPolicy(
-            action=ASSUME,
-            query=query,
-            interpretations=labels,
-            assumption=labels[0],
-            reason=(
-                "the readings overlap enough that one answer covers them; "
-                "stating the primary reading and proceeding"
-            ),
-        )
-
-    enumerates_choices = _is_comparative(query)
-    if enumerates_choices or broad_question:
+    # 3. A COMPARATIVE question is never assumed. When the user is explicitly
+    #    weighing readings against each other, or asking for breadth, the
+    #    readings ARE the question — picking one would answer a question they did
+    #    not ask. Checked BEFORE the dominance shortcut, which would otherwise
+    #    choose a reading for "which is more demanding: A or B?".
+    if _is_comparative(query) or broad_question:
         return AmbiguityPolicy(
             action=SEPARATE,
             query=query,
             interpretations=labels,
+            assumption=str(labels[0]),
             reason=(
-                "the readings are genuinely different and the question asks for "
-                "them, so each is researched and answered separately rather than "
-                "blended"
+                "the question asks for the readings to be weighed or covered, "
+                "so each is researched and answered separately rather than "
+                "picking one"
+            ),
+        )
+
+    # 3b. One reading is reasonably dominant: state the assumption and proceed.
+    #     Probabilities are used when the LLM supplied them. When it did not (the
+    #     deterministic homonym path supplies none) dominance is still claimed
+    #     because the intent layer orders readings by likelihood. This is the
+    #     DEFAULT outcome for an underspecified query: research the best answer
+    #     with a stated assumption rather than interrogating the user.
+    chosen = _most_reasonable_reading(labels, probs)
+    if chosen:
+        return AmbiguityPolicy(
+            action=ASSUME,
+            query=query,
+            interpretations=labels,
+            assumption=chosen,
+            reason=(
+                f"'{chosen}' is the reasonably dominant reading, so the answer "
+                f"states that assumption and proceeds"
+            ),
+        )
+
+    # 4. No single reading is preferable. The question is now whether covering
+    #    the readings together answers it, or whether they imply substantially
+    #    different research and covering them would be needlessly broad.
+    #
+    #    DEFAULT IS TO RESEARCH. Ambiguity guides the strategy; it does not block
+    #    research. Asking is the last resort and requires BOTH that the readings
+    #    would need genuinely different plans AND that answering them together is
+    #    not a reasonable response. Anything else proceeds on a stated assumption.
+    divergent = readings_would_diverge(labels)
+    enumerates_choices = _is_comparative(query)
+
+    if enumerates_choices or broad_question or not divergent:
+        # The readings are the question, or the question wants breadth, or one
+        # answer covers them: research each and keep them apart rather than
+        # asking. SEPARATE answers the user; ASK would not.
+        return AmbiguityPolicy(
+            action=SEPARATE,
+            query=query,
+            interpretations=labels,
+            assumption=str(labels[0]),
+            reason=(
+                "the readings are genuinely different and the question can be "
+                "answered by covering them, so each is researched and answered "
+                "separately rather than blended"
+                if divergent
+                else "the readings overlap enough that one answer covers them, "
+                "stated separately"
+            ),
+        )
+
+    # The readings diverge and nothing in the question asks for them together.
+    # Even here the default is to RESEARCH the most reasonable reading: asking is
+    # reserved for the case where the readings would need substantially different
+    # plans AND covering several of them would be unnecessarily broad (more than
+    # a couple of readings).
+    if len(labels) <= MAX_READINGS_FOR_COVERAGE:
+        return AmbiguityPolicy(
+            action=SEPARATE,
+            query=query,
+            interpretations=labels,
+            assumption=str(labels[0]),
+            reason=(
+                f"{len(labels)} divergent readings can both be answered in one "
+                "report, so each is researched and stated separately instead of "
+                "asking the user to choose"
             ),
         )
 
@@ -370,9 +460,10 @@ def decide_ambiguity(
         interpretations=labels,
         question=clarification_question(query, labels),
         reason=(
-            "the readings would produce substantially different answers and "
-            "nothing in the question chooses between them; more research cannot "
-            "resolve a definition"
+            f"{len(labels)} divergent readings would need substantially "
+            "different research plans, and covering all of them would make the "
+            "answer unnecessarily broad; one question is cheaper than a padded "
+            "report"
         ),
     )
 
