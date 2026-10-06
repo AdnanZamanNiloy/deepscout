@@ -1048,6 +1048,29 @@ async def synthesize(
 
         _logging.getLogger(__name__).warning("definition_lock_failed", exc_info=exc)
 
+    # RANKING BASIS CONTRACT. A "most/best/highest/worst" question is a
+    # comparison, so its answer may only rank when the evidence actually
+    # compares the candidates. Two unrelated findings are examples, not an
+    # ordering, and a superlative must not be inferred from them. Writer
+    # guidance only for superlative queries; every other question is unaffected.
+    try:
+        from app.agents.ranking_basis import (
+            assess_comparative_basis,
+            is_superlative_query,
+            render_ranking_contract,
+        )
+
+        if is_superlative_query(query):
+            basis = assess_comparative_basis(query, facts)
+            basis_contract = render_ranking_contract(basis, query)
+            if basis_contract:
+                length_hint = f"{length_hint}\n\n{basis_contract}"
+            ctx["ranking_basis"] = basis.to_dict()
+    except Exception as exc:  # guidance must never break synthesis
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning("ranking_basis_failed", exc_info=exc)
+
     # EVIDENCE BALANCE ACROSS READINGS. The chosen reading is fixed before
     # research; this ensures availability does not redefine the question. If the
     # reading actually asked about came back thin while another gathered more,
@@ -1272,12 +1295,20 @@ def _mirror_machine_notes(ctx: Dict[str, Any], caller_ctx: Dict[str, Any]) -> No
     `synthesize` rebinds `ctx` to a copy, so the write-back inside `_finalize`
     and `_deterministic_report` would be invisible to the caller. This mirrors
     it to the dict the caller actually owns (the workflow, or a test).
+
+    The definition and ranking audits ride here too. They are measurements of the
+    delivered answer, so they belong with the other machine-owned provenance —
+    an audit the caller cannot read is inert.
     """
     if caller_ctx is ctx:
         return
     notes = ctx.get("synthesis_machine_notes")
     if notes is not None:
         caller_ctx["synthesis_machine_notes"] = list(notes)
+    for key in ("definition_audit", "ranking_audit", "definition_lock", "ranking_basis"):
+        value = ctx.get(key)
+        if value:
+            caller_ctx[key] = value
 
 
 def _resolve_profile(
@@ -1781,6 +1812,19 @@ def _finalize(
         import logging as _logging
 
         _logging.getLogger(__name__).warning("definition_audit_failed", exc_info=exc)
+
+    # RANKING-BASIS AUDIT. Records whether a superlative question was answered
+    # with a ranking the evidence cannot support — winner language used where
+    # no comparison exists. Observational, like the definition audit above.
+    try:
+        from app.agents.ranking_basis import assess_answer_ranking, is_superlative_query
+
+        if is_superlative_query(query):
+            ctx["ranking_audit"] = assess_answer_ranking(auditable, query, usable_facts)
+    except Exception as exc:
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning("ranking_audit_failed", exc_info=exc)
 
     # Research-quality layer: per-citation grounding, overclaiming, internal
     # consistency and per-section coverage. Run on the WRITER's prose only
