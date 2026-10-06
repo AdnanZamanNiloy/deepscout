@@ -116,6 +116,14 @@ class ResearchState(TypedDict, total=False):
     # redirect queries the next pass should issue. Process metadata — it belongs
     # to the audit, never to the primary answer.
     focus: Dict[str, Any]
+    # Fundamental-gap convergence (app/agents/convergence.py): the diagnosis for
+    # this pass, plus the run's history of fundamental-gap signatures. The history
+    # is what makes REPETITION detectable — the same "no source ranks these"
+    # conclusion twice is a property of the question, and the loop must converge
+    # rather than reopen for an angle the evidence cannot supply. Run scoped on
+    # state (no module-level counter).
+    convergence: Dict[str, Any]
+    gap_history: List[str]
 
 
 class PlannerUpdate(TypedDict):
@@ -164,6 +172,10 @@ class CriticUpdate(TypedDict):
     investigation_state: Dict[str, Dict[str, Any]]
     # Query-anchored focus assessment for this pass (app/agents/focus.py).
     focus: Dict[str, Any]
+    # Convergence diagnosis for this pass, plus the signature history that makes
+    # repetition detectable (see ResearchState.gap_history).
+    convergence: Dict[str, Any]
+    gap_history: List[str]
 
 
 class SynthesizerUpdate(TypedDict):

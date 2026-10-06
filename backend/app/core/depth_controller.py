@@ -474,6 +474,28 @@ def _budget_checks(state: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _convergence_checks(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Has the reviewer concluded, repeatedly, that the evidence cannot answer?
+
+    Reads the diagnosis critic_node already recorded (app/agents/convergence.py),
+    so the decision and the diagnosis cannot disagree. A run that has not reached
+    the critic has no diagnosis and never converges on absent information.
+    """
+    convergence = state.get("convergence") or {}
+    if not isinstance(convergence, dict) or not convergence:
+        return {"converge": False, "decision_reason": "", "rounds": 0}
+    identified = bool(convergence.get("identified"))
+    return {
+        "converge": identified,
+        "rounds": int(convergence.get("rounds", 0) or 0),
+        "decision_reason": str(convergence.get("reason", "") or "") or (
+            "the reviewer reported the same fundamental evidence gap across "
+            "rounds; the evidence cannot answer the question as asked, so it is "
+            "recorded as a stated conclusion rather than searched again"
+        ),
+    }
+
+
 def _focus_checks(state: Dict[str, Any]) -> Dict[str, Any]:
     """Read the loop's focus assessment (app/agents/focus.py) for a redirect.
 
@@ -805,6 +827,17 @@ def decide_with_checks(
             "missing evidence; further searching cannot resolve it, so it is "
             "recorded as a stated limitation",
         )
+
+    # FUNDAMENTAL GAP: CONVERGE. The reviewer has concluded, in consecutive
+    # rounds, that the KIND of evidence the question requires is absent ("no
+    # source ranks these", "only indirect evidence"). That is a property of the
+    # question, not a slow search: every block below can only add MORE searching,
+    # and more searching cannot supply evidence that does not exist. Checked
+    # before them so an unsourced planned angle cannot reopen the loop after the
+    # fundamental gap is already established.
+    convergence = _convergence_checks(state)
+    if convergence["converge"]:
+        return _with_reason("finalize", convergence["decision_reason"])
 
     # FOCUS GATE. Checked before the axis checks because it asks a different and
     # prior question: is this pass still about the user's question? Drift and
