@@ -256,11 +256,26 @@ class Interpretation:
 # Deliberately small and honest: this is the deterministic detector, not a
 # substitute for the LLM reading the question.
 _UNDERSPECIFIED_TERMS: Dict[str, List[Dict[str, str]]] = {
+    # NOTE: "demanding" is NOT a symmetric ambiguity. It means difficult, heavy
+    # or exacting; "in demand" is a DIFFERENT term that means sought-after. The
+    # table previously listed a labour-demand reading here, which made the
+    # system answer "what is the most demanding job" as "which job is hardest to
+    # fill" — a different question. Both readings below are senses of
+    # "demanding" itself, so the selection is between kinds of difficulty and
+    # neither can drift into labour-market demand.
     "demanding": [
-        {"label": "Hard to fill (high demand)",
-         "description": "roles employers struggle to staff because supply is short"},
         {"label": "Stressful or difficult (high strain)",
          "description": "roles with the heaviest workload, pressure or burnout risk"},
+        {"label": "Requiring high skill or responsibility (high complexity)",
+         "description": "roles that demand expertise, judgement or accountability"},
+    ],
+    # The sought-after sense lives under its OWN term, where it is the natural
+    # reading of that word rather than a redefinition of another one.
+    "in demand": [
+        {"label": "Hard to fill (high demand)",
+         "description": "roles employers struggle to staff because supply is short"},
+        {"label": "Fastest growing (high demand growth)",
+         "description": "roles whose openings are increasing most quickly"},
     ],
     "best": [
         {"label": "Highest quality",

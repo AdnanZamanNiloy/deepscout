@@ -511,7 +511,12 @@ def test_underspecified_query_yields_useful_readings():
     assert report.underspecified
     assert len(report.interpretations) >= 2
     labels = " ".join(i.label.lower() for i in report.interpretations)
-    assert "demand" in labels and ("stress" in labels or "strain" in labels)
+    # "demanding" is a DIFFICULTY term: its readings are kinds of difficulty.
+    # It must NOT list a labour-market-demand reading — that is "in demand",
+    # a different word, and offering it here is how "most demanding" was
+    # previously answered as "hardest to fill".
+    assert "stress" in labels or "strain" in labels
+    assert "demand" not in labels
     # Under-specification is NOT homonym ambiguity and must not masquerade as it.
     assert report.ambiguity is False
     assert report.senses == []
@@ -551,7 +556,9 @@ def test_interpretations_block_renders_readings_and_forbids_ambiguity_essay():
     block = _render_interpretations_block(report.to_dict())
     assert "UNDER-SPECIFIED QUERY" in block
     assert "Do NOT spend the answer explaining" in block
-    assert "Hard to fill" in block
+    # The readings rendered are senses of "demanding", never labour demand.
+    assert "Stressful or difficult" in block
+    assert "Hard to fill" not in block
     # A clear query renders nothing.
     assert _render_interpretations_block({"interpretations": []}) == ""
 

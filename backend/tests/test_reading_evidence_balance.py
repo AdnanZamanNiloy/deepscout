@@ -259,17 +259,24 @@ def test_the_chosen_reading_is_fixed_before_research():
     """The plan is shaped by the chosen reading, not by what search returns."""
     final = _run_graph("what can be the most demanding job in 2027")
     policy = final.get("ambiguity") or {}
-    assert policy.get("action") == "assume"
+    assert policy.get("action") in ("assume", "separate")
     chosen = str(policy.get("assumption", "") or "")
     assert chosen
-    # Every planned contract researches the chosen reading.
+    # Every planned contract researches a reading of the question, and the
+    # chosen reading is among them. On `separate` both readings of "demanding"
+    # are researched (each tagged), which is the point — but NO contract may
+    # research a different TERM's meaning (labour-market demand).
     senses = {
         str(c.get("sense", "") or "")
         for c in (final.get("sub_questions") or [])
         if isinstance(c, dict)
     }
     senses -= {""}
-    assert senses == {chosen}, f"contracts researched {senses}, expected {chosen}"
+    assert chosen in senses, f"chosen reading not researched: {senses}"
+    for sense in senses:
+        assert "demand" not in sense.lower() or "demanding" in sense.lower(), (
+            f"a labour-demand reading was researched for a 'demanding' question: {sense}"
+        )
 
 
 def test_the_ambiguity_module_names_no_subject():
@@ -295,3 +302,188 @@ def test_the_ambiguity_module_names_no_subject():
             if re.search(rf"\b{topic}\b", tok.string, re.IGNORECASE):
                 offenders.append((tok.start[0], topic))
     assert not offenders, f"executable subject strings in ambiguity.py: {offenders}"
+
+
+# ---------------------------------------------------------------------------
+# Interpretation SCORING: semantic/contextual fit must dominate evidence
+# ---------------------------------------------------------------------------
+
+
+def _candidates(*pairs):
+    from app.agents.ambiguity import ReadingCandidate
+
+    return [ReadingCandidate(label=lbl, description=desc) for lbl, desc in pairs]
+
+
+def test_selection_scores_all_three_dimensions():
+    """Every reading is scored on semantic fit, contextual fit and evidence."""
+    from app.agents.ambiguity import select_reading
+
+    cands = _candidates(("difficulty", "effortful, high-pressure work"),
+                        ("labour demand", "roles employers cannot staff"))
+    _, scored = select_reading(cands, "what is the most demanding job",
+                               evidence_counts={"labour demand": 10})
+    assert len(scored) == 2
+    for c in scored:
+        assert 0.0 <= c.semantic_fit <= 1.0
+        assert 0.0 <= c.contextual_fit <= 1.0
+        assert 0.0 <= c.evidence <= 1.0
+        assert "semantic_fit" in c.to_dict() and "evidence" in c.to_dict()
+
+
+def test_wording_decides_even_when_the_other_reading_has_all_the_evidence():
+    """THE RULE: a reading that echoes the user's word wins on zero evidence.
+
+    "Demanding work" (0 facts) must beat "High labour demand" (500 facts),
+    because 500 facts about a different term do not make it the question.
+    """
+    from app.agents.ambiguity import select_reading
+
+    cands = _candidates(("Demanding work", "effortful, high-pressure roles"),
+                        ("High labour demand", "roles employers struggle to staff"))
+    chosen, scored = select_reading(
+        cands, "what is the most demanding job",
+        evidence_counts={"Demanding work": 0, "High labour demand": 500},
+    )
+    assert chosen is not None
+    assert chosen.label == "Demanding work", [c.to_dict() for c in scored]
+    by_label = {c.label: c for c in scored}
+    assert by_label["High labour demand"].evidence == 1.0
+    assert by_label["Demanding work"].evidence == 0.0
+    assert by_label["Demanding work"].semantic_fit > by_label["High labour demand"].semantic_fit
+
+
+def test_evidence_alone_never_selects_a_reading():
+    """A meaning tie with lopsided evidence must NOT be broken by evidence.
+
+    Returning no choice makes the caller separate or ask; letting evidence win
+    would let the search results pick the question.
+    """
+    from app.agents.ambiguity import select_reading
+
+    cands = _candidates(("reading one", "first meaning"),
+                        ("reading two", "second meaning"))
+    chosen, _ = select_reading(
+        cands, "some query", evidence_counts={"reading one": 0, "reading two": 900}
+    )
+    assert chosen is None, "evidence decided the meaning"
+
+
+def test_demand_and_demanding_are_not_the_same_word():
+    """"demanding" must not be satisfied by a reading about "demand"."""
+    from app.agents.ambiguity import _meaning_fit, ReadingCandidate, _subject_tokens
+
+    demand = ReadingCandidate(label="High labour demand",
+                              description="roles employers struggle to staff")
+    query = "what is the most demanding job"
+    semantic, _ = _meaning_fit(demand, query)
+    # No literal match: "demanding" is not present as a word in the reading.
+    assert "demanding" not in _subject_tokens(demand.label) | _subject_tokens(demand.description)
+    assert semantic < 0.5, f"a demand reading claimed the word 'demanding' ({semantic})"
+
+
+def test_the_intent_prior_is_used_as_context_not_evidence():
+    """A correct classifier prior must not be overridden by raw vocabulary.
+
+    "what is a transformer" picked "an electrical device" on vocabulary alone
+    (the label contains the word) over the AI sense the classifier scored 0.85.
+    The prior IS context and must count.
+    """
+    from app.agents.ambiguity import select_reading
+
+    intent = {
+        "senses": [
+            {"label": "a neural network architecture", "probability": 0.85},
+            {"label": "an electrical device", "probability": 0.10},
+        ],
+        "interpretations": [
+            {"label": "a neural network architecture"},
+            {"label": "an electrical device"},
+        ],
+    }
+    priors = {s["label"]: s["probability"] for s in intent["senses"]}
+    from app.agents.ambiguity import _reading_candidates
+
+    cands = _reading_candidates(intent, "what is a transformer")
+    chosen, scored = select_reading(cands, "what is a transformer", priors=priors)
+    assert chosen is not None and chosen.label == "a neural network architecture", [
+        c.to_dict() for c in scored
+    ]
+
+
+def test_a_demanding_question_never_offers_a_labour_demand_reading():
+    """The table bug: "demanding" listed a labour-demand reading.
+
+    "demanding" means difficult; "in demand" is a different term. The curated
+    table must not put a demand reading under the demanding key.
+    """
+    from app.agents.ambiguity import _reading_candidates
+    from app.agents.intent import heuristic_intent
+
+    q = "what can be the most demanding job in 2027"
+    intent = heuristic_intent(q).to_dict()
+    labels = [c.label.lower() for c in _reading_candidates(intent, q)]
+    assert labels, "the query should still be recognised as underspecified"
+    for label in labels:
+        assert "demand" not in label or "demanding" in label, (
+            f"a labour-demand reading was offered for 'demanding': {label}"
+        )
+
+
+def test_in_demand_has_its_own_readings():
+    """"in demand" resolves to the demand sense, under its own term."""
+    from app.agents.ambiguity import decide_ambiguity
+    from app.agents.intent import heuristic_intent
+
+    q = "which job is most in demand in 2027"
+    policy = decide_ambiguity(q, heuristic_intent(q).to_dict())
+    assert policy.action in ("assume", "separate")
+    assert policy.interpretations, "the demand term should still be ambiguous"
+
+
+def test_a_reading_that_echoes_the_question_is_not_an_interpretation():
+    """An LLM asked for the readings often hands the question back.
+
+    "Most demanding jobs/careers in 2027" for "what can be the most demanding
+    job in 2027" covers every content word and adds one rename. It is the
+    question, not a reading of it — and as a "reading" it wins selection on
+    semantic fit precisely by repeating the user's words, so the policy would
+    answer the question with itself.
+    """
+    from app.agents.ambiguity import _is_restatement, _subject_tokens, _reading_candidates
+
+    query = "what can be the most demanding job in 2027"
+    tokens = _subject_tokens(query)
+    assert _is_restatement("Most demanding jobs/careers in 2027", tokens)
+    assert _is_restatement("demanding job", tokens)
+
+    intent = {
+        "senses": [
+            {"label": "Most demanding jobs/careers in 2027", "probability": 0.5},
+            {"label": "Stressful or difficult (high strain)", "probability": 0.3},
+            {"label": "Requiring high skill or responsibility (high complexity)",
+             "probability": 0.2},
+        ],
+        "interpretations": [],
+    }
+    labels = [c.label for c in _reading_candidates(intent, query)]
+    assert "Most demanding jobs/careers in 2027" not in labels
+    assert "Stressful or difficult (high strain)" in labels
+
+
+def test_a_genuine_reading_that_mentions_the_term_is_not_filtered():
+    """The echo rule must not eat legitimate readings.
+
+    "Transformer neural network architecture" covers the query's word but adds
+    real concepts, so it is a meaning rather than an echo. A one-word query is
+    never "fully covered" in the sense the rule needs.
+    """
+    from app.agents.ambiguity import _is_restatement, _subject_tokens
+
+    tokens = _subject_tokens("what is a transformer")
+    assert not _is_restatement("Transformer neural network architecture", tokens)
+    assert not _is_restatement("Electrical power transformer", tokens)
+    # And a multi-word query keeps its genuine readings too.
+    long_tokens = _subject_tokens("what is the best option")
+    assert not _is_restatement("Highest quality", long_tokens)
+    assert not _is_restatement("Best fit for a use case", long_tokens)

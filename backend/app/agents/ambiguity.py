@@ -73,6 +73,34 @@ MIN_INTERPRETATIONS = 2
 
 _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9'&.-]*", re.UNICODE)
 
+# Function words carry no meaning and must not create apparent agreement between
+# a query and a reading. Without this, "what can be the most demanding job in
+# 2027" shared the token "the" with a reading and scored 0.73 semantic fit for
+# it — the right answer arrived through a stopword, which is fragile rather than
+# correct, and would break on any phrasing with no shared stopword.
+#
+# NEGATION IS NOT A STOPWORD (AGENTS.md, confirmed bug class): "not demanding"
+# and "demanding" must never compare equal.
+_MEANING_STOPWORDS = frozenset({
+    "a", "about", "an", "and", "any", "are", "as", "at", "be", "been", "but",
+    "by", "can", "could", "did", "do", "does", "for", "from", "had", "has",
+    "have", "how", "in", "into", "is", "it", "its", "may", "might", "must",
+    "of", "on", "or", "our", "over", "shall", "should", "so", "some", "than",
+    "that", "the", "their", "them", "then", "there", "these", "they", "this",
+    "those", "to", "under", "up", "was", "we", "were", "what", "when", "where",
+    "which", "who", "whom", "whose", "why", "will", "with", "within", "would",
+    "you", "your",
+})
+
+
+def _subject_tokens(text: str) -> frozenset:
+    """Content words of a text: function words removed, negation kept."""
+    return frozenset(
+        w
+        for w in _TOKEN_RE.findall((text or "").lower())
+        if len(w) > 1 and w not in _MEANING_STOPWORDS
+    )
+
 # Qualifiers that CHOOSE between readings. A query containing one of these is not
 # ambiguous any more — the user already said which reading they meant, so asking
 # would be obtuse. Structural markers, not topics: "by cost", "in terms of X",
@@ -203,23 +231,24 @@ def _is_comparative(query: str) -> bool:
     return any(marker in low for marker in _COMPARATIVE_MARKERS)
 
 
-def _subject_tokens(text: str) -> frozenset:
-    return frozenset(
-        w for w in _TOKEN_RE.findall((text or "").lower()) if len(w) > 1
-    )
-
-
 def _is_restatement(label: str, query_tokens: frozenset) -> bool:
     """Is this label just the query said back, rather than an alternative reading?
 
-    Restatement, not similarity: every content word of the label already appears
-    in the query. "Most demanding jobs in 2027" against "what can be the most
-    demanding job in 2027" is a restatement even though the Jaccard is only 0.4,
-    because the query carries function words the label does not. A genuine
-    reading ("Hard to fill", "Stressful or difficult") introduces vocabulary the
-    query never had.
+    A restatement adds NO vocabulary of its own: every content word of the label
+    already appears in the query ("demanding job" for "what is the most demanding
+    job"). A genuine reading introduces a word the query never had — "Stressful
+    or difficult", "Requiring high skill" — even when it also names the query's
+    term ("Transformer neural network architecture" for "what is a transformer").
 
-    Plural/tense is folded with a light stem so "job"/"jobs" compare equal.
+    Deliberately a STRICT SUBSET test. A looser "the label covers the query"
+    rule was tried and rejected: it fired on every legitimate reading, because a
+    reading normally does mention the term it is a reading of. The cost of the
+    strict test is that an LLM echo which adds a synonym ("Most demanding
+    jobs/careers in 2027" — `careers` for `job`) survives it; that is caught
+    downstream instead, where a reading that only rephrases the question shares
+    the query's vocabulary and so is never a clearly-winning DISTINCT meaning.
+
+    Plural/tense folds via a light stem so "job"/"jobs" compare equal.
     """
     if not query_tokens:
         return False
@@ -227,7 +256,31 @@ def _is_restatement(label: str, query_tokens: frozenset) -> bool:
     if not tokens:
         return False
     stems = {_stem(t) for t in query_tokens}
-    return all(_stem(t) in stems for t in tokens)
+    label_stems = {_stem(t) for t in tokens}
+
+    # Nothing in the label the query did not already say.
+    if label_stems <= stems:
+        return True
+
+    # The label reproduces the WHOLE question and adds only a rename of the
+    # query's own head noun ("Most demanding jobs/CAREERS in 2027" for "the most
+    # demanding JOB in 2027"). An LLM asked for the readings of a question often
+    # hands the question back, and an echo then wins selection on semantic fit
+    # precisely because it repeats the user's words — answering the question
+    # with itself.
+    #
+    # Only meaningful when the question HAS enough content to echo. A one-word
+    # query ("what is a transformer") is "fully covered" by any label mentioning
+    # it, so the rule would filter "Electrical power transformer" — a genuine
+    # reading. Below three content words there is no query to reproduce.
+    if len(stems) < 3:
+        return False
+    covered = len(stems & label_stems) / len(stems)
+    added = label_stems - stems
+    # A real reading introduces concepts the query lacked (at least three:
+    # "Transformer neural network ARCHITECTURE", "... NETWORK", "... NEURAL"),
+    # whereas an echo contributes a synonym or two.
+    return covered >= 1.0 and len(added) <= 2
 
 
 def _stem(token: str) -> str:
@@ -238,47 +291,226 @@ def _stem(token: str) -> str:
     return token
 
 
-def _most_reasonable_reading(
-    labels: Sequence[str], probs: Sequence[float]
-) -> str:
-    """The reading a reasonable reader would assume, or "" if none is dominant.
+@dataclass
+class ReadingCandidate:
+    """One plausible reading of the query, with the three scored dimensions."""
 
-    Two routes, in order:
+    label: str = ""
+    description: str = ""
+    semantic_fit: float = 0.0      # how naturally the wording implies this reading
+    contextual_fit: float = 0.0    # how well it fits the surrounding intent
+    evidence: float = 0.0          # how much evidence the run could find (0-1)
+    score: float = 0.0             # semantic+contextual dominate; evidence is a tiebreak
 
-    1. PROBABILITIES, when the intent layer supplied them. A clear leader wins.
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "label": self.label,
+            "semantic_fit": round(self.semantic_fit, 4),
+            "contextual_fit": round(self.contextual_fit, 4),
+            "evidence": round(self.evidence, 4),
+            "score": round(self.score, 4),
+        }
 
-    2. STRUCTURALLY, when it did not (the deterministic path). The readings are
-       ordered by the intent layer, which lists the most likely first; and a
-       reading whose vocabulary already appears in the question is the one the
-       question is most plausibly about.
 
-    Crucially this is the DEFAULT: an underspecified question gets researched with
-    a stated assumption rather than stopping to interrogate the user. Only when
-    no reading can be preferred AND answering all of them would be needlessly
-    broad does the policy ask (see decide_ambiguity).
+# Weights. SEMANTIC AND CONTEXTUAL FIT DOMINATE. Evidence availability is a
+# tiebreak only, and is capped low enough that it can never outvote meaning: the
+# whole point is that search results must not redefine the user's terminology.
+# "most demanding job" means the hardest/most stressful work; it does not become
+# "hardest to fill" merely because labour-market data are easier to find.
+W_SEMANTIC_FIT = 1.0
+W_CONTEXTUAL_FIT = 0.5
+W_EVIDENCE = 0.2
+# A reading must beat the runner-up by this margin on the MEANING dimensions
+# alone before it is treated as dominant. Evidence cannot close this gap.
+MEANING_DECISION_MARGIN = 0.15
 
-    Domain-agnostic: it reads the readings the intent layer produced and the
-    question's own words. It never knows what the subject is.
+
+def _reading_candidates(intent: Mapping[str, Any], query: str = "") -> List[ReadingCandidate]:
+    """The plausible readings with their labels AND descriptions.
+
+    Descriptions matter: they carry the semantic content a reading stands for
+    ("roles employers struggle to staff" vs "roles with the heaviest workload"),
+    which is what semantic fit is measured against. The labels alone are often
+    just a short name.
     """
-    if not labels:
-        return ""
-    # Only meaningful probabilities are used. An absent probability arrives as
-    # 0.0 (the intent layer's default), and treating a list of zeros as "a tie"
-    # would skip the structural route below and leave the question assumed
-    # unanswered — the exact over-asking this function exists to prevent.
-    real_probs = [p for p in probs if float(p or 0.0) > 0.0]
-    if len(real_probs) >= 2:
-        top, second = float(probs[0]), float(probs[1])
-        if top >= DOMINANT_PROBABILITY and (top - second) >= DOMINANT_GAP:
-            return str(labels[0])
-        # A leader that is still clearly ahead is also good enough to assume.
-        if top >= ASSUME_PROBABILITY and (top - second) >= ASSUME_GAP:
-            return str(labels[0])
-        return ""
-    # No probabilities: the intent layer's ordering is the likelihood ordering,
-    # so the first reading is the most plausible by construction. That is enough
-    # to proceed with a stated assumption rather than ask.
-    return str(labels[0])
+    query_tokens = _subject_tokens(query)
+    out: List[ReadingCandidate] = []
+    seen: set[str] = set()
+
+    def _add(label: Any, description: Any) -> None:
+        text = str(label or "").strip()
+        if not text or text in seen:
+            return
+        if _is_restatement(text, query_tokens):
+            return
+        seen.add(text)
+        out.append(
+            ReadingCandidate(label=text, description=str(description or "").strip())
+        )
+
+    for item in intent.get("senses") or ():
+        if isinstance(item, Mapping):
+            _add(item.get("label", ""), item.get("note", "") or item.get("description", ""))
+    for item in intent.get("interpretations") or ():
+        if isinstance(item, Mapping):
+            _add(item.get("label", ""), item.get("description", ""))
+    return out[:MAX_INTERPRETATIONS]
+
+
+def _reading_evidence_counts(intent: Mapping[str, Any]) -> Dict[str, int]:
+    """Evidence per reading, when it is known.
+
+    Selection happens BEFORE research, so this is normally empty and every
+    reading scores zero evidence — which is the correct input: if the meaning
+    were decided by evidence, the search results would be choosing the question.
+    It exists so a caller that DOES have measured evidence (a re-plan, where the
+    run already gathered material) can supply it, and so the scoring is testable
+    against the failure it guards.
+    """
+    raw = intent.get("reading_evidence")
+    if not isinstance(raw, Mapping):
+        return {}
+    out: Dict[str, int] = {}
+    for key, value in raw.items():
+        try:
+            out[str(key)] = int(value)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _meaning_fit(
+    reading: ReadingCandidate, query: str, *, prior: float = 0.0
+) -> Tuple[float, float]:
+    """(semantic_fit, contextual_fit) for a reading, both 0-1.
+
+    SEMANTIC FIT asks: does the query's wording naturally imply this reading?
+    Measured by how much of the reading's own vocabulary appears in the query,
+    and — the stronger signal — whether the query's ambiguous term appears
+    LITERALLY in the reading's label or description. A reading whose wording
+    contains the user's own word is the one the user's word most likely means.
+
+    The literal-term test is what separates "demanding" (difficulty/workload,
+    the word the user actually wrote) from "in demand" (labour-market demand, a
+    different word): a reading about demand does not contain "demanding", so it
+    cannot claim the user's wording.
+
+    CONTEXTUAL FIT asks: does it fit the rest of the question? Two signals:
+    vocabulary shared with the query's remaining content words, and `prior` —
+    the intent layer's own probability for this reading. The prior IS context:
+    the classifier saw the phrasing and the surrounding intent, and a research
+    assistant knowing "transformer" usually means the AI sense is exactly the
+    contextual knowledge to encode. Without it, raw vocabulary picked
+    "an electrical device" for "what is a transformer" because the word
+    "transformer" appears in that label — overriding a correct 0.85 prior.
+
+    Both remain vocabulary/prior comparisons — no subject knowledge, no topic
+    list. Domain-agnostic by construction.
+    """
+    if not reading.label and not reading.description:
+        return 0.0, 0.0
+    query_tokens = _subject_tokens(query)
+
+    label_tokens = _subject_tokens(reading.label)
+    desc_tokens = _subject_tokens(reading.description)
+    reading_tokens = label_tokens | desc_tokens
+    if not reading_tokens:
+        return 0.0, min(1.0, float(prior or 0.0))
+
+    overlap = (len(query_tokens & reading_tokens) / len(query_tokens)) if query_tokens else 0.0
+
+    # The literal-term signal: does the user's own ambiguous word appear, as the
+    # SAME WORD, in the reading's vocabulary?
+    #
+    # Deliberately NOT stemmed. Stemming conflates "demanding" with "demand",
+    # and those are precisely the two different words this must keep apart:
+    # "demanding" means difficult/heavy, "in demand" means sought-after.
+    literal = 0.0
+    for token in query_tokens:
+        if token in reading_tokens:
+            literal = 1.0
+            break
+
+    semantic = min(1.0, 0.7 * literal + 0.3 * overlap)
+    # Context = shared vocabulary blended with the classifier's prior.
+    contextual = max(overlap, min(1.0, float(prior or 0.0)))
+    return semantic, contextual
+
+
+def select_reading(
+    candidates: Sequence[ReadingCandidate],
+    query: str,
+    *,
+    evidence_counts: Mapping[str, int] | None = None,
+    priors: Mapping[str, float] | None = None,
+) -> Tuple[ReadingCandidate | None, List[ReadingCandidate]]:
+    """Score every reading and pick the one the wording most supports.
+
+    Requirement: semantic and contextual fit DOMINATE evidence availability. A
+    reading that means what the user wrote wins even if the other reading has
+    more searchable material — otherwise the search results would be redefining
+    the user's terminology, which is precisely the failure.
+
+    Evidence availability is measured and reported, but its weight is small
+    enough (W_EVIDENCE) that it can only break a near-tie on meaning, never
+    overturn a clear one.
+
+    `priors` are the intent layer's probabilities, folded into CONTEXTUAL fit
+    (they encode the classifier's reading of the phrasing), never into evidence.
+
+    Returns (chosen or None, scored candidates).
+    """
+    evidence_counts = evidence_counts or {}
+    priors = priors or {}
+    if not candidates:
+        return None, []
+
+    max_evidence = max((int(evidence_counts.get(c.label, 0) or 0) for c in candidates), default=0)
+    scored: List[ReadingCandidate] = []
+    for candidate in candidates:
+        try:
+            prior = float(priors.get(candidate.label, 0.0) or 0.0)
+        except (TypeError, ValueError):
+            prior = 0.0
+        semantic, contextual = _meaning_fit(candidate, query, prior=prior)
+        count = int(evidence_counts.get(candidate.label, 0) or 0)
+        evidence = (count / max_evidence) if max_evidence > 0 else 0.0
+        candidate.semantic_fit = semantic
+        candidate.contextual_fit = contextual
+        candidate.evidence = evidence
+        candidate.score = round(
+            W_SEMANTIC_FIT * semantic
+            + W_CONTEXTUAL_FIT * contextual
+            + W_EVIDENCE * evidence,
+            4,
+        )
+        scored.append(candidate)
+
+    # Ranked by MEANING first; evidence only orders readings that tie on meaning.
+    scored.sort(
+        key=lambda c: (
+            -(W_SEMANTIC_FIT * c.semantic_fit + W_CONTEXTUAL_FIT * c.contextual_fit),
+            -c.evidence,
+            c.label,
+        )
+    )
+    if not scored:
+        return None, []
+
+    top = scored[0]
+    if len(scored) == 1:
+        return top, scored
+    runner_up = scored[1]
+    top_meaning = W_SEMANTIC_FIT * top.semantic_fit + W_CONTEXTUAL_FIT * top.contextual_fit
+    next_meaning = (
+        W_SEMANTIC_FIT * runner_up.semantic_fit + W_CONTEXTUAL_FIT * runner_up.contextual_fit
+    )
+    if top_meaning - next_meaning >= MEANING_DECISION_MARGIN:
+        return top, scored
+    # No reading clearly wins on meaning. If they tie on meaning but one is
+    # better evidenced, that is still not a reason to switch meaning — return
+    # None so the caller separates or asks rather than letting evidence decide.
+    return None, scored
 
 
 def readings_would_diverge(labels: Sequence[str]) -> bool:
@@ -393,16 +625,36 @@ def decide_ambiguity(
     #     because the intent layer orders readings by likelihood. This is the
     #     DEFAULT outcome for an underspecified query: research the best answer
     #     with a stated assumption rather than interrogating the user.
-    chosen = _most_reasonable_reading(labels, probs)
-    if chosen:
+    # 3b. Score every reading on SEMANTIC FIT, CONTEXTUAL FIT and EVIDENCE
+    #     AVAILABILITY, and take the one the wording most supports. Semantic and
+    #     contextual fit dominate; evidence is a small tiebreak only, so search
+    #     results can never redefine the user's terminology.
+    candidates = _reading_candidates(intent, query)
+    evidence_counts = _reading_evidence_counts(intent)
+    # Priors come from the intent layer's senses, keyed by label.
+    priors: Dict[str, float] = {}
+    for item in intent.get("senses") or ():
+        if isinstance(item, Mapping):
+            label = str(item.get("label", "") or "").strip()
+            if label:
+                try:
+                    priors[label] = float(item.get("probability", 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    priors[label] = 0.0
+    chosen_reading, scored = select_reading(
+        candidates, query, evidence_counts=evidence_counts, priors=priors
+    )
+    if chosen_reading is not None:
         return AmbiguityPolicy(
             action=ASSUME,
             query=query,
             interpretations=labels,
-            assumption=chosen,
+            assumption=chosen_reading.label,
             reason=(
-                f"'{chosen}' is the reasonably dominant reading, so the answer "
-                f"states that assumption and proceeds"
+                f"'{chosen_reading.label}' best fits the question's wording "
+                f"(semantic {chosen_reading.semantic_fit:.2f}, contextual "
+                f"{chosen_reading.contextual_fit:.2f}); evidence availability "
+                f"({chosen_reading.evidence:.2f}) does not decide the meaning"
             ),
         )
 
