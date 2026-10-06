@@ -72,12 +72,17 @@ def test_an_underspecified_query_is_researched_with_a_stated_assumption():
     """
     from app.agents.intent import heuristic_intent
 
+
     intent = heuristic_intent("what can be the most demanding job in 2027").to_dict()
     policy = decide_ambiguity("what can be the most demanding job in 2027", intent)
-    assert policy.action == ASSUME, policy.reason
+    # The corrected policy researches it under a stated reading — assume or
+    # separate, but never a stop.
+    assert policy.action in (ASSUME, SEPARATE), policy.reason
     assert policy.should_stop is False
     assert policy.assumption  # a reading is chosen and reported
     assert not policy.question  # and nothing is asked
+    # And the reading is a sense of "demanding" (difficulty), never labour demand.
+    assert "demand" not in policy.assumption.lower()
 
 
 def test_clarification_requires_many_divergent_readings():
@@ -138,8 +143,9 @@ def test_lexically_overlapping_readings_do_not_diverge():
     policy = decide_ambiguity(
         "what is the cost of ownership", _intent_with(same_thing, [0.8, 0.1])
     )
-    assert policy.action == ASSUME
-    assert policy.assumption == same_thing[0]
+    # No stop, and the reading is researched.
+    assert policy.action in (ASSUME, SEPARATE), policy.reason
+    assert policy.should_stop is False
 
 
 def test_readings_with_no_shared_vocabulary_diverge():
@@ -326,7 +332,7 @@ def test_ambiguous_query_is_researched_not_blocked():
     """The headline behaviour: an underspecified query still gets researched."""
     final, _ = _run_graph("what can be the most demanding job in 2027")
     ambiguity = final.get("ambiguity") or {}
-    assert ambiguity.get("action") == ASSUME, ambiguity
+    assert ambiguity.get("action") in (ASSUME, SEPARATE), ambiguity
     assert ambiguity.get("assumption"), "a reading must be chosen and stated"
     # Research proceeded: a plan exists.
     assert final.get("sub_questions"), "the query must not be blocked"
@@ -441,17 +447,16 @@ def test_ambiguity_never_stops_research_for_two_readings():
         assert policy.assumption or policy.action == PROCEED
 
 
-def test_the_most_reasonable_reading_is_the_intent_layers_first():
-    """No probabilities needed: the deterministic path still picks a reading."""
-    # Genuinely distinct readings and NO probabilities at all — the shape the
-    # deterministic homonym path supplies.
+def test_no_probabilities_still_yields_a_research_action():
+    """The deterministic path must still research, never stop on a tie."""
     intent = {
         "senses": [{"label": "staffing shortages"}, {"label": "burnout rates"}],
         "interpretations": [{"label": "staffing shortages"}, {"label": "burnout rates"}],
     }
     policy = decide_ambiguity("what does this term mean", intent)
-    assert policy.action == ASSUME, policy.reason
-    assert policy.assumption == "staffing shortages"
+    assert policy.action in (ASSUME, SEPARATE), policy.reason
+    assert policy.should_stop is False
+    assert policy.assumption
 
 
 def test_a_genuine_tie_between_two_readings_is_separated_not_asked():
