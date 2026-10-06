@@ -1071,6 +1071,36 @@ async def synthesize(
 
         _logging.getLogger(__name__).warning("ranking_basis_failed", exc_info=exc)
 
+    # CONVERGENCE CONTRACT. The loop concluded that the evidence cannot answer
+    # the question as asked. For a #1 question that means saying so plainly, not
+    # manufacturing a winner from a proxy or an analogy — and dropping the
+    # indirect material retrieved along the way.
+    try:
+        from app.agents.convergence import (
+            FundamentalGap,
+            render_convergence_contract,
+        )
+
+        raw_convergence = ctx.get("convergence")
+        convergence: Dict[str, Any] = (
+            raw_convergence if isinstance(raw_convergence, dict) else {}
+        )
+        if convergence.get("identified"):
+            gap = FundamentalGap(
+                identified=True,
+                rounds=int(convergence.get("rounds", 0) or 0),
+                reason=str(convergence.get("reason", "") or ""),
+                signature=str(convergence.get("signature", "") or ""),
+                missing_evidence=str(convergence.get("missing_evidence", "") or ""),
+            )
+            contract = render_convergence_contract(query, gap)
+            if contract:
+                length_hint = f"{length_hint}\n\n{contract}"
+    except Exception as exc:  # guidance must never break synthesis
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning("convergence_contract_failed", exc_info=exc)
+
     # EVIDENCE BALANCE ACROSS READINGS. The chosen reading is fixed before
     # research; this ensures availability does not redefine the question. If the
     # reading actually asked about came back thin while another gathered more,
@@ -1825,6 +1855,26 @@ def _finalize(
         import logging as _logging
 
         _logging.getLogger(__name__).warning("ranking_audit_failed", exc_info=exc)
+
+    # CONVERGENCE AUDIT. Records whether a #1 was concluded indefensible and the
+    # answer nevertheless named one. Observational, like the ranking audit.
+    try:
+        from app.agents.convergence import assess_convergence
+
+        raw_convergence = ctx.get("convergence")
+        convergence: Dict[str, Any] = (
+            raw_convergence if isinstance(raw_convergence, dict) else {}
+        )
+        if convergence.get("identified"):
+            ctx["convergence_audit"] = assess_convergence(
+                auditable, query,
+                [str((ctx.get("critique") or {}).get("reason", "") or "")],
+                history=[],
+            )
+    except Exception as exc:
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning("convergence_audit_failed", exc_info=exc)
 
     # Research-quality layer: per-citation grounding, overclaiming, internal
     # consistency and per-section coverage. Run on the WRITER's prose only

@@ -1300,6 +1300,36 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
             focus_report=(focus_state or {}).get("report") or None,
         )
 
+        # FUNDAMENTAL-GAP CONVERGENCE. The critic's own reason and gaps say
+        # whether the required KIND of evidence is absent — "no source ranks
+        # these", "only indirect evidence". When that same conclusion is reached
+        # in consecutive rounds it is a property of the QUESTION, not a slow
+        # search, and the loop must stop rather than reopen for an angle the
+        # evidence cannot supply. Recorded here so the decision engine and the
+        # writer can both read it.
+        convergence_diagnosis: Dict[str, Any] = {}
+        gap_history = list(state.get("gap_history") or [])
+        try:
+            from app.agents.convergence import assess_fundamental_gap
+
+            reviews = [str(critique.get("reason", "") or "")]
+            reviews.extend(str(g) for g in (critique.get("gaps") or ()))
+            reviews.extend(str(g) for g in (critique.get("gate_failures") or ()))
+            gap = assess_fundamental_gap(
+                state["query"], reviews, history=gap_history
+            )
+            convergence_diagnosis = gap.to_dict()
+            if gap.signature:
+                gap_history.append(gap.signature)
+                state["gap_history"] = gap_history
+            if gap.identified:
+                logger.info(
+                    "fundamental_gap_converged",
+                    rounds=gap.rounds, signature=gap.signature,
+                )
+        except Exception as exc:
+            logger.warning("convergence_assessment_failed", error=str(exc), exc_info=exc)
+
         # Confidence Engine (Phase 2.4) replaces the inline weighted formula.
         # Degraded stages cap the score: a run whose evidence came from the
         # extractive fallback must not finalize as "High" confidence.
@@ -1513,6 +1543,8 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
                 "report": focus_report or {},
                 "queries": list((focus_state or {}).get("queries", ()) or ()),
             },
+            "convergence": convergence_diagnosis,
+            "gap_history": gap_history,
         }
 
     async def synthesizer_node(state: ResearchState) -> SynthesizerUpdate:
@@ -1536,6 +1568,13 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
             # strands (separate). `ask` never reaches synthesis — that run stops
             # at the clarification node.
             "ambiguity": state.get("ambiguity") or {},
+            # Convergence diagnosis: whether the loop concluded the evidence
+            # cannot answer the question as asked. The writer must say so rather
+            # than manufacture a winner or force the question into a shape the
+            # evidence supports. Also carries the coverage/ranking inputs.
+            "convergence": state.get("convergence") or {},
+            "focus": state.get("focus") or {},
+            "critique": state.get("critique") or {},
             # Answer-first outline inputs: the plan's axes are the query's
             # dimensions; the synthesizer turns them into the report's shape.
             "sub_questions": state.get("sub_questions", []),
