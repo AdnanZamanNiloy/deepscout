@@ -48,6 +48,13 @@ class ResearchState(TypedDict, total=False):
     # grounding search snippets, shared by intent and the planner.
     intent: Dict[str, Any]
     context_snippets: List[str]
+    # Ambiguity policy (app/agents/ambiguity.py): decided after intent and BEFORE
+    # planning. Carries the action (proceed/assume/ask/separate), the plausible
+    # readings, and — for `ask` — the clarification question. An `ask` stops the
+    # run instead of researching every reading; `assume`/`separate` shape the
+    # answer. Process metadata: it reaches the audit and the wire, never the
+    # primary answer text.
+    ambiguity: Dict[str, Any]
     # Query router (R2): the direct-vs-research decision made after intent,
     # before planning. R2 only SURFACES it (route event + trace); R3 branches
     # the graph on it (route_after_intent) and the direct path records its
@@ -120,6 +127,8 @@ class IntentUpdate(TypedDict):
     intent: Dict[str, Any]
     context_snippets: List[str]
     route: Dict[str, Any]
+    # Ambiguity policy decided in the intent node (see ResearchState.ambiguity).
+    ambiguity: Dict[str, Any]
 
 
 class SearchUpdate(TypedDict, total=False):

@@ -509,6 +509,37 @@ export default function App() {
           kind: "done",
         });
         break;
+      case "ambiguity":
+        // The ambiguity POLICY (what the run decided to do), distinct from the
+        // intent event's ambiguous flag. `ask` ends the run with a clarifying
+        // question, so the trace says so plainly rather than looking like the
+        // answer to the question.
+        patchRun(tempId, {
+          ambiguity: {
+            action: evt.action || "",
+            interpretations: Array.isArray(evt.interpretations) ? evt.interpretations : [],
+            question: evt.question || "",
+            assumption: evt.assumption || "",
+            reason: evt.reason || "",
+          },
+        });
+        if (evt.action === "ask") {
+          pushTrace(tempId, {
+            text: `Asking for clarification — ${(evt.interpretations || []).length} readings would give different answers`,
+            kind: "done",
+          });
+        } else if (evt.action === "assume") {
+          pushTrace(tempId, {
+            text: `Reading selected: ${evt.assumption || "primary meaning"} (assumption stated in the answer)`,
+            kind: "done",
+          });
+        } else if (evt.action === "separate") {
+          pushTrace(tempId, {
+            text: `Multiple readings researched — answered separately, evidence kept apart`,
+            kind: "done",
+          });
+        }
+        break;
       case "route":
         patchRun(tempId, {
           route: {

@@ -386,6 +386,11 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
                 "route": deterministic_route(
                     state["query"], intent=greeting_intent
                 ).to_dict(),
+                # A greeting is never ambiguous, and the routing decision is made
+                # by `conversation_kind` before ambiguity is consulted. Declared
+                # explicitly so the update shape is complete.
+                "ambiguity": {"action": "proceed", "interpretations": [],
+                              "question": "", "reason": "conversational turn"},
             }
 
         async def _classify_and_route() -> tuple[Dict[str, Any], Dict[str, Any]]:
@@ -411,11 +416,55 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
         if route_path not in ("conversation", "direct"):
             context_snippets = await _context_search()
 
+        # AMBIGUITY POLICY, decided here — after intent, before planning. The
+        # intent layer says the question HAS several readings; this decides what to
+        # do about it, which previously was nothing: the run acknowledged the
+        # ambiguity and then researched every reading at once, so the reviewer
+        # kept correctly noting that none of them defined the ask while searches
+        # multiplied. More research cannot settle a definition.
+        ambiguity = _decide_ambiguity(state["query"], intent_dict)
+
         return {
             "intent": intent_dict,
             "context_snippets": context_snippets,
             "route": route_dict,
+            "ambiguity": ambiguity,
         }
+
+    def _decide_ambiguity(query: str, intent_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Compute the ambiguity policy, total and cheap.
+
+        Runs on every research turn, so it must never raise: a failure falls back
+        to PROCEED, which is the pre-existing behaviour and therefore cannot make
+        a run worse than before this existed (AGENTS.md 4.7).
+
+        `broad_question` marks a question that asks for several things at once —
+        the multi-part shape the focus layer also recognises. A broad question
+        that CAN be answered by covering its parts is SEPARATE, not ASK, so
+        breadth is not mistaken for ambiguity.
+        """
+        try:
+            from app.agents.ambiguity import decide_ambiguity
+
+            return decide_ambiguity(
+                query, intent_dict, broad_question=_looks_broad(query)
+            ).to_dict()
+        except Exception as exc:
+            logger.warning("ambiguity_decision_failed", error=str(exc), exc_info=exc)
+            return {"action": "proceed", "interpretations": [], "question": ""}
+
+    def _looks_broad(query: str) -> bool:
+        """Does the question ask about more than one thing?
+
+        Reuses the focus layer's conjunction count so breadth means the same
+        thing in both places, rather than introducing a second definition.
+        """
+        try:
+            from app.agents.focus import _conjunction_parts
+
+            return _conjunction_parts(query) >= 2
+        except Exception:
+            return False
 
     async def direct_answer_node(state: ResearchState) -> Dict[str, Any]:
         """Answer a stable-knowledge query without any research (R3).
@@ -1477,6 +1526,11 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
             # Intent: the synthesis must answer the user's likely meaning
             # and disambiguate up front when the query was ambiguous.
             "intent": intent,
+            # Ambiguity policy: whether the answer should state a chosen reading
+            # (assume) or keep researched readings in separate, non-blended
+            # strands (separate). `ask` never reaches synthesis — that run stops
+            # at the clarification node.
+            "ambiguity": state.get("ambiguity") or {},
             # Answer-first outline inputs: the plan's axes are the query's
             # dimensions; the synthesizer turns them into the report's shape.
             "sub_questions": state.get("sub_questions", []),
@@ -1879,6 +1933,14 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
         if path == "direct":
             logger.info("route_direct_branch", confidence=route.get("confidence"))
             return "direct_answer"
+        # An unresolvable ambiguity stops the run with a clarifying question
+        # rather than planning research under every reading. Checked after the
+        # conversation/direct branches so a greeting or a stable-knowledge
+        # question is never interrogated.
+        ambiguity = state.get("ambiguity") or {}
+        if str(ambiguity.get("action", "") or "") == "ask":
+            logger.info("route_clarification_branch")
+            return "clarification"
         return "planner"
 
     async def conversation_node(state: ResearchState) -> Dict[str, Any]:
@@ -1908,8 +1970,42 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
         logger.info("direct_answer_fallthrough")
         return "planner"
 
+    async def clarification_node(state: ResearchState) -> Dict[str, Any]:
+        """Return a clarifying question INSTEAD of researching every reading.
+
+        Reached only when the ambiguity policy says the readings would produce
+        substantially different answers and nothing in the question chooses
+        between them. The alternative — researching all of them — is what the
+        reviewer kept flagging: six research programmes for a question whose
+        terms were never pinned down, with no amount of extra evidence able to
+        decide which one the user meant.
+
+        The question is delivered on the direct-answer channel so the existing
+        finalize / report / stream paths are shared, exactly like
+        `conversation_node`. Confidence is 1.0: this is a complete, correct
+        response to an underdetermined question, not a degraded answer.
+        Nothing is fabricated — no reading is chosen, so no claim is made.
+        """
+        ambiguity = state.get("ambiguity") or {}
+        question = str(ambiguity.get("question", "") or "").strip()
+        readings = [str(x) for x in (ambiguity.get("interpretations") or []) if str(x).strip()]
+        logger.info(
+            "ambiguity_clarification", readings=len(readings), chars=len(question)
+        )
+        return {
+            "direct_answer": question,
+            "direct_answer_meta": {
+                "kind": "clarification",
+                "interpretations": readings,
+                "reason": ambiguity.get("reason", ""),
+                "confidence": 1.0,
+            },
+            "confidence": 1.0,
+        }
+
     graph.add_node("intent", intent_node)
     graph.add_node("conversation", conversation_node)
+    graph.add_node("clarification", clarification_node)
     graph.add_node("direct_answer", direct_answer_node)
     graph.add_node("planner", planner_node)
     graph.add_node("search", search_node)
@@ -1930,6 +2026,7 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
             {
                 "conversation": "conversation",
                 "direct_answer": "direct_answer",
+                "clarification": "clarification",
                 "planner": "planner",
             },
         )
@@ -1940,6 +2037,10 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
         )
         # R5: a conversation reply is already complete — straight to finalize.
         graph.add_edge("conversation", "finalize")
+        # An unresolvable ambiguity is answered by the question itself — the run
+        # stops here. No research pass is planned, because no amount of evidence
+        # can decide which reading the user meant.
+        graph.add_edge("clarification", "finalize")
     graph.add_edge("planner", "search")
     graph.add_edge("search", "summarizer")
     graph.add_edge("summarizer", "verifier")
