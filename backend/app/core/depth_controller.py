@@ -790,6 +790,22 @@ def decide_with_checks(
     # contradiction, or a thinly-evidenced planned dimension must not finalize
     # while a useful pass can still run.
     # ------------------------------------------------------------------
+    # SEMANTIC GAP: STOP SEARCHING. A blocker about what the question MEANS is
+    # not an evidence gap and cannot be closed by another pass. Checked BEFORE
+    # every evidence-completeness block, because those blocks will otherwise
+    # force a pass to "fix" a definition by finding more pages — which is exactly
+    # how an ambiguous query accumulated research programmes for every reading
+    # while the reviewer correctly kept saying none of them defined the ask.
+    # The ambiguity policy already had its chance to ask (see
+    # app/agents/ambiguity.py); once we are mid-loop, more searching is waste.
+    if (state.get("critique") or {}).get("semantic_gap"):
+        return _with_reason(
+            "finalize",
+            "the remaining blocker is a definition/interpretation problem, not "
+            "missing evidence; further searching cannot resolve it, so it is "
+            "recorded as a stated limitation",
+        )
+
     # FOCUS GATE. Checked before the axis checks because it asks a different and
     # prior question: is this pass still about the user's question? Drift and
     # concentration are not "not enough evidence" — they are "the wrong

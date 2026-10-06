@@ -1017,7 +1017,9 @@ async def synthesize(
     ambiguity_block = _render_ambiguity_block(intent)
     if ambiguity_block:
         length_hint = f"{length_hint}\n\n{ambiguity_block}"
-    interpretations_block = _render_interpretations_block(intent)
+    interpretations_block = _render_interpretations_block(
+        intent, ctx.get("ambiguity") if isinstance(ctx.get("ambiguity"), dict) else None
+    )
     if interpretations_block:
         length_hint = f"{length_hint}\n\n{interpretations_block}"
 
@@ -3587,28 +3589,71 @@ def _ensure_disambiguation(answer: str, ctx: Dict[str, Any]) -> str:
     return f"{block}\n\n{answer.lstrip()}"
 
 
-def _render_interpretations_block(intent: Dict[str, Any]) -> str:
+def _render_interpretations_block(intent: Dict[str, Any], ambiguity: Dict[str, Any] | None = None) -> str:
     """Answer-first guidance for an UNDER-SPECIFIED query.
 
     Distinct from the homonym disambiguation block: the term names ONE thing but
-    the question does not say which useful reading is meant. The user's policy is
-    to INFER the most useful reading and, where two readings are both materially
-    useful, answer both briefly — never spend the answer explaining that the
-    question is ambiguous.
+    the question does not say which useful reading is meant.
+
+    The `ambiguity` policy (app/agents/ambiguity.py) decides the shape:
+      * ASSUME   — one reading was chosen and researched. State the assumption
+                   plainly, then answer that reading. Do NOT hedge across the
+                   others; a confident scoped answer is the point.
+      * SEPARATE — the readings are genuinely different and both were researched.
+                   Each gets its OWN sections, and their evidence is never
+                   blended: mixing two reading's claims is what produced a report
+                   that answered none of them.
     """
     if not isinstance(intent, dict):
         return ""
+    policy = ambiguity if isinstance(ambiguity, dict) else {}
+    action = str(policy.get("action", "") or "")
+
     readings = [
         i for i in (intent.get("interpretations") or [])
         if isinstance(i, dict) and str(i.get("label", "")).strip()
     ]
+    # The policy may carry reading labels when intent's are absent (the LLM sense
+    # path populates `senses`, not `interpretations`).
+    labels = [str(x) for x in (policy.get("interpretations") or []) if str(x).strip()]
+    if len(readings) < 2 and len(labels) >= 2:
+        readings = [{"label": x} for x in labels]
     if len(readings) < 2:
         return ""
+
     listed = "\n".join(
         f"  {i + 1}) **{str(r.get('label')).strip()}**"
         + (f" — {str(r.get('description', '')).strip()}" if str(r.get("description", "")).strip() else "")
         for i, r in enumerate(readings[:3])
     )
+
+    if action == "assume":
+        assumption = str(policy.get("assumption", "") or "").strip() or str(
+            readings[0].get("label", "")
+        ).strip()
+        return (
+            "UNDER-SPECIFIED QUERY — the question can be read in more than one "
+            f"useful way. This report ANSWERS THE READING: **{assumption}**.\n"
+            f"{listed}\n"
+            "Open with one sentence stating that assumption, then answer it. Do "
+            "NOT hedge across the other readings and do NOT spend sections or "
+            "citations on them — one clause acknowledging the other reading is "
+            "enough. A confident answer to a stated reading beats a cautious "
+            "non-answer to all of them."
+        )
+
+    if action == "separate":
+        return (
+            "MULTIPLE-INTERPRETATION QUERY — the question has genuinely distinct "
+            "readings and each was researched separately:\n"
+            f"{listed}\n"
+            "Give EACH reading its OWN sections and answer it on its own terms. "
+            "Keep their evidence apart: a claim gathered for one reading must "
+            "never be cited as support for another. Do NOT blend them into a "
+            "single averaged narrative — that is how every reading ends up "
+            "half-answered."
+        )
+
     return (
         "UNDER-SPECIFIED QUERY — the question can be read in more than one useful "
         "way. Do NOT spend the answer explaining that it is ambiguous. Instead:\n"

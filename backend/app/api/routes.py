@@ -566,6 +566,7 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
             )
             last_iteration = -1
             emitted_intent = False
+            emitted_ambiguity = False
             emitted_route = False
             emitted_direct = False
             emitted_plan = False
@@ -705,6 +706,29 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                                     "ambiguity": intent_data.get("ambiguity"),
                                     "domain": intent_data.get("domain"),
                                     "origin": intent_data.get("origin"),
+                                }),
+                                started_at=started_iso,
+                            ))
+
+                        if snapshot.get("ambiguity") and not emitted_ambiguity:
+                            # Ambiguity POLICY, distinct from the intent event's
+                            # `ambiguity` boolean: what the run decided to DO
+                            # about it (proceed/assume/ask/separate). An `ask`
+                            # ends the run with a clarifying question instead of
+                            # researching every reading, so the UI must be able
+                            # to render that distinctly from an answer.
+                            emitted_ambiguity = True
+                            amb = snapshot.get("ambiguity") or {}
+                            yield event_line("ambiguity", **{
+                                k: amb.get(k)
+                                for k in ("action", "interpretations", "question",
+                                          "assumption", "reason")
+                            })
+                            await _persist(record_event(
+                                settings.database_url, request_id, "ambiguity", "end",
+                                payload=json.dumps({
+                                    "action": amb.get("action"),
+                                    "interpretations": len(amb.get("interpretations") or []),
                                 }),
                                 started_at=started_iso,
                             ))

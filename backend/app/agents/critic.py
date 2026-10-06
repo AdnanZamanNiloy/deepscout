@@ -428,6 +428,19 @@ async def critic_agent(
         # needs something actionable to search, or the next pass is empty.
         cleaned_queries = _default_followups(query, gaps, requires_definition)
 
+    # --- is the remaining problem a definition rather than missing evidence? ---
+    # A gap about what the question MEANS cannot be closed by searching. The
+    # stopping controller reads this to finalize instead of spending another pass
+    # (see app/agents/ambiguity.is_semantic_gap). Derived from the gate failures
+    # already computed, so it stays in step with what this critic reports.
+    semantic_gap = False
+    try:
+        from app.agents.ambiguity import is_semantic_gap
+
+        semantic_gap = is_semantic_gap(gate_failures)
+    except Exception as exc:  # never let the stopping hint break a verdict
+        logger.warning("semantic_gap_check_failed", error=str(exc), exc_info=exc)
+
     return {
         "is_sufficient": is_sufficient,
         "reason": reason,
@@ -436,6 +449,7 @@ async def critic_agent(
         # --- additive, for the trace, the UI and the stopping controller ---
         "gaps": gaps,
         "gate_failures": gate_failures,
+        "semantic_gap": semantic_gap,
         "stats": stats,
         "model_confidence": model_confidence,
         "conflicts": conflict_summary,
