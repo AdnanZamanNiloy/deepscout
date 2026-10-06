@@ -1023,6 +1023,31 @@ async def synthesize(
     if interpretations_block:
         length_hint = f"{length_hint}\n\n{interpretations_block}"
 
+    # LOCKED DEFINITION CONTRACT. The meaning was fixed before research; this
+    # tells the writer it must survive into the answer, that a proxy metric may
+    # not become the definition, and what shape to use when the evidence cannot
+    # answer the locked question. Without it the writer was free to let the
+    # evidence choose the meaning — how "most demanding" became a ranking by
+    # preparation because preparation data were the ones available.
+    # The ambiguity policy is read by two blocks below (the locked definition and
+    # the evidence balance). Resolved once, so they cannot disagree about which
+    # policy this run used.
+    raw_ambiguity = ctx.get("ambiguity")
+    ambiguity_policy: Dict[str, Any] = raw_ambiguity if isinstance(raw_ambiguity, dict) else {}
+
+    try:
+        from app.agents.definition_lock import definition_lock, render_lock_contract
+
+        lock = definition_lock(query, ambiguity_policy)
+        lock_contract = render_lock_contract(lock)
+        if lock_contract:
+            length_hint = f"{length_hint}\n\n{lock_contract}"
+        ctx["definition_lock"] = lock.to_dict()
+    except Exception as exc:  # guidance must never break synthesis
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning("definition_lock_failed", exc_info=exc)
+
     # EVIDENCE BALANCE ACROSS READINGS. The chosen reading is fixed before
     # research; this ensures availability does not redefine the question. If the
     # reading actually asked about came back thin while another gathered more,
@@ -1031,8 +1056,7 @@ async def synthesize(
     try:
         from app.agents.ambiguity import assess_reading_evidence, evidence_balance_guidance
 
-        raw_policy = ctx.get("ambiguity")
-        policy: Dict[str, Any] = raw_policy if isinstance(raw_policy, dict) else {}
+        policy = ambiguity_policy
         if str(policy.get("action", "") or "") in ("assume", "separate"):
             balance = assess_reading_evidence(facts, policy)
             balance_guidance = evidence_balance_guidance(balance)
@@ -1741,6 +1765,22 @@ def _finalize(
     audit = audit_citations(auditable, numbered, cited_facts)
     if recorded_invalid:
         audit.invalid_markers = sorted(set(audit.invalid_markers) | set(recorded_invalid))
+
+    # DEFINITION-LOCK AUDIT. The meaning was locked before research; this records
+    # whether the delivered answer preserved it, promoted a proxy into the
+    # concept, and honestly marked an evidence gap. Observational only — it
+    # measures, it does not rewrite the writer's prose (same contract as the
+    # research-quality layer below).
+    try:
+        from app.agents.definition_lock import assess_answer_definition
+
+        ctx["definition_audit"] = assess_answer_definition(
+            auditable, query, ctx.get("ambiguity") if isinstance(ctx.get("ambiguity"), dict) else {}
+        )
+    except Exception as exc:
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning("definition_audit_failed", exc_info=exc)
 
     # Research-quality layer: per-citation grounding, overclaiming, internal
     # consistency and per-section coverage. Run on the WRITER's prose only
