@@ -423,6 +423,11 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
         # kept correctly noting that none of them defined the ask while searches
         # multiplied. More research cannot settle a definition.
         ambiguity = _decide_ambiguity(state["query"], intent_dict)
+        # The planner reads the chosen reading from the intent dict so contracts
+        # for the ANSWERED reading are the ones that get sense-tagged. Kept as a
+        # nested key because IntentReport is a frozen shape the planner already
+        # consumes, and adding a top-level field would change that contract.
+        intent_dict["ambiguity_policy"] = ambiguity
 
         return {
             "intent": intent_dict,
