@@ -60,20 +60,43 @@ OVERLAPPING = ["highest quality", "best fit for a particular case"]
 # ---------------------------------------------------------------------------
 
 
-def test_divergent_readings_with_no_context_ask_for_clarification():
-    """Requirement 5: substantially different answers -> ask, do not research."""
-    policy = decide_ambiguity(
-        "what can be the most demanding job in 2027", _intent_with(DIVERGENT)
-    )
+def test_an_underspecified_query_is_researched_with_a_stated_assumption():
+    """THE DEFAULT: ambiguity guides strategy, it does not block research.
+
+    "What can be the most demanding job in 2027" must be researched under the
+    most reasonable reading, with the reading stated — NOT answered by asking the
+    user to choose. Stopping to interrogate is the expensive failure here.
+
+    The reading is the one the intent layer lists first, so no probability is
+    required for the deterministic path to proceed.
+    """
+    from app.agents.intent import heuristic_intent
+
+    intent = heuristic_intent("what can be the most demanding job in 2027").to_dict()
+    policy = decide_ambiguity("what can be the most demanding job in 2027", intent)
+    assert policy.action == ASSUME, policy.reason
+    assert policy.should_stop is False
+    assert policy.assumption  # a reading is chosen and reported
+    assert not policy.question  # and nothing is asked
+
+
+def test_clarification_requires_many_divergent_readings():
+    """ASK is the last resort: substantially different plans AND needlessly broad.
+
+    Only when covering every reading would pad the report does one question beat
+    an answer.
+    """
+    # >2 divergent readings and the question does NOT already ask for a choice
+    # (no "which"/"vs"), so covering them would pad the report.
+    many = ["staffing shortages", "burnout rates", "automation displacement",
+            "wage stagnation", "training requirements"]
+    policy = decide_ambiguity("tell me about this subject", _intent_with(many))
     assert policy.action == ASK, policy.reason
     assert policy.should_stop is True
     assert policy.question.strip()
-    # The question names the readings and invents no subject of its own: the
-    # wording is built from the labels, so it cannot smuggle in a topic the user
-    # never mentioned.
-    for label in DIVERGENT:
+    # The question names the readings and invents no subject of its own.
+    for label in many[:2]:
         assert label in policy.question
-    assert "employers" in policy.question.lower()
 
 
 def test_disambiguating_context_resolves_the_ambiguity():
@@ -112,8 +135,11 @@ def test_lexically_overlapping_readings_do_not_diverge():
     """
     same_thing = ["cost of ownership over five years", "five-year total cost of ownership"]
     assert not readings_would_diverge(same_thing)
-    policy = decide_ambiguity("what is the cost of ownership", _intent_with(same_thing))
+    policy = decide_ambiguity(
+        "what is the cost of ownership", _intent_with(same_thing, [0.8, 0.1])
+    )
     assert policy.action == ASSUME
+    assert policy.assumption == same_thing[0]
 
 
 def test_readings_with_no_shared_vocabulary_diverge():
@@ -296,16 +322,14 @@ def _run_graph(query):
     return final, searched
 
 
-def test_ambiguous_query_stops_without_researching():
-    """The headline behaviour: ASK means zero research, not six programmes."""
-    final, searched = _run_graph("what can be the most demanding job in 2027")
+def test_ambiguous_query_is_researched_not_blocked():
+    """The headline behaviour: an underspecified query still gets researched."""
+    final, _ = _run_graph("what can be the most demanding job in 2027")
     ambiguity = final.get("ambiguity") or {}
-    assert ambiguity.get("action") == ASK, ambiguity
-    # The clarifying question is delivered as the answer.
-    assert str(final.get("direct_answer") or "").strip()
-    # And no research was planned or issued for it.
-    assert not (final.get("sub_questions") or []), "a stop must not leave a plan"
-    assert not searched, f"ambiguous query issued searches: {searched}"
+    assert ambiguity.get("action") == ASSUME, ambiguity
+    assert ambiguity.get("assumption"), "a reading must be chosen and stated"
+    # Research proceeded: a plan exists.
+    assert final.get("sub_questions"), "the query must not be blocked"
 
 
 def test_context_resolved_query_does_plan_research():
@@ -374,12 +398,81 @@ def test_a_reading_that_restates_the_query_is_not_offered_as_a_choice():
     assert _is_restatement("demanding job", tokens)
 
 
-def test_restatement_is_filtered_from_the_clarification_question():
+def test_restatement_is_filtered_from_the_readings():
     policy = decide_ambiguity(
         "what can be the most demanding job in 2027",
         _intent_with(["Most demanding jobs in 2027"] + DIVERGENT),
     )
-    assert policy.action == ASK
     assert "Most demanding jobs in 2027" not in policy.interpretations
-    for label in DIVERGENT:
-        assert label in policy.question
+    assert policy.assumption in DIVERGENT
+
+    # And in the ask case the filtered reading is absent from the question too.
+    # The restatement filter is relative to the QUERY, so it is asserted against
+    # the query the label restates.
+    many = ["Most demanding jobs in 2027", "staffing shortages", "burnout rates",
+            "automation displacement", "wage stagnation"]
+    asked = decide_ambiguity(
+        "what can be the most demanding job in 2027", _intent_with(many)
+    )
+    assert asked.action == ASK, asked.reason
+    assert "Most demanding jobs in 2027" not in asked.question
+
+
+# ---------------------------------------------------------------------------
+# Ambiguity must GUIDE research, never block it
+# ---------------------------------------------------------------------------
+
+
+def test_ambiguity_never_stops_research_for_two_readings():
+    """The core correction: asking is reserved for many divergent readings.
+
+    For the ordinary underspecified case the run researches the reasonable
+    reading. Every two-reading case must produce a research action (assume or
+    separate), never a stop.
+    """
+    for query in (
+        "what can be the most demanding job in 2027",
+        "which approach is most effective",
+        "what is the best option here",
+    ):
+        policy = decide_ambiguity(query, _intent_with(DIVERGENT))
+        assert policy.action in (ASSUME, SEPARATE), f"{query!r} -> {policy.action}"
+        assert policy.should_stop is False
+        assert policy.assumption or policy.action == PROCEED
+
+
+def test_the_most_reasonable_reading_is_the_intent_layers_first():
+    """No probabilities needed: the deterministic path still picks a reading."""
+    # Genuinely distinct readings and NO probabilities at all — the shape the
+    # deterministic homonym path supplies.
+    intent = {
+        "senses": [{"label": "staffing shortages"}, {"label": "burnout rates"}],
+        "interpretations": [{"label": "staffing shortages"}, {"label": "burnout rates"}],
+    }
+    policy = decide_ambiguity("what does this term mean", intent)
+    assert policy.action == ASSUME, policy.reason
+    assert policy.assumption == "staffing shortages"
+
+
+def test_a_genuine_tie_between_two_readings_is_separated_not_asked():
+    """Equally plausible AND answerable together -> cover both, keep them apart."""
+    policy = decide_ambiguity(
+        "tell me about this", _intent_with(DIVERGENT, [0.5, 0.5])
+    )
+    assert policy.action == SEPARATE
+    assert policy.needs_separation is True
+    assert policy.should_stop is False
+
+
+def test_the_assumption_is_required_by_the_writer():
+    """The answer must state the reading AND define the term as used."""
+    from app.agents.synthesizer import _render_interpretations_block
+
+    intent = {"interpretations": [{"label": "reading one"}, {"label": "reading two"}]}
+    block = _render_interpretations_block(
+        intent, {"action": "assume", "assumption": "reading one",
+                 "interpretations": ["reading one", "reading two"]}
+    )
+    assert "reading one" in block
+    # It must instruct the writer to define the term, not merely name the reading.
+    assert "defines the ambiguous term" in block or "define the ambiguous term" in block
