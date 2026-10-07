@@ -52,6 +52,11 @@ class ConfidenceReport:
     caps_applied: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
     stats: Dict[str, Any] = field(default_factory=dict)
+    # True when the DEGRADED_CAP — not an epistemic/conflict cap — is what
+    # holds `overall` down. Deliberately separate from `caps_applied`, which
+    # also collects the asymmetry cap's "capped until one side is adjudicated"
+    # note and therefore cannot be used to identify this one.
+    degraded_capped: bool = False
 
     @property
     def is_sufficient(self) -> bool:
@@ -67,6 +72,7 @@ class ConfidenceReport:
             "notes": list(self.notes),
             "stats": self.stats,
             "is_sufficient": self.is_sufficient,
+            "degraded_capped": self.degraded_capped,
         }
 
     def render(self) -> str:
@@ -169,6 +175,7 @@ def compute_confidence(
         signals={k: float(v) for k, v in live.get("signals", {}).items()},
         caps_applied=caps,
         notes=plain,
+        degraded_capped=bool(live.get("degraded_capped", False)),
         stats={
             "weights": dict(live.get("weights", {})),
             "source": "app.core.confidence",

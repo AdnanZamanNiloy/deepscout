@@ -654,15 +654,39 @@ def evaluate(state: Dict[str, Any], settings: Settings | None = None) -> Dict[st
         and not axes_below
     )
 
-    # Holistic evidence-sufficiency — the Step-3 signal: confidence at target,
-    # axes covered, no thin dimension, no uncorroborated important claim and no
-    # unresolved severe contradiction. `sufficiency_met` keeps its historical
-    # (confidence + per-axis source floor) meaning for callers that depend on
-    # it; this is the stricter measure the adaptive stop reads. Exhausted gaps
-    # are excluded from the corroboration term so a run whose only remaining
-    # gaps are exhausted can reach a genuine sufficiency stop.
+    # Holistic evidence-sufficiency: confidence at target, axes covered, no thin
+    # dimension, no uncorroborated important claim, no unresolved severe
+    # contradiction. `sufficiency_met` keeps its narrower (confidence + per-axis
+    # source floor) meaning; this is the stricter shape, reported for the trace
+    # so a stop is never explained as "evidence sufficient" when part of the
+    # evidence shape was in fact missing.
     evidence_sufficient = (
         sufficiency_met
+        and not uncovered
+        and not thin
+        and active_uncorroborated == 0
+        and severe_contradictions == 0
+    )
+
+    # A run whose evidence was produced by the deterministic fallback can never
+    # reach `target`: DEGRADED_CAP (0.55) sits below every mode target (0.60 to
+    # 0.85), so the confidence term of `sufficiency_met` is permanently false
+    # and every remaining iteration was spent re-extracting the same sources
+    # until the iteration or budget ceiling stopped it. That is a measurement
+    # deficit, not an evidence deficit, and more searching cannot repair it.
+    #
+    # So the cap excuses the CONFIDENCE term only, and only once every other
+    # evidence condition is satisfied on its own merits — uncovered axes, thin
+    # dimensions, uncorroborated high-impact claims and severe contradictions
+    # all still block. Confidence itself stays capped, so the run is still
+    # delivered below the sufficiency threshold and still carries its
+    # "confidence capped" disclosure; it just stops re-running a search that
+    # cannot change the measurement.
+    degraded_capped = bool(state.get("confidence_degraded_capped", False))
+    confidence_unmeasurable = degraded_capped and confidence < target
+    degraded_stop = (
+        confidence_unmeasurable
+        and not axes_below
         and not uncovered
         and not thin
         and active_uncorroborated == 0
@@ -690,15 +714,36 @@ def evaluate(state: Dict[str, Any], settings: Settings | None = None) -> Dict[st
         )
     if uncovered:
         reasons.append(
-            f"{len(uncovered)} uncovered planned axe"
-            + ("s" if len(uncovered) != 1 else "")
+            f"{len(uncovered)} uncovered planned axe" + ("s" if len(uncovered) != 1 else "")
         )
+    if not reasons and not sufficiency_met:
+        # Nothing structural is wrong, so the run is short of target purely on
+        # confidence. Saying "evidence sufficient" here was the misleading case
+        # `evidence_sufficient` was computed for and never read: the trace
+        # claimed sufficiency on runs that were expanding, or stopping short,
+        # for want of confidence alone.
+        if confidence_unmeasurable:
+            reasons.append(
+                "confidence held below target by the degraded-extraction cap — "
+                "searching further cannot change the measurement"
+            )
+        else:
+            reasons.append(
+                f"confidence {confidence:.2f} below target {target:.2f}"
+            )
+
 
     checks = {
         "sufficiency_met": sufficiency_met,
         "evidence_sufficient": evidence_sufficient,
         "sufficiency_stop": bool(critique.get("is_sufficient", False)) or sufficiency_met,
         "critic_sufficient": bool(critique.get("is_sufficient", False)),
+        # Degraded-extraction stop. Disjunct of the sufficiency stop, never a
+        # replacement for it: a run that is short of evidence for any OTHER
+        # reason keeps expanding, and `degraded_stop` is False whenever any
+        # structural evidence condition fails.
+        "degraded_capped": degraded_capped,
+        "degraded_stop": degraded_stop,
         "marginal_gain_stop": _two_consecutive_stalls(history, settings.min_marginal_gain),
         "ceiling_reached": iteration >= ceiling,
         "min_iterations_not_reached": iteration < min_iters,
@@ -905,6 +950,23 @@ def decide_with_checks(
             "finalize",
             f"evidence gaps remain but nothing novel is left to search ({reason}); "
             "recorded as limitations",
+        )
+
+    # A run whose confidence is pinned under target by the degraded-extraction
+    # cap stops here, BEFORE the critic-driven expansion below. By this point
+    # every structural evidence condition has already passed (that is what
+    # `degraded_stop` requires), so the only thing left arguing for another
+    # pass is a critic judging claims that are unrewritten extracted source
+    # text. That judgement cannot improve with more of the same extraction, and
+    # acting on it is what spent every remaining iteration before the ceiling
+    # stopped the run. Confidence stays capped and the cap stays disclosed, so
+    # the answer is still delivered as below-threshold.
+    if checks["degraded_stop"]:
+        return _with_reason(
+            "finalize",
+            "degraded extraction capped confidence below target and no evidence "
+            "gap remains actionable; recorded as a capped-confidence result "
+            "rather than re-searched",
         )
 
     # A critic that explicitly said "insufficient" and proposed actionable new

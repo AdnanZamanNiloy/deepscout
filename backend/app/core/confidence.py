@@ -611,6 +611,13 @@ def compute_confidence(
     # corroborated run from being falsely capped at 0.55 while preserving the
     # guard against genuinely degraded runs.
     capping = []
+    # Whether the DEGRADED_CAP (not an epistemic/conflict cap) is what holds
+    # `overall` down. Consumers need to tell "the evidence is weak" from "the
+    # evidence could not be measured because it was produced by deterministic
+    # extraction" — only the second is unfixable by searching more. Exposed as
+    # its own key because `caps_applied` cannot carry it: the epistemic
+    # asymmetry cap also produces a note containing "capped".
+    degraded_capped = False
     for agent_name in extractive:
         if agent_name == "synthesizer":
             capping.append(agent_name)
@@ -627,6 +634,7 @@ def compute_confidence(
             + " ran on deterministic extraction — claims are unrewritten source text"
         )
         overall = round(min(overall, DEGRADED_CAP), 3)
+        degraded_capped = True
     elif provider_degraded:
         # A provider failed for transport reasons. Even if the extractive pool
         # happens to look verified/corroborated, it was produced under an
@@ -639,11 +647,16 @@ def compute_confidence(
             "(provider-transient) — evidence was produced under degradation"
         )
         overall = round(min(overall, DEGRADED_CAP), 3)
+        degraded_capped = True
     result: Dict[str, Any] = {
         "overall": overall,
         "signals": signals,
         "weights": weights,
         "notes": notes,
+        # True only when DEGRADED_CAP is what holds `overall` down. The depth
+        # controller reads it to tell an evidence deficit (search more) from a
+        # measurement deficit (searching more cannot help).
+        "degraded_capped": degraded_capped,
         # Stamped so a persisted breakdown can be recognized as current or
         # stale on replay — a versionless row is pre-fix and must not be shown
         # as a live signal (see frontend replayPanelRun).

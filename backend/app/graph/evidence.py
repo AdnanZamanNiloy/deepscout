@@ -64,13 +64,26 @@ def _verified_facts(facts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _evidence_gaps_remain(state: ResearchState) -> bool:
-    """Measured evidence deficiencies that should outrank a critic's "enough".
+    """Per-claim evidence deficiencies that outrank a critic's "enough".
 
-    Returns True when the fact pool still contains a single-source
-    quantitative/definitional claim that needs independent corroboration, or
-    an unresolved contradiction. Returns False (critic wins, behavior
-    unchanged) when the pool is empty/ungradeable or grading fails — the gate
-    only ever ADDS research, never blocks an otherwise-healthy finalize.
+    SCOPE, stated explicitly because there are two "gaps remain" predicates in
+    the system and they used to look like duplicates:
+
+      * THIS ONE (`graph/evidence.py`) is the ROUTER guard. It runs in
+        `route_after_critic` before the depth decision and looks only at
+        per-claim grading: a claim that is single-source where it matters, or
+        sits inside an unresolved contradiction. It is a strict SUBSET of the
+        controller's holistic terms below.
+      * `evidence_sufficient` (`core/depth_controller.py`) is the CONTROLLER
+        measure: confidence at target, no uncovered planned axis, no thin
+        dimension, no active uncorroborated high-impact claim, no severe
+        contradiction. It is broader and it is what `decision_reason` reports.
+
+    They are not in conflict because this one can only ever ADD research, never
+    block a finalize the controller already approved: it returns False for an
+    empty or ungradeable pool, and on a grading failure. The controller applies
+    its own, wider set afterwards, so nothing is skipped by having the narrow
+    check run first.
     """
     facts = [f for f in state.get("facts", []) or [] if isinstance(f, dict)]
     if not facts:

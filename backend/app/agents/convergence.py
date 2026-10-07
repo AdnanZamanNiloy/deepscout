@@ -35,9 +35,12 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Sequence, Tuple
 
-# Converge after this many consecutive reviews reporting the same fundamental
-# gap. Three: two independent rounds agreeing is strong, and the third confirms
-# it is stable rather than a slow start. The user's requirement is "2-3 rounds".
+# Converge after this many consecutive reviews reporting the SAME fundamental
+# gap. Two, deliberately: one round of "no source compares these" is an ordinary
+# thin result, and a third round costs a full search pass to re-confirm something
+# that did not change. Two independent rounds agreeing that the required KIND of
+# evidence is absent is enough to treat it as a property of the question rather
+# than of a slow search — which is the whole point of this module.
 FUNDAMENTAL_GAP_ROUNDS = 2
 
 # Requests for a single winner. A query containing one of these demands a
@@ -101,7 +104,6 @@ class FundamentalGap:
     rounds: int = 0
     reason: str = ""
     signature: str = ""
-    defensible_number_one: bool = False
     missing_evidence: str = ""
 
     @property
@@ -114,7 +116,6 @@ class FundamentalGap:
             "rounds": self.rounds,
             "reason": self.reason,
             "signature": self.signature,
-            "defensible_number_one": self.defensible_number_one,
             "missing_evidence": self.missing_evidence,
         }
 
@@ -192,8 +193,6 @@ def assess_fundamental_gap(
             f"the reviewer reported the same fundamental evidence gap for "
             f"{consecutive} consecutive round(s): {signature}"
         ),
-        # A #1 question cannot be answered by this evidence if no ranking exists.
-        defensible_number_one=not is_single_winner_query(query) or False,
         missing_evidence=_missing_evidence_note(signature),
     )
 

@@ -1371,6 +1371,13 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
             provider_degraded=has_provider_degradation(),
         )
         overall_conf = breakdown["overall"]
+        # Recorded separately from the number: the depth controller must be able
+        # to tell "the evidence is weak" (search more) from "the evidence could
+        # not be measured because extraction was degenerate" (searching cannot
+        # help, and the cap keeps it under target forever).
+        state["confidence_degraded_capped"] = bool(
+            breakdown.get("degraded_capped", False)
+        )
 
         improved = list(critique.get("improved_queries", []) or [])
 
