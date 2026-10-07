@@ -32,6 +32,12 @@ class ResearchState(TypedDict, total=False):
     deep_research: bool
     verification_stats: Dict[str, Any]
     answer_support: Dict[str, Any]
+    # Evidence-based answer construction (app/agents/answer_construction.py):
+    # which of DIRECT / SYNTHESIZED / INSUFFICIENT the evidence put this run in,
+    # plus the contract the writer obeyed and the observational audit of whether
+    # it did. Machine-owned provenance, rendered into the audit only.
+    answer_construction: Dict[str, Any]
+    answer_construction_audit: Dict[str, Any]
     confidence_breakdown: Dict[str, Any]
     confidence_history: List[float]
     # True when the degraded-extraction cap (not an evidence deficit) is what

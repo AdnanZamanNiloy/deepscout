@@ -1138,6 +1138,44 @@ async def synthesize(
 
         _logging.getLogger(__name__).warning("report_consistency_failed", exc_info=exc)
 
+    # ANSWER-CONSTRUCTION CONTRACT. The middle case: no source answers the
+    # question directly, but the evidence covers its dimensions well enough to
+    # build a defensible answer. Without this the run has only two reachable
+    # outcomes — report a source, or refuse — and the refusal branch absorbed
+    # the synthesis case, which is why "no source ranks these" collapsed into
+    # "no answer can be given". Decided HERE, after the ranking basis and the
+    # report status exist, and before any prose is written, so the contract
+    # governs the writer rather than describing it after the fact.
+    try:
+        from app.agents.answer_construction import (
+            classify as classify_answer_construction,
+            render_construction_contract,
+        )
+
+        construction = classify_answer_construction(
+            query,
+            facts=facts,
+            plan=ctx.get("sub_questions") if isinstance(ctx.get("sub_questions"), list) else [],
+            ranking_basis=basis_map,
+            convergence=convergence,
+            contradictions=ctx.get("contradictions") if isinstance(ctx.get("contradictions"), list) else [],
+            definition_lock=ctx.get("definition_lock") if isinstance(ctx.get("definition_lock"), dict) else {},
+            # A degraded run cannot enter SYNTHESIZED: the extraction itself was
+            # degenerate, so the pool cannot attest that the evidence was read
+            # correctly, which is exactly what a synthesis claims. Uses the same
+            # in-run fallback list the degraded banner and the confidence cap
+            # read, so the three can never disagree about what "degraded" means.
+            degraded=bool(ctx.get("degraded")),
+        )
+        construction_contract = render_construction_contract(construction)
+        if construction_contract:
+            length_hint = f"{length_hint}\n\n{construction_contract}"
+        ctx["answer_construction"] = construction.to_dict()
+    except Exception as exc:  # guidance must never break synthesis
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning("answer_construction_failed", exc_info=exc)
+
     # EVIDENCE BALANCE ACROSS READINGS. The chosen reading is fixed before
     # research; this ensures availability does not redefine the question. If the
     # reading actually asked about came back thin while another gathered more,
@@ -1380,6 +1418,10 @@ def _mirror_machine_notes(ctx: Dict[str, Any], caller_ctx: Dict[str, Any]) -> No
         "convergence_audit",
         "consistency_audit",
         "report_status",
+        # The construction decision is machine-owned provenance too: the mode the
+        # writer was given, and what it was and was not allowed to claim.
+        "answer_construction",
+        "answer_construction_audit",
     ):
         value = ctx.get(key)
         if value:
@@ -1980,6 +2022,24 @@ def _finalize(
         import logging as _logging
 
         _logging.getLogger(__name__).warning("consistency_audit_failed", exc_info=exc)
+
+    # ANSWER-CONSTRUCTION AUDIT. Did the delivered prose obey the mode it was
+    # given — a SYNTHESIZED answer that says it is a synthesis and does not
+    # assert a ranking, an INSUFFICIENT answer that names what cannot be
+    # determined? Observational, like the ranking and definition audits: it
+    # records, it never rewrites.
+    try:
+        from app.agents.answer_construction import assess_answer_construction
+
+        construction_map = ctx.get("answer_construction")
+        if isinstance(construction_map, dict) and construction_map.get("mode"):
+            ctx["answer_construction_audit"] = assess_answer_construction(
+                query, auditable, construction_map
+            )
+    except Exception as exc:
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning("answer_construction_audit_failed", exc_info=exc)
 
     # Research-quality layer: per-citation grounding, overclaiming, internal
     # consistency and per-section coverage. Run on the WRITER's prose only

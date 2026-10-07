@@ -312,3 +312,132 @@ def test_audit_profile_keeps_the_fixed_format():
     )
     assert "## Executive Summary" in result.answer
     assert "## Key Findings" in result.answer
+
+
+# ---------------------------------------------------------------------------
+# Answer construction reaches the real writer and the caller's context
+# ---------------------------------------------------------------------------
+#
+# The classifier is unit-tested in test_answer_construction.py. These two tests
+# verify the INTEGRATION, which unit tests cannot: the contract is injected into
+# the writer prompt that actually produces the answer, and the decision is
+# mirrored back onto the caller's context (which is what puts it on graph state
+# and into the audit). Stubbing the contract in would pass while the writer
+# never saw it.
+
+class _RecordingWriter:
+    """Writer that records the prompts it is given, then answers."""
+
+    def __init__(self):
+        self.prompts = []
+
+    async def generate_json(self, system_prompt, user_prompt, **kwargs):
+        self.prompts.append(f"{system_prompt}\n{user_prompt}")
+        return {"answer": "An answer built from the recorded evidence [1]."}
+
+
+_CONSTRUCTION_QUERY = "What can be the most demanding job in 2027?"
+
+
+def _construction_facts():
+    """Five independent dimensions, one publisher each, no source ranking them."""
+    dims = (
+        ("psychological stress and burnout", "https://pubmed.example/a", "highest burnout rate"),
+        ("workload and working hours", "https://ilo.example/b", "longest weekly hours"),
+        ("responsibility and consequence", "https://ntsb.example/c", "highest error consequence"),
+        ("expertise and qualification", "https://oecd.example/d", "longest qualification path"),
+        ("physical demands", "https://eurofound.example/e", "highest physical demand"),
+    )
+    return [
+        {
+            "claim": f"Evidence shows {text}",
+            "source": url,
+            "sub_question": dim,
+            "verified": True,
+            "corroboration_count": 2,
+            "confidence": 0.82,
+        }
+        for dim, url, text in dims
+    ]
+
+
+def _construction_context():
+    dims = (
+        "psychological stress and burnout", "workload and working hours",
+        "responsibility and consequence", "expertise and qualification",
+        "physical demands",
+    )
+    return {
+        "intent": {},
+        "mode": "standard",
+        "sub_questions": [{"axis": d, "question": d} for d in dims],
+        "convergence": {
+            "identified": True,
+            "reason": "no source ranks demandingness directly",
+            "signature": "no source ranks",
+            "missing_evidence": "an occupational study ranking roles by demand",
+        },
+        "ranking_basis": {
+            "verdict": "shortlist",
+            "candidates": ["Emergency medicine physicians", "Surgical residents"],
+        },
+        # The lock is DERIVED inside the synthesizer from the ambiguity policy
+        # (definition_lock(query, ambiguity_policy)), not taken from the caller:
+        # the reading is fixed before research and the synthesizer recomputes it.
+        # Setting ctx["definition_lock"] here would be overwritten, so the policy
+        # is what the test supplies.
+        "ambiguity": {
+            "action": "assume",
+            "assumption": "sustained psychological demand",
+            "interpretations": [
+                "sustained psychological demand",
+                "physical exertion",
+            ],
+        },
+        "contradictions": [],
+    }
+
+
+def test_construction_contract_reaches_the_writer_prompt():
+    writer = _RecordingWriter()
+    ctx = _construction_context()
+    asyncio.run(synthesize(writer, _CONSTRUCTION_QUERY, _construction_facts(), ctx,
+                           compress_context=False))
+    combined = "\n".join(writer.prompts)
+    assert writer.prompts, "the writer must have been called"
+    assert "ANSWER MODE: SYNTHESIZED" in combined
+    assert "EVIDENCE-BASED SYNTHESIS" in combined
+    # The example question's exact requirement: converge on a candidate, but
+    # never present it as a published ranking.
+    assert "NEVER present the synthesis as a published ranking" in combined
+    # The lock is derived, so assert against what it actually resolved to.
+    assert "PRESERVE THE LOCKED INTERPRETATION" in combined
+    assert "sustained psychological demand" in combined
+
+
+def test_construction_decision_is_mirrored_to_the_callers_context():
+    """The caller owns the dict it passed; the decision must land there, which
+    is what carries it onto graph state and into the audit document."""
+    writer = _RecordingWriter()
+    ctx = _construction_context()
+    asyncio.run(synthesize(writer, _CONSTRUCTION_QUERY, _construction_facts(), ctx,
+                           compress_context=False))
+    construction = ctx.get("answer_construction")
+    assert isinstance(construction, dict), "answer_construction must be mirrored to the caller ctx"
+    assert construction["mode"] == "synthesized"
+    assert construction["allowed_ranking"] is False
+    assert construction["supported_dimensions"], "the contract must name its dimensions"
+
+
+def test_a_degraded_synthesis_run_is_not_synthesised():
+    """The integration guardrail: the same evidence, flagged degraded, must not
+    produce a synthesis — and must tell the writer why not."""
+    writer = _RecordingWriter()
+    ctx = _construction_context()
+    ctx["degraded"] = ["summarizer"]
+    asyncio.run(synthesize(writer, _CONSTRUCTION_QUERY, _construction_facts(), ctx,
+                           compress_context=False))
+    combined = "\n".join(writer.prompts)
+    assert "ANSWER MODE: SYNTHESIZED" not in combined
+    assert ctx["answer_construction"]["mode"] == "insufficient"
+    assert ctx["answer_construction"]["blocked_by_degradation"] is True
