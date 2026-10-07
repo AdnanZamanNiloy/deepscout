@@ -326,3 +326,37 @@ export const MODE_META = {
 export function isNoProviderError(message) {
   return /no llm provider|llm key|GROQ_API_KEY|HUGGINGFACE/i.test(message || "");
 }
+
+/* Which model string to show for a provider wherever only the provider NAME
+ * appears — the Model Controls header ("serving: <name>") and the serving
+ * picker rows. A provider card shows the full detail (name, label, Model ID,
+ * base URL), but a one-line picker entry saying just "codebuddy" hides WHICH
+ * MODEL is actually serving, and that is the thing being chosen.
+ *
+ * Prefers the human label (`model_name`) and falls back to the model id, so a
+ * provider saved before the label existed still renders something. */
+export function modelLabel(provider) {
+  if (!provider) return "";
+  return String(provider.model_name || provider.model || "").trim();
+}
+
+/* Confirmation text after a model is saved in Model Controls.
+ *
+ * An add used to produce no feedback at all: the form kept its values, so the
+ * only evidence the save had worked was a count changing elsewhere on the
+ * page. The message names the provider AND the model label, because that pair
+ * is what the user will look for on the resulting card — the provider name
+ * alone repeats what they just typed into the field above it.
+ *
+ * `editing` distinguishes a create from an update, which must not read as
+ * "Added" (nothing was added) and must not invite selecting a model that is
+ * already in the list. */
+export function savedModelNotice({ editing, name, modelName } = {}) {
+  const provider = String(name || "").trim();
+  const label = String(modelName || "").trim();
+  const described = label ? `“${provider}” · ${label}` : `“${provider}”`;
+  if (!provider && !label) return "";
+  return editing
+    ? `Saved changes to ${described}.`
+    : `Added ${described}. Select it in Serving mode to use it.`;
+}

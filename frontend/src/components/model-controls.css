@@ -63,6 +63,12 @@
 .pv-key-toggle{flex:none;width:40px;display:grid;place-items:center;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--t3);cursor:pointer}
 .pv-key-toggle:hover{color:var(--t1);border-color:var(--line-hover)}
 .pv-form-actions{display:flex;gap:9px;margin-top:16px;flex-wrap:wrap}
+/* Confirmation after a successful save. Sits directly above the submit row so
+   it is read as the result of the button that was just pressed, and reuses the
+   probe success tokens rather than inventing a second green. */
+.pv-notice{display:flex;align-items:flex-start;gap:8px;margin:14px 0 0;padding:9px 12px;border-radius:var(--r-xs);border:1px solid color-mix(in srgb,var(--probe-ok) 40%,transparent);background:var(--green-wash);color:var(--probe-ok);font-size:12px;line-height:1.45}
+.pv-notice svg{flex:none;margin-top:1px}
+.pv-notice span{min-width:0;overflow-wrap:anywhere}
 .pv-empty{display:flex;align-items:center;gap:11px;padding:20px;border:1px dashed var(--line);border-radius:11px;color:var(--t3);background:var(--row-hover)}
 .pv-empty svg{flex:none;color:var(--t4)}
 .pv-empty p{margin:0;font-size:12.5px}
@@ -137,7 +143,13 @@
 .pv-serving-option:hover:not(:disabled){border-color:color-mix(in srgb,var(--deepscout) 45%,transparent);color:var(--t1)}
 .pv-serving-option.picked{border-color:var(--act-edge);background:var(--act-surface);color:var(--t1)}
 .pv-serving-option:disabled{opacity:.55;cursor:not-allowed}
+.pv-serving-option-text{min-width:0;display:flex;flex-direction:column;gap:2px}
 .pv-serving-option-name{font-weight:620;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Model line under the provider name in the serving picker: which model is
+   actually serving is the thing being picked, so it cannot be name-only. */
+.pv-serving-option-model{font-size:11px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pv-serving-option.picked .pv-serving-option-model{color:var(--act-text);opacity:.85}
+.pv-serving-inline-model{color:var(--t3)}
 .pv-serving-option-meta{flex:none;font-size:11px;color:var(--t3)}
 .pv-serving-option-meta.serving{color:var(--act-text);font-weight:640}
 .pv-serving-foot{margin-top:13px}
