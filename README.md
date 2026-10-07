@@ -59,7 +59,7 @@ handling, and calibrated confidence. Measured results are in
 | **Intent classification** | Resolves the question *before* searching: ambiguity into ranked senses, domain, explanation level. Ambiguous queries are disambiguated in the report instead of silently guessed. | `app/agents/intent.py` |
 | **Query router** | Decides direct answer vs. full research. Deterministic freshness/verification gates always apply; direct answers are confidence-capped strictly below the research threshold so they can never look sourced. | `app/agents/router.py`, `app/agents/direct_answer.py` |
 | **Delegation planning** | Produces delegation contracts (axis, search type, minimum sources, priority) and dependency **waves** so dependent investigations run after their prerequisites. | `app/agents/planner.py`, `app/agents/orchestrator.py` |
-| **Multi-provider search** | Tavily, DuckDuckGo, Wikipedia, arXiv, Crossref with canonical-URL dedup, domain diversity, circuit breakers, and a bounded disk cache. | `app/agents/search.py` |
+| **Multi-provider search** | Self-hosted SearXNG metasearch plus Wikipedia, arXiv and Crossref — no search API key — with canonical-URL dedup, domain diversity, circuit breakers, and a bounded disk cache. | `app/agents/search.py` |
 | **Verification** | Every claim is checked against its source text: weighted lexical overlap, source authority, unit-aware numeric grounding, polarity consistency, and quote location. | `app/agents/verifier.py` |
 | **Contradiction detection** | Numeric (unit-aware divergence), polarity (affirms vs. negates), and temporal (same measure, different periods) detectors with severity ranking; resolution follow-ups feed back into research. | `app/core/contradictions.py` |
 | **Citation validation** | Checks sentences against the evidence of the source they cite and **re-fetches cited URLs live** (HEAD → ranged GET); dead or moved links become a report warning, never an error. | `app/agents/citation_check.py` |
@@ -81,7 +81,7 @@ Query
   → Router            direct answer  |  full research
   → Orchestrator      complexity + agent targets
   → Planner           delegation contracts + dependency waves
-  → Search            Tavily / DuckDuckGo / Wikipedia / arXiv / Crossref
+  → Search            SearXNG / Wikipedia / arXiv / Crossref
   → Summarizer        wave-ordered specialists (wave N gets wave N-1 context)
   → Verifier          deterministic claim-vs-source checks
   → Critic + Contradictions + Red Team + Confidence
@@ -251,33 +251,56 @@ provider management tab, and a docs view. Development proxies `/api` to
 ## Quick start
 
 **Requirements:** Python 3.10+, Node 18+, 8 GB RAM, internet access. No GPU, no
-local models, no paid services required.
+local models, no paid services required. **No API keys in `.env`** — the LLM
+provider is added in the app.
 
 ### Backend
 
 ```bash
-cd backend
+# from the repository root
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env               # then set at least one LLM provider
-uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+pip install -r backend/requirements.txt
+
+cd backend
+../.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Set **at least one** provider in `.env`:
+`backend/.env` is optional — the backend starts without it. Add your LLM
+provider in the app's **Model Controls** tab (`/#/model-controls`; the legacy
+`/#/providers` link still resolves there): any OpenAI-compatible host, stored
+encrypted at rest, effective immediately with no restart. A selected provider
+is exclusive, so no other key is spent.
+
+<details>
+<summary>Prefer environment variables? (headless / CI)</summary>
+
+All optional; `.env.example` ships them commented out.
 
 ```bash
-GROQ_API_KEY=...                  # primary (default model: openai/gpt-oss-20b)
-HUGGINGFACE_API_KEY=...           # fallback
-# or any OpenAI-compatible host:
+cp backend/.env.example backend/.env   # then uncomment what you need
+```
+
+```env
+GROQ_API_KEY=...                  # model: openai/gpt-oss-20b
+HUGGINGFACE_API_KEY=...
+# or any OpenAI-compatible host (all three required together):
 # CUSTOM_LLM_API_KEY=...
 # CUSTOM_LLM_BASE_URL=https://...
 # CUSTOM_LLM_MODEL=...
 ```
 
-Provider keys can also be added at runtime in the **Providers** tab (stored
-encrypted at rest). Search providers (Tavily) are optional; the free providers
-(DuckDuckGo, Wikipedia, arXiv, Crossref) work without a key.
+A UI-selected provider always wins over these.
+
+</details>
+
+### Search
+
+Search needs no search API key: Wikipedia, arXiv and Crossref are queried
+directly. General web search comes from a local
+[SearXNG](https://github.com/searxng/searxng) instance on
+`http://localhost:8080` — see [SETUP.md](SETUP.md#set-up-search-searxng) for the
+one-time install. Runs still work without it.
 
 ### Frontend
 

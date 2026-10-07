@@ -313,3 +313,16 @@ export const MODE_META = {
   audit: { label: "Evidence audit", hint: "3 agents · up to 4 passes · verification-heavy" },
   redteam: { label: "Adversarial review", hint: "3 agents · up to 2 passes · challenges conclusions" },
 };
+
+/* True when a stream error means "no usable model", not "the run broke".
+ *
+ * The backend says this two different ways: the pre-flight probe ("No LLM
+ * provider is reachable right now - no LLM provider is configured ...") and
+ * the call-time error ("No LLM provider configured. Add one in the Providers
+ * tab ..."). Keyed on the phrase both share, so rewording either message
+ * cannot silently downgrade the card to a resumable "Research interrupted"
+ * with a Resume button that can never succeed. The key names stay in the
+ * pattern because the probe detail still names them. */
+export function isNoProviderError(message) {
+  return /no llm provider|llm key|GROQ_API_KEY|HUGGINGFACE/i.test(message || "");
+}

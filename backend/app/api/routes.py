@@ -13,6 +13,7 @@ from slowapi.util import get_remote_address
 
 from app.core.usage import clear_run_usage, start_run_usage
 from app.core.config import get_settings
+from app.core.providers import ProviderSecretUnavailableError
 from app.core.degradation import (
     clear_fallbacks,
     degradation_summary,
@@ -653,7 +654,15 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
             # with the per-provider reasons instead of minutes of garbage.
             llm_client = getattr(request.app.state, "llm", None)
             if llm_client is not None:
-                probe_ok, probe_detail = await llm_client.probe_all()
+                try:
+                    probe_ok, probe_detail = await llm_client.probe_all()
+                except ProviderSecretUnavailableError as exc:
+                    # Stored provider keys exist but nothing can decrypt them.
+                    # Reported as itself: degrading to "no provider configured"
+                    # would be a lie while the Providers tab lists a selection.
+                    await _finish_run("failed", 0.0, None)
+                    yield event_line("error", message=str(exc))
+                    return
                 if not probe_ok:
                     await _finish_run("failed", 0.0, None)
                     yield event_line(
@@ -970,6 +979,10 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                     touch_session(settings.database_url, session_id)
                 )
                 raise
+            except ProviderSecretUnavailableError as exc:
+                await _finish_run("failed", 0.0, round(usage.snapshot().get("spent_usd", 0.0) or 0.0, 6))
+                yield event_line("error", message=str(exc))
+                return
             except Exception as exc:
                 await _finish_run("failed", 0.0, round(usage.snapshot().get("spent_usd", 0.0) or 0.0, 6))
                 message = str(exc)
@@ -977,8 +990,11 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                     yield event_line(
                         "error",
                         message=(
-                            "No LLM key found at runtime. Add GROQ_API_KEY or "
-                            "HUGGINGFACE_API_KEY to .env, then restart the backend."
+                            "No LLM provider is configured. Add one in the "
+                            "Providers tab (UI: /#/model-controls) — it takes "
+                            "effect immediately, no restart needed. A provider "
+                            "can also be seeded from the environment via "
+                            "CUSTOM_LLM_* in backend/.env."
                         ),
                     )
                 else:

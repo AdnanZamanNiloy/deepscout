@@ -1,17 +1,6 @@
 from functools import lru_cache
-from typing import Any
 
-from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-def _real_key_like(value: Any) -> str:
-    """Non-empty, non-placeholder key text (mirrors llm._real_key without
-    importing it — config must stay import-cycle free)."""
-    text = str(value or "").strip()
-    if not text or text.lower().startswith("your_"):
-        return ""
-    return text
 
 
 class Settings(BaseSettings):
@@ -24,7 +13,16 @@ class Settings(BaseSettings):
         frozen=True,
     )
 
-    # LLM providers
+    # --- LLM providers -------------------------------------------------
+    # NONE of the keys below are required. The primary way to configure the
+    # LLM is the Providers tab (UI: `/#/model-controls`, legacy `/#/providers`):
+    # keys are stored Fernet-encrypted in SQLite and an explicitly selected
+    # provider is EXCLUSIVE — it wins over everything configured here.
+    #
+    # The env keys are an optional convenience for headless/CI use or for
+    # seeding the very first provider before the UI is reachable. Values
+    # starting with `your_` are treated as unset, so the `.env.example`
+    # placeholders are inert and can be left alone.
     groq_api_key: str = ""
     # llama-3.1-8b-instant was decommissioned on Groq (2026); gpt-oss-20b is
     # the verified replacement. Check console.groq.com if this 404s again.
@@ -41,7 +39,7 @@ class Settings(BaseSettings):
     # Any string works (hashed into key shape); unset falls back to a
     # backend/.deepscout_secret file created once with 0600 permissions.
     # Whether a FAILING UI-selected active provider falls through to the
-    # env chain (Groq/HF) instead of degrading the run. Strict exclusivity
+    # env chain above instead of degrading the run. Strict exclusivity
     # (False) never spends another provider's key without your say-so.
     active_provider_fallback: bool = False
     # Provider fallback chains (Providers tab): when True, an ENABLED user
@@ -282,19 +280,19 @@ class Settings(BaseSettings):
     # Hard ceiling on expansion depth; 0 means "use MAX_ITERATIONS".
     max_research_depth: int = 0
 
-    @model_validator(mode="after")
-    def _require_llm_provider(self) -> "Settings":
-        custom_ok = bool(
-            _real_key_like(self.custom_llm_api_key)
-            and self.custom_llm_base_url.strip()
-            and self.custom_llm_model.strip()
-        )
-        if not (self.groq_api_key or self.huggingface_api_key or custom_ok):
-            raise ValueError(
-                "No LLM provider configured. Set GROQ_API_KEY, HUGGINGFACE_API_KEY, "
-                "or the CUSTOM_LLM_* trio in your environment or .env file."
-            )
-        return self
+    # NOTE: there is deliberately NO "at least one provider" validator here.
+    # It used to raise at import time when GROQ_API_KEY / HUGGINGFACE_API_KEY /
+    # CUSTOM_LLM_* were all empty, which made a stock `.env.example` copy
+    # unbootable. That is wrong now that the Providers tab is the primary
+    # configuration path: keys live in the database, added from the UI, and
+    # nothing about them is knowable from the environment at boot.
+    #
+    # Misconfiguration is still reported loudly, just later and in the right
+    # place: `LLMClient.probe_all()` / the call chain raise "No LLM provider
+    # configured" per-call, and routes.py turns that into a clean NDJSON
+    # `error` event telling the user to add one in the Providers tab. That
+    # fails in seconds and keeps the API reachable so the tab can be used,
+    # where the old import-time raise killed the whole server instead.
 
 
 @lru_cache(maxsize=1)

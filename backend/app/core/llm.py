@@ -70,6 +70,20 @@ class AllProvidersFailedError(RuntimeError):
     """
 
 
+class NoProviderConfiguredError(RuntimeError):
+    """No LLM provider exists to call — nothing configured anywhere.
+
+    The configuration-free state is a SUPPORTED one: keys are normally added
+    in the Providers tab and live in the database, so a backend started before
+    anyone has added a provider reaches this on its first call. Deterministic
+    by construction — no retry, and no other provider can become configured
+    inside the same request — so generate_json treats it as fail-fast. Its
+    subclass of RuntimeError keeps every existing `except RuntimeError`
+    handler working, and the "No LLM provider configured" prefix is what
+    routes.py matches to emit the friendly NDJSON error.
+    """
+
+
 class PromptTooLargeError(RuntimeError):
     """The provider rejected the request size (HTTP 413).
 
@@ -458,6 +472,8 @@ class LLMClient:
         now = time.monotonic()
         if self._probe_cache is not None and now < self._probe_cache[0]:
             return self._probe_cache[1], self._probe_cache[2]
+        from app.core.providers import ProviderSecretUnavailableError
+
         try:
             targets = await self.probe_targets()
             # Exclusivity scope: when a UI-selected active provider leads the
@@ -468,6 +484,13 @@ class LLMClient:
             custom, exclusive = await self._resolve_custom()
             fallback_ok = bool(getattr(self.settings, "active_provider_fallback", False))
             active_name = str(custom.get("name", "custom")) if (custom and exclusive) else ""
+        except ProviderSecretUnavailableError:
+            # Fail-CLOSED for this one, unlike a probe bug. The store holds
+            # keys that cannot be decrypted; letting the run start would spend
+            # the whole research budget before failing on the first LLM call,
+            # and the user would see "no provider configured" instead of the
+            # real cause.
+            raise
         except Exception as exc:
             logger.warning("probe target resolution failed, skipping pre-flight: %s", exc, exc_info=exc)
             return True, ""
@@ -546,7 +569,11 @@ class LLMClient:
         re-running the whole chain would multiply slow-provider time past
         the research timeout. The caller falls back immediately instead.
         AllProvidersFailedError is likewise never retried: providers did not
-        become healthy 0.7s later inside the same request.
+        become healthy 0.7s later inside the same request. Neither is
+        NoProviderConfiguredError — a backend with no provider yet (keys get
+        added in the Providers tab) fails identically on all three attempts,
+        so retrying only adds two warnings and ~1.4s of sleep before the
+        same error reaches the caller.
         """
         for attempt in range(retries):
             try:
@@ -556,7 +583,13 @@ class LLMClient:
                     validated = response_model.model_validate(payload)
                     return validated.model_dump()
                 return payload
-            except (httpx.TimeoutException, TimeoutError, AllProvidersFailedError, PromptTooLargeError):
+            except (
+                httpx.TimeoutException,
+                TimeoutError,
+                AllProvidersFailedError,
+                PromptTooLargeError,
+                NoProviderConfiguredError,
+            ):
                 raise
             except Exception as exc:
                 if attempt == retries - 1:
@@ -574,9 +607,20 @@ class LLMClient:
         now = time.monotonic()
         if now >= self._provider_store_down_until:
             try:
-                from app.core.providers import get_active_provider
+                from app.core.providers import (
+                    ProviderSecretUnavailableError,
+                    get_active_provider,
+                )
 
                 active = await get_active_provider(self.settings.database_url)
+            except ProviderSecretUnavailableError:
+                # Stored keys exist but cannot be decrypted. Deliberately NOT
+                # folded into the "store unreadable, fall back to env" branch
+                # below: that branch degrades to env config and then reports
+                # "no provider configured", which is a lie when the UI is
+                # listing a selected provider. This is a repairable data
+                # problem, and it must reach the user as itself.
+                raise
             except Exception as exc:
                 # Warn once, then stay quiet for the hold window: the same
                 # missing table would otherwise log a traceback on every LLM
@@ -612,9 +656,17 @@ class LLMClient:
         if now < self._provider_store_down_until:
             return []
         try:
-            from app.core.providers import get_chain_providers
+            from app.core.providers import (
+                ProviderSecretUnavailableError,
+                get_chain_providers,
+            )
 
             rows = await get_chain_providers(self.settings.database_url)
+        except ProviderSecretUnavailableError:
+            # See _resolve_custom: an undecryptable store is a repairable data
+            # problem, not an unreadable one. Propagate instead of silently
+            # reporting an empty chain.
+            raise
         except Exception as exc:
             logger.warning(
                 "[LLM] provider chain store unreadable, using single-provider chain: %s",
@@ -900,7 +952,14 @@ class LLMClient:
             # legacy message (routes.py matches it for a friendly NDJSON
             # error); breaker-open is a different failure with its own error.
             if not (custom or groq_key or hf_key):
-                raise RuntimeError("No LLM provider configured. Set GROQ_API_KEY, HUGGINGFACE_API_KEY, or the CUSTOM_LLM_* trio.")
+                # The `routes.py` substring match on "No LLM provider configured"
+                # keys this friendly error off — keep the prefix intact.
+                raise NoProviderConfiguredError(
+                    "No LLM provider configured. Add one in the Providers tab "
+                    "(UI: /#/model-controls) — it applies immediately, no "
+                    "restart needed — or set the CUSTOM_LLM_* trio (or "
+                    "GROQ_API_KEY / HUGGINGFACE_API_KEY) in backend/.env."
+                )
             configured = [name for name, ok in (
                 ("custom", bool(custom)), ("groq", bool(groq_key)), ("huggingface", bool(hf_key)),
             ) if ok]
