@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { formatTime } from "../lib";
+import { formatTime, isNoProviderError } from "../lib";
 import { IconCheck, IconChevronDown, IconCopy, IconInfo, IconPencil, IconRefresh } from "./icons";
 
 /* Chat thread: right-aligned user bubbles, DeepScout responses, working action row. */
@@ -196,7 +196,7 @@ export function ThinkingSteps({ steps }) {
 }
 
 export function ErrorCard({ message, resumable, onResume, resuming }) {
-  const noKey = /LLM key|GROQ_API_KEY|HUGGINGFACE/i.test(message || "");
+  const noKey = isNoProviderError(message);
   return (
     <div className="error-box anim-rise" role="alert">
       <div style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>

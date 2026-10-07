@@ -9,9 +9,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 @pytest.fixture
 def test_settings():
+    """Ambient config, with the provider keys pinned to inert dummies.
+
+    Every other knob (timeouts, budget, quality gates) is kept, because tests
+    assert on those. The keys are not: `get_settings()` reads the developer's
+    `backend/.env`, so without this the suite silently depended on whatever key
+    happened to be lying around — no keys, and the Groq-path tests failed with
+    "No LLM provider configured"; a real key, and they silently spent the
+    developer's quota. One dummy Groq key and no others reproduces the shape
+    those tests were written against, deterministically, on every machine.
+    """
     from app.core.config import get_settings
 
-    return get_settings()
+    return get_settings().model_copy(update={
+        "groq_api_key": "test-key",
+        "huggingface_api_key": "",
+        "custom_llm_api_key": "",
+        "custom_llm_base_url": "",
+        "custom_llm_model": "",
+    })
 
 
 @pytest.fixture

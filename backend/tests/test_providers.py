@@ -1,4 +1,6 @@
 """User-managed LLM providers: encrypted store, active exclusivity, routes."""
+import asyncio
+
 import pytest
 from cryptography.fernet import Fernet
 
@@ -501,3 +503,226 @@ async def test_provider_routes_accept_model_name(db_path):
         )
         assert renamed.status_code == 200, renamed.text
         assert renamed.json()["provider"]["model_name"] == "Renamed Label"
+
+
+# --- zero-env-key bootstrap ------------------------------------------------
+#
+# The Providers tab is the primary way to configure the LLM: keys live in the
+# database, not the environment. So an untouched `.env.example` must boot, and
+# the "no provider" failure has to surface at call time as a message that
+# sends the user to that tab — not as an import-time Settings error that takes
+# the whole API down before the tab can be opened.
+
+
+def test_settings_construct_with_no_provider_keys():
+    """No env key, no CUSTOM_LLM_* trio, no ValidationError.
+
+    Regression for the removed `_require_llm_provider` validator, which made a
+    stock setup unbootable and therefore unreachable from the Providers tab.
+    """
+    from app.core.config import Settings
+
+    settings = Settings(
+        groq_api_key="", huggingface_api_key="",
+        custom_llm_api_key="", custom_llm_base_url="", custom_llm_model="",
+        _env_file=None,
+    )
+    assert settings.groq_api_key == ""
+    assert settings.custom_llm_api_key == ""
+
+
+def test_env_placeholders_are_inert():
+    """The `.env.example` `your_...` values must not read as real keys."""
+    from app.core.config import Settings
+    from app.core.llm import _real_key
+
+    settings = Settings(
+        groq_api_key="your_groq_api_key_here",
+        huggingface_api_key="your_huggingface_api_key_here",
+        custom_llm_api_key="your_custom_key_here",
+        custom_llm_base_url="https://your-provider.example/v1",
+        custom_llm_model="your-model-id-here",
+        _env_file=None,
+    )
+    # Settings accepts them verbatim...
+    assert settings.groq_api_key == "your_groq_api_key_here"
+    # ...but the LLM layer treats every one of them as unset.
+    assert _real_key(settings.groq_api_key) == ""
+    assert _real_key(settings.huggingface_api_key) == ""
+    assert _real_key(settings.custom_llm_api_key) == ""
+
+
+async def test_no_provider_error_points_at_the_providers_tab(db_path):
+    """The runtime failure must name the UI path and say a selection applies
+    without a restart — the whole point of dropping the boot-time gate."""
+    from app.core.llm import NoProviderConfiguredError
+
+    llm = LLMClient(_settings(
+        groq_api_key="", huggingface_api_key="",
+        custom_llm_api_key="", custom_llm_base_url="", custom_llm_model="",
+        database_url=db_path,
+    ))
+    with pytest.raises(NoProviderConfiguredError, match="No LLM provider configured") as exc:
+        await llm.generate_json("sys", "user")
+    message = str(exc.value)
+    assert "model-controls" in message, message
+    assert "applies immediately" in message, message
+
+
+async def test_no_provider_error_is_not_retried(db_path, monkeypatch):
+    """Deterministic 'nothing configured' must fail fast.
+
+    Retrying it three times with sleeps buys nothing — no provider can appear
+    inside the same request — and it used to bury the real cause under two
+    warnings and ~1.4s of latency on every single agent call.
+    """
+    from app.core.llm import NoProviderConfiguredError
+
+    llm = LLMClient(_settings(
+        groq_api_key="", huggingface_api_key="",
+        custom_llm_api_key="", custom_llm_base_url="", custom_llm_model="",
+        database_url=db_path,
+    ))
+    calls = 0
+
+    async def _counting(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise NoProviderConfiguredError("No LLM provider configured.")
+
+    monkeypatch.setattr(llm, "_generate_with_fallback", _counting)
+    sleeps = []
+    async def _no_sleep(delay):
+        sleeps.append(delay)
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)
+
+    with pytest.raises(NoProviderConfiguredError):
+        await llm.generate_json("sys", "user")
+    assert calls == 1, f"expected exactly one attempt, got {calls}"
+    assert not sleeps, f"expected no backoff sleep, got {sleeps}"
+
+
+# --- missing sealing secret ------------------------------------------------
+#
+# The old failure mode was silent and looked like misconfiguration: with the
+# key file gone, `_fernet_key()` minted a fresh key, every stored row became
+# undecryptable, the InvalidToken degraded into a log warning, and a run then
+# reported "no provider configured" while the Providers tab still listed a
+# selected provider. Reads now fail loudly and name the fix. WRITES must keep
+# working, because re-entering the key in the Providers tab is the repair.
+
+
+@pytest.fixture
+def _no_secret(monkeypatch, tmp_path):
+    """No env secret, no `.env` secret, no key file: the lost-secret state."""
+    from app.core import config as config_mod
+    from app.core import providers as store
+
+    monkeypatch.delenv("DEEPSCOUT_SECRET_KEY", raising=False)
+    monkeypatch.delenv("MARS_SECRET_KEY", raising=False)
+
+    class _NoSecret:
+        deepscout_secret_key = ""
+
+    monkeypatch.setattr(config_mod, "get_settings", lambda: _NoSecret())
+    keyfile = tmp_path / "absent_secret"
+    monkeypatch.setattr(store, "_secret_file_path", lambda: keyfile)
+    return keyfile
+
+
+async def _store_active_provider(db_path, *, key="sk-secret-1", name="stored"):
+    """A provider row that is SELECTED — the state a run actually reads."""
+    from app.core import providers as store
+
+    created = await store.save_provider(
+        db_path, name=name, base_url="https://x.example.com/v1",
+        api_key=key, model="m",
+    )
+    provider_id = int(created["id"])
+    await store.set_active_provider(db_path, provider_id)
+    return provider_id
+
+
+async def test_missing_secret_is_reported_not_silently_ignored(db_path, _no_secret):
+    """A selected provider whose key cannot be decrypted must raise, and the
+    message must name the repair rather than blaming the provider."""
+    from app.core import providers as store
+
+    await _store_active_provider(db_path)
+    _no_secret.unlink(missing_ok=True)  # the key file goes away
+
+    with pytest.raises(store.ProviderSecretUnavailableError) as exc:
+        await store.get_active_provider(db_path)
+    message = str(exc.value)
+    assert "re-enter the API key" in message, message
+    assert "DEEPSCOUT_SECRET_KEY" in message, message
+
+
+async def test_wrong_secret_is_reported_too(db_path, _no_secret):
+    """The live case: the key file EXISTS but is not the one the rows were
+    sealed with (restored DB, replaced secret, cloned research.db).
+
+    This used to be the worst variant — decryption failed, the error was
+    swallowed into "provider store unreadable, using env config", and the run
+    reported "no provider configured" while the Providers tab still listed the
+    provider as selected.
+    """
+    from cryptography.fernet import Fernet
+
+    from app.core import providers as store
+
+    await _store_active_provider(db_path)
+    _no_secret.write_bytes(Fernet.generate_key())  # present, but different
+
+    with pytest.raises(store.ProviderSecretUnavailableError) as exc:
+        await store.get_active_provider(db_path)
+    message = str(exc.value)
+    assert "does not match" in message, message
+    assert "re-enter the API key" in message, message
+
+
+async def test_secret_failure_reaches_the_llm_chain(db_path, _no_secret):
+    """The LLM layer must not fold this into "store unreadable, use env".
+
+    That branch sets active=None, which is indistinguishable from a system with
+    no providers at all — the exact lie this guard exists to prevent.
+    """
+    from app.core import providers as store
+
+    await _store_active_provider(db_path)
+    _no_secret.unlink(missing_ok=True)
+
+    llm = LLMClient(_settings(database_url=db_path))
+    with pytest.raises(store.ProviderSecretUnavailableError):
+        await llm.probe_targets()
+
+
+async def test_missing_secret_is_fine_with_no_stored_keys(db_path, _no_secret):
+    """Nothing stored means nothing to decrypt: no error, no false alarm.
+
+    This is the brand-new-install case the whole setup flow depends on.
+    """
+    from app.core import providers as store
+
+    assert await store.get_active_provider(db_path) is None
+
+
+async def test_reattering_the_key_repairs_the_store(db_path, _no_secret):
+    """The documented repair must work end to end: a write mints the new
+    secret, and the row becomes readable again."""
+    from app.core import providers as store
+
+    provider_id = await _store_active_provider(db_path, key="sk-orphan-1")
+    _no_secret.unlink(missing_ok=True)
+    with pytest.raises(store.ProviderSecretUnavailableError):
+        await store.get_active_provider(db_path)
+
+    # Repair = re-enter the key through the normal write path.
+    await store.save_provider(
+        db_path, provider_id=provider_id, name="stored",
+        base_url="https://x.example.com/v1", model="m",
+        api_key="sk-repaired-2",
+    )
+    restored = await store.get_active_provider(db_path)
+    assert restored is not None
+    assert restored["api_key"] == "sk-repaired-2"

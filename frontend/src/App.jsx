@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchSession, fetchTrace, listSessions, resumeResearch, startResearch } from "./api";
-import { MODE_META, applyTraceEntry, loadActiveSessionId, loadKnowledge, loadMissions, newSessionId, parseReport, removeMission, saveActiveSessionId, saveKnowledgeItem, shouldAutoScroll, truncateFromMessage, updateMission, upsertMission } from "./lib";
+import { MODE_META, applyTraceEntry, isNoProviderError, loadActiveSessionId, loadKnowledge, loadMissions, newSessionId, parseReport, removeMission, saveActiveSessionId, saveKnowledgeItem, shouldAutoScroll, truncateFromMessage, updateMission, upsertMission } from "./lib";
 import Sidebar from "./components/Sidebar";
 import Composer from "./components/Composer";
 import { ErrorCard, AgentMessageShell, TypingRow, UserMessage } from "./components/Thread";
@@ -670,7 +670,7 @@ export default function App() {
         break;
       case "error": {
         const message = evt.message || "Unknown stream error";
-        const noKey = /LLM key|GROQ_API_KEY|HUGGINGFACE/i.test(message);
+        const noKey = isNoProviderError(message);
         const resumable = !noKey && /timed out|failed/i.test(message);
         setMessages((prev) => prev.map((m) => {
           if (m.kind !== "run" || m.run.tempId !== tempId) return m;

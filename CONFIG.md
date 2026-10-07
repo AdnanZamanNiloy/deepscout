@@ -4,15 +4,23 @@ Every environment variable, its default, and what it actually controls.
 All variables live in `backend/.env` (see `.env.example`); real environment
 variables override `.env` values, which override `.env.example`.
 
-## LLM providers
+**Nothing in this file is required.** The backend starts and serves the UI
+with an untouched `.env`. The LLM key is added from the app's Model Controls
+tab (`/#/model-controls`, legacy `/#/providers`) and stored encrypted in the
+database; the variables below are optional overrides for headless use.
+
+## LLM providers (all optional)
+
+Configure the LLM in the UI — that is the supported path. These variables
+exist for headless/CI setups or to seed a provider before the UI is reachable.
 
 | Variable | Default | Description |
 |---|---|---|
-| `GROQ_API_KEY` | `""` | Primary provider key (free tier works). Values starting with `your_` count as unset. |
+| `GROQ_API_KEY` | `""` | Optional Groq key. Values starting with `your_` count as unset. |
 | `GROQ_MODEL` | `openai/gpt-oss-20b` | Groq model id. Check console.groq.com when a model is decommissioned. |
-| `HUGGINGFACE_API_KEY` | `""` | Fallback provider key. |
+| `HUGGINGFACE_API_KEY` | `""` | Optional HuggingFace key. |
 | `HUGGINGFACE_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | HF Inference model (3-model fallback list is built in). |
-| `CUSTOM_LLM_API_KEY` | `""` | OpenAI-compatible provider key — all three CUSTOM_* must be set together. |
+| `CUSTOM_LLM_API_KEY` | `""` | Optional OpenAI-compatible provider key — all three CUSTOM_* must be set together. |
 | `CUSTOM_LLM_BASE_URL` | `""` | Provider base URL (with or without `/chat/completions`). |
 | `CUSTOM_LLM_MODEL` | `""` | Provider model id. |
 | `CUSTOM_LLM_TIMEOUT_SEC` | `90` | Per-call timeout for the custom provider only (slow hosts need 30-60s on planner-sized prompts). |
@@ -21,19 +29,31 @@ variables override `.env` values, which override `.env.example`.
 | `ACTIVE_PROVIDER_FALLBACK` | `false` | When the UI-selected active provider fails (timeout/rate limit/outage), fall through to the env chain instead of degrading the run. `false` keeps strict exclusivity. |
 
 Provider chain order: UI-selected active provider (exclusive) →
-`CUSTOM_LLM_*` trio → Groq → HuggingFace, with per-provider circuit
-breakers (timeouts open immediately; fast failures trip after 3; 60s cooldown).
+provider chain members (Providers tab) → `CUSTOM_LLM_*` trio → Groq →
+HuggingFace, with per-provider circuit breakers (timeouts open immediately;
+fast failures trip after 3; 60s cooldown).
+
+With no provider configured anywhere, a research run fails fast with a
+"No LLM provider configured" error event instead of degrading to extraction.
 
 ## Search providers
 
+Search needs no external search API key.
+
 | Variable | Default | Description |
 |---|---|---|
-| `TAVILY_API_KEY` | `""` | Optional richer web search (free tier available). |
-| `TAVILY_SEARCH_DEPTH` | `basic` | `basic` or `advanced`. |
+| `SEARXNG_URL` | `http://localhost:8080` | Base URL of the self-hosted SearXNG instance — the primary web search. |
+| `SEARXNG_ENABLED` | `true` | Set `false` to skip SearXNG and use only the free direct sources. |
+| `SEARXNG_TIMEOUT_SEC` | `30` | Per-request timeout against SearXNG. |
+| `SEARXNG_MAX_RESULTS` | `30` | Candidates requested upstream. Deliberately higher than `SEARCH_MAX_RESULTS`: the ranker needs candidates to reject duplicates and weak engines. |
+| `SEARXNG_CATEGORIES` | `general,science` | `general` = open web, `science` = scholarly indexes. Add `news` for current events. |
+| `SEARXNG_LANGUAGE` | `en` | Query language passed upstream. |
+| `SEARXNG_SAFESEARCH` | `0` | 0=off 1=moderate 2=strict. Off: safesearch silently truncates legitimate academic/medical results. |
+| `SEARCH_SEARXNG_COOLDOWN_SEC` | `60` | Circuit-breaker cooldown. Longer than the LLM breaker's 15s — SearXNG is a local service, so restarting it is usually the fix. |
 
-DuckDuckGo, Wikipedia, arXiv and Crossref need no keys. Provider fan-out is
-type-driven: academic queries add arXiv + Crossref; encyclopedia/statistical
-add Wikipedia; news uses the Tavily news topic.
+Wikipedia, arXiv and Crossref are queried directly and need no service or key.
+Provider fan-out is type-driven: SearXNG always runs when enabled; academic
+contracts add arXiv + Crossref; encyclopedia/statistical add Wikipedia.
 
 ## Runtime limits (8 GB RAM profile)
 

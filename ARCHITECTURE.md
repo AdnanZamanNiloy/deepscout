@@ -13,7 +13,7 @@ flowchart TD
     IN --> ORCH[Orchestrator<br/>complexity + plan targets]
     ORCH --> PL[Planner<br/>delegation contracts: axis, search_type,<br/>minimum_sources, wave, variants]
     PL -->|search-informed: one grounding search on the raw query| SE
-    SE[Search<br/>Tavily / DuckDuckGo / Wikipedia / arXiv / Crossref<br/>circuit breakers, canonical-URL dedup,<br/>domain diversity caps, disk cache]
+    SE[Search<br/>SearXNG / Wikipedia / arXiv / Crossref<br/>circuit breakers, canonical-URL dedup,<br/>domain diversity caps, disk cache]
     SE --> SU[Summarizer<br/>wave-ordered specialists:<br/>wave N receives wave N-1 findings<br/>as bounded grounding context]
     SU --> VE[Verifier<br/>lexical overlap, source authority,<br/>numeric grounding, polarity,<br/>quote location, freshness]
     VE --> CR[Critic + Contradiction Engine + Red Team + Confidence v2]

@@ -40,16 +40,33 @@ def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+class ProviderSecretUnavailableError(ValueError):
+    """A stored provider key exists, but the current secret cannot open it.
+
+    Raised on the read paths (get_active_provider / get_provider_secret, and
+    therefore get_chain_providers) whenever decryption fails. Two real causes
+    share this one symptom: the local key file is gone (so `_fernet_key()`
+    minted a fresh key that matches nothing), or the file/env secret was
+    changed or replaced.
+
+    Previously the resulting InvalidToken degraded into a log warning plus
+    "no provider configured" at runtime, while the Providers tab still listed
+    the provider as selected — a system that looked unconfigured rather than
+    broken. That is the AGENTS.md "silent misconfiguration" shape, so it fails
+    loudly and names the fix.
+
+    Writes deliberately still work: re-entering a key in the Providers tab
+    calls encrypt_api_key, which seals it with the CURRENT secret and repairs
+    the store.
+    """
+
+
 def _secret_file_path() -> Path:
     return Path(__file__).resolve().parent.parent / ".deepscout_secret"
 
 
-def _fernet_key() -> bytes:
-    """Fernet key: real env var first, then Settings (.env file), else the
-    local key file (created once, 0600). An arbitrary secret string is
-    hashed into key shape; a proper Fernet key is used as-is. Tests pin
-    DEEPSCOUT_SECRET_KEY via env to stay hermetic (never touches the file).
-    """
+def _configured_secret() -> str:
+    """Secret text from the environment or `.env`, or "" when unset."""
     # Read the new name first, then the legacy one. A rename must not silently
     # break an existing .env: losing this key would drop every UI-added
     # provider key back to unencrypted.
@@ -65,6 +82,26 @@ def _fernet_key() -> bytes:
             raw = (get_settings().deepscout_secret_key or "").strip()
         except Exception:
             raw = ""
+    return raw
+
+
+def _secret_is_unavailable() -> bool:
+    """True when no secret is configured anywhere AND the key file is absent.
+
+    Only used for diagnostics in the error message. Detection itself happens
+    on decryption failure, which covers this case AND a wrong-but-present
+    secret with one mechanism instead of two that can disagree.
+    """
+    return not _configured_secret() and not _secret_file_path().exists()
+
+
+def _fernet_key() -> bytes:
+    """Fernet key: real env var first, then Settings (.env file), else the
+    local key file (created once, 0600). An arbitrary secret string is
+    hashed into key shape; a proper Fernet key is used as-is. Tests pin
+    DEEPSCOUT_SECRET_KEY via env to stay hermetic (never touches the file).
+    """
+    raw = _configured_secret()
     if raw:
         try:
             Fernet(raw.encode("utf-8"))
@@ -89,14 +126,33 @@ def encrypt_api_key(plaintext: str) -> str:
     return Fernet(_fernet_key()).encrypt((plaintext or "").encode("utf-8")).decode("utf-8")
 
 
+def _secret_repair_hint() -> str:
+    where = "no DEEPSCOUT_SECRET_KEY is set and the key file " + str(
+        _secret_file_path()
+    ) + " does not exist" if _secret_is_unavailable() else (
+        "the current DEEPSCOUT_SECRET_KEY / key file does not match the one "
+        "these keys were sealed with"
+    )
+    return (
+        "A stored provider key cannot be decrypted: " + where + ". "
+        "Either restore the original secret, or re-enter the API key in the "
+        "Providers tab — that re-seals it with the current secret and repairs "
+        "the store."
+    )
+
+
 def decrypt_api_key(token: str) -> str:
+    """Open a stored key, or explain why it cannot be opened.
+
+    The InvalidToken case is the single loud failure point for both "the key
+    file is gone" and "the secret changed": both are indistinguishable by the
+    time decryption runs, and both previously degraded into "no provider
+    configured" at runtime.
+    """
     try:
         return Fernet(_fernet_key()).decrypt((token or "").encode("utf-8")).decode("utf-8")
     except InvalidToken as exc:
-        raise ValueError(
-            "Stored provider key cannot be decrypted with the current secret. "
-            "If DEEPSCOUT_SECRET_KEY changed, re-enter the key."
-        ) from exc
+        raise ProviderSecretUnavailableError(_secret_repair_hint()) from exc
 
 
 def _validate(name: str, base_url: str, model: str) -> tuple[str, str, str]:

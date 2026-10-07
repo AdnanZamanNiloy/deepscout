@@ -168,16 +168,15 @@
   C.quickstart = [
     '<p class="eyebrow">Getting started</p>',
     '<h2 id="quickstart">Quick start</h2>',
-    '<p class="lede">Two processes: a FastAPI backend and a Vite/React console. Free-tier provider keys are enough to run it.</p>',
+    '<p class="lede">Two processes: a FastAPI backend and a Vite/React console. No API keys go in <code>.env</code> — you add your LLM provider in the app.</p>',
 
     '<h3 id="qs-setup">1 · Backend</h3>',
     shBlock([
       c("# from the repository root"),
-      t("cd backend"),
       t("python3 -m venv .venv && source .venv/bin/activate"),
-      t("pip install -r requirements.txt"),
-      t("cp .env.example .env") + c("   # add GROQ_API_KEY (free tier works)"),
-      g("uvicorn") + t(" main:app --host 127.0.0.1 --port 8000")
+      t("pip install -r backend/requirements.txt"),
+      t("cd backend"),
+      g("../.venv/bin/python -m uvicorn") + t(" main:app --host 127.0.0.1 --port 8000")
     ]),
 
     '<h3 id="qs-frontend">2 · Frontend</h3>',
@@ -186,7 +185,8 @@
       t("cd frontend && npm install && npm run dev"),
       c("# open http://127.0.0.1:5173")
     ]),
-    "<p>Set at least one provider in <code>backend/.env</code>. The app requires one of <code>GROQ_API_KEY</code>, <code>HUGGINGFACE_API_KEY</code>, or the complete <code>CUSTOM_LLM_*</code> trio, and fails to start otherwise. Additional OpenAI-compatible providers can be added at runtime from the <strong>Providers</strong> tab; keys are Fernet-encrypted at rest.</p>",
+    "<p>No provider configuration is required to start. Open <strong>Model Controls</strong> (<code>/#/model-controls</code>) and add any OpenAI-compatible provider — name, base URL, API key, model id — then select it. Keys are Fernet-encrypted at rest, a selected provider is exclusive, and it applies on the next call with no restart. Until then a run returns a clear \"no provider configured\" error instead of a degraded answer.</p>",
+    "<p>Web search uses a local <a href=\"https://github.com/searxng/searxng\" target=\"_blank\" rel=\"noreferrer\">SearXNG</a> instance on <code>http://localhost:8080</code> — see <code>SETUP.md</code>. No search API key is needed; Wikipedia, arXiv and Crossref work even if SearXNG is down.</p>",
 
     '<h3 id="qs-health">3 · Smoke test</h3>',
     shBlock([
@@ -435,9 +435,7 @@
     '<p class="lede">Retrieval is type-driven: the contract’s <code>search_type</code> chooses which providers run, and every provider sits behind a circuit breaker.</p>',
     '<div class="table-wrap"><table>',
       "<thead><tr><th>Provider</th><th>Type</th><th>Used for</th><th>Breaker</th></tr></thead><tbody>",
-        "<tr><td><strong>Tavily</strong></td><td>Web</td><td>General and news topics (optional paid key)</td><td>3 fails · 60&nbsp;s</td></tr>",
-        "<tr><td><strong>DuckDuckGo text</strong></td><td>Web</td><td>General fallback when Tavily is absent</td><td>4 fails · 45&nbsp;s</td></tr>",
-        "<tr><td><strong>DuckDuckGo news</strong></td><td>News</td><td>Recency-sensitive searches</td><td>4 fails · 45&nbsp;s</td></tr>",
+        "<tr><td><strong>SearXNG</strong></td><td>Web</td><td>Primary web search — self-hosted, no API key</td><td>3 fails · 60&nbsp;s</td></tr>",
         "<tr><td><strong>Wikipedia</strong></td><td>Reference</td><td>Encyclopedia and statistical contracts</td><td>4 fails · 45&nbsp;s</td></tr>",
         "<tr><td><strong>arXiv</strong></td><td>Preprint</td><td>Academic contracts</td><td>3 fails · 90&nbsp;s</td></tr>",
         "<tr><td><strong>Crossref</strong></td><td>Peer-reviewed</td><td>Academic contracts</td><td>3 fails · 90&nbsp;s</td></tr>",
@@ -633,7 +631,7 @@
 
     '<h3 id="bud-ledger">The run ledger</h3>',
     "<p>The ledger rides a <code>ContextVar</code>, so concurrent runs never share state. It tracks tokens and USD by stage, LLM calls, search calls, cache hits and misses, wall time, and a worst-case utilization fraction. Cache hits record tokens but charge <strong>$0</strong> — a hit refunds USD while keeping token accounting honest.</p>",
-    "<p>Search cost is not negligible when it is paid: Tavily is charged at <code>$0.008</code> per search unit; the free providers are zero. LLM pricing is per-model and prefix-matched, with a conservative default of <code>(0.0004, 0.0008)</code> USD per 1K input/output tokens.</p>",
+    "<p>Search cost is not negligible when it is paid: SearXNG aggregates free upstream engines, so the whole search stack costs <strong>$0</strong>. LLM pricing is per-model and prefix-matched, with a conservative default of <code>(0.0004, 0.0008)</code> USD per 1K input/output tokens.</p>",
     '<div class="callout info">',
       '<span class="c-ico">', I.info, "</span>",
       '<div class="c-body"><div class="c-title">The ledger is a control input, not just a meter</div>',
