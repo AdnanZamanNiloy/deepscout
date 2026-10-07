@@ -5,7 +5,7 @@ import {
   renameProviderChain, reorderProviderChain, setActiveProvider, setProviderChainEnabled,
   setProviderChainMembers, testProvider, updateProvider,
 } from "../api";
-import { chainRole, resolveChainMembers } from "../lib";
+import { chainRole, modelLabel, resolveChainMembers, savedModelNotice } from "../lib";
 import ConfirmButton from "./ConfirmButton";
 import {
   IconCheck, IconChevronDown, IconMore, IconPencil,
@@ -106,6 +106,7 @@ function AddModelSection({ editing, onSaved, onCancel }) {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
+  const [saved, setSaved] = useState("");
   const [showKey, setShowKey] = useState(false);
 
   useEffect(() => {
@@ -116,15 +117,28 @@ function AddModelSection({ editing, onSaved, onCancel }) {
       }
       : EMPTY);
     setFormError("");
+    setSaved("");
     setShowKey(false);
   }, [editing]);
 
-  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  /* Editing any field clears the confirmation. Leaving "Added X" on screen
+   * above a form that now holds different values is worse than saying nothing:
+   * it reads as a claim about what is in the form right now. */
+  const set = (key) => (e) => {
+    setSaved("");
+    setForm((f) => ({ ...f, [key]: e.target.value }));
+  };
+
+  const setBaseUrl = (base_url) => {
+    setSaved("");
+    setForm((f) => ({ ...f, base_url }));
+  };
 
   const submit = async (e) => {
     e.preventDefault();
     setSaving(true);
     setFormError("");
+    setSaved("");
     try {
       const label = form.model_name.trim();
       if (editing) {
@@ -136,11 +150,19 @@ function AddModelSection({ editing, onSaved, onCancel }) {
         };
         if (form.api_key.trim()) payload.api_key = form.api_key;
         await updateProvider(editing.id, payload);
+        setSaved(savedModelNotice({ editing: true, name: form.name, modelName: label }));
       } else {
         await createProvider({
           name: form.name, base_url: form.base_url,
           api_key: form.api_key, model: form.model, model_name: label,
         });
+        // Clear the form so the save is unmistakable. Previously the fields
+        // kept their values on success, so an add was only visible as a
+        // change in a count elsewhere on the page — which reads as "nothing
+        // happened" next to a form that still looks untouched.
+        setForm(EMPTY);
+        setShowKey(false);
+        setSaved(savedModelNotice({ editing: false, name: form.name, modelName: label }));
       }
       onSaved();
     } catch (err) {
@@ -188,7 +210,7 @@ function AddModelSection({ editing, onSaved, onCancel }) {
               {PROVIDER_PRESETS.map((p) => (
                 <button
                   key={p.label} type="button" className="pv-preset"
-                  onClick={() => setForm((f) => ({ ...f, base_url: p.base_url }))}
+                  onClick={() => setBaseUrl(p.base_url)}
                 >
                   {p.label}
                 </button>
@@ -216,6 +238,14 @@ function AddModelSection({ editing, onSaved, onCancel }) {
           </div>
         </div>
         {formError ? <div className="error-box" role="alert">{formError}</div> : null}
+        {saved ? (
+          // role="status" so it is announced without stealing focus: the save
+          // succeeded and the next thing the user does is their choice.
+          <p className="pv-notice" role="status">
+            <IconCheck size={14} />
+            <span>{saved}</span>
+          </p>
+        ) : null}
         <div className="pv-form-actions">
           <button className="btn-primary" type="submit" disabled={saving}>
             <IconPlus size={14} /> {saving ? "Saving…" : editing ? "Save changes" : "Add model"}
@@ -579,7 +609,7 @@ function ServingModeSection({ providers, activeId, chains, busy, onSelectSingle,
           </div>
           <p className="pv-serving-desc">
             {mode === "single"
-              ? <>Active — every agent runs on <b>{active?.name}</b>. Pick another to switch.</>
+              ? <>Active — every agent runs on <b>{active?.name}</b>{active && modelLabel(active) ? <> (<code>{modelLabel(active)}</code>)</> : null}. Pick another to switch.</>
               : "Every agent runs on one model. Selecting a model disables the chain."}
           </p>
           <div className="pv-serving-picker">
@@ -587,6 +617,7 @@ function ServingModeSection({ providers, activeId, chains, busy, onSelectSingle,
               <p className="pv-muted-note">Add a model first.</p>
             ) : providers.map((p) => {
               const picked = mode === "single" && p.id === activeId;
+              const label = modelLabel(p);
               return (
                 <button
                   key={p.id} type="button"
@@ -594,8 +625,12 @@ function ServingModeSection({ providers, activeId, chains, busy, onSelectSingle,
                   onClick={() => onSelectSingle(p.id)}
                   disabled={busy}
                   aria-pressed={picked}
+                  title={p.model ? `Model ID: ${p.model}` : undefined}
                 >
-                  <span className="pv-serving-option-name">{p.name}</span>
+                  <span className="pv-serving-option-text">
+                    <span className="pv-serving-option-name">{p.name}</span>
+                    {label ? <span className="pv-serving-option-model">{label}</span> : null}
+                  </span>
                   <span className={`pv-serving-option-meta${picked ? " serving" : ""}`}>{picked ? "Serving" : "Enable"}</span>
                 </button>
               );
@@ -804,6 +839,7 @@ export default function ModelControlsView() {
   const serving = enabledChain
     ? `chain “${enabledChain.name}”`
     : activeProvider ? activeProvider.name : "the default chain";
+  const servingModel = !enabledChain && activeProvider ? modelLabel(activeProvider) : "";
 
   // Map provider id → chain names it belongs to (for the model cards).
   const chainUseByProvider = useMemo(() => {
@@ -827,6 +863,7 @@ export default function ModelControlsView() {
             {providers.length} model{providers.length === 1 ? "" : "s"} ·{" "}
             {chains.length} chain{chains.length === 1 ? "" : "s"} · serving:{" "}
             <strong>{serving}</strong>
+            {servingModel ? <span className="pv-serving-inline-model"> · {servingModel}</span> : null}
           </p>
         </div>
         <div className="pv-summary" aria-label="Serving summary">
