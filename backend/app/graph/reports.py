@@ -152,6 +152,39 @@ def build_answer_audit(
         )
         lines.extend(["## Answer conformance (measured)", conformance_line, ""])
 
+    # Answer construction: which of the three answer states the evidence put the
+    # run in, and — for a synthesis — whether the delivered prose obeyed it. The
+    # distinction this records is the whole point of the layer: "no source
+    # answers this directly" is not the same finding as "no answer can be built".
+    construction = state.get("answer_construction") or {}
+    if isinstance(construction, dict) and construction.get("mode"):
+        mode = str(construction["mode"]).upper()
+        construction_line = f"Answer mode: {mode}"
+        if construction.get("reason"):
+            construction_line += f" — {construction['reason']}"
+        dims = construction.get("supported_dimensions") or []
+        missing = construction.get("missing_dimensions") or []
+        if dims:
+            construction_line += f" Supported dimensions: {', '.join(str(d) for d in dims[:8])}."
+        if missing:
+            construction_line += f" Not covered: {', '.join(str(d) for d in missing[:8])}."
+        if construction.get("candidate_claims"):
+            construction_line += (
+                " Candidates: " + ", ".join(str(c) for c in construction["candidate_claims"][:5]) + "."
+            )
+        if construction.get("allowed_ranking") is False and mode == "SYNTHESIZED":
+            construction_line += (
+                " No ranking is asserted: the evidence does not contain a comparison."
+            )
+        construction_audit = state.get("answer_construction_audit") or {}
+        if isinstance(construction_audit, dict) and construction_audit.get("violations"):
+            construction_line += (
+                " Contract violations: "
+                + "; ".join(str(v) for v in construction_audit["violations"][:3])
+                + "."
+            )
+        lines.extend(["## Answer construction (measured)", construction_line, ""])
+
     # Thesis fidelity: whether the answer actually carried the analyst's brief —
     # its thesis, its insights, the relationships between them, the
     # counter-evidence — rather than restating the source material. Measured

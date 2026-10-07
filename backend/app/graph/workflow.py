@@ -1767,6 +1767,26 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
             machine_notes = [
                 str(n) for n in (synthesis_ctx.get("synthesis_machine_notes") or []) if str(n).strip()
             ]
+            # The synthesizer mirrors its machine-owned provenance into the dict
+            # it was HANDED, and it is handed a copy (`{**ctx, ...}` above), so
+            # the write-back is invisible to base_context — and therefore to the
+            # caller. `synthesis_machine_notes` was copied back explicitly and
+            # everything else was silently stranded in the local copy, which is
+            # why the answer-construction decision read as empty on state. Copy
+            # the whole set, not just the one key someone happened to need.
+            for _key in (
+                "definition_lock",
+                "ranking_basis",
+                "report_status",
+                "answer_construction",
+                "answer_construction_audit",
+                "consistency_audit",
+                "convergence_audit",
+                "definition_audit",
+                "ranking_audit",
+            ):
+                if _key in synthesis_ctx:
+                    ctx[_key] = synthesis_ctx[_key]
             # Report-contract verification: check the emitted answer's citations
             # against the evidence (never the reverse). Observational only —
             # it scores honesty, it does not rewrite.
@@ -1895,6 +1915,12 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
             # Machine-owned provenance the synthesizer kept out of the answer;
             # rendered by build_answer_audit.
             "synthesis_machine_notes": synthesis_notes,
+            # Answer-construction decision + its audit, mirrored back onto
+            # base_context by _mirror_machine_notes. Promoted here because the
+            # audit is the only place the run records WHICH of the three answer
+            # states it landed in and whether the prose obeyed it.
+            "answer_construction": base_context.get("answer_construction") or {},
+            "answer_construction_audit": base_context.get("answer_construction_audit") or {},
         }
 
     async def finalize_node(state: ResearchState) -> FinalizeUpdate:
