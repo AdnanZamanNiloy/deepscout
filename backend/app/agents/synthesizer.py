@@ -1085,6 +1085,16 @@ async def synthesize(
         convergence: Dict[str, Any] = (
             raw_convergence if isinstance(raw_convergence, dict) else {}
         )
+        basis_map: Dict[str, Any] = (
+            ctx.get("ranking_basis") if isinstance(ctx.get("ranking_basis"), dict) else {}
+        )
+        # The named options the evidence actually supports as examples. This is
+        # what turns a "no defensible #1" verdict into a SUPPORTED CLUSTER
+        # rather than a flat "the evidence supports no answer". The ranking-basis
+        # assessment computed these all along and they were then never handed to
+        # either renderer below, so the cluster wording was unreachable from a
+        # live run and only tests could reach it.
+        supported_cluster = _basis_candidates(basis_map)
         if convergence.get("identified"):
             gap = FundamentalGap(
                 identified=True,
@@ -1093,7 +1103,7 @@ async def synthesize(
                 signature=str(convergence.get("signature", "") or ""),
                 missing_evidence=str(convergence.get("missing_evidence", "") or ""),
             )
-            contract = render_convergence_contract(query, gap)
+            contract = render_convergence_contract(query, gap, cluster=supported_cluster)
             if contract:
                 length_hint = f"{length_hint}\n\n{contract}"
     except Exception as exc:  # guidance must never break synthesis
@@ -1113,15 +1123,11 @@ async def synthesize(
             render_consistency_contract,
         )
 
-        raw_convergence = ctx.get("convergence")
-        convergence_map: Dict[str, Any] = (
-            raw_convergence if isinstance(raw_convergence, dict) else {}
-        )
-        basis_map = ctx.get("ranking_basis") if isinstance(ctx.get("ranking_basis"), dict) else {}
         status = report_status(
             query,
-            convergence=convergence_map,
-            ranking_basis=basis_map or {},
+            convergence=convergence,
+            ranking_basis=basis_map,
+            cluster=supported_cluster,
         )
         consistency = render_consistency_contract(status)
         if consistency:
@@ -1390,6 +1396,37 @@ def _resolve_profile(
     if isinstance(profile, str) and profile.strip().lower() in PROFILES:
         return PROFILES[profile.strip().lower()]
     return select_profile(ctx, fact_count=fact_count)
+
+
+def _basis_candidates(basis_map: Dict[str, Any]) -> List[str]:
+    """Named options the evidence supports as EXAMPLES, from the ranking basis.
+
+    `assess_comparative_basis` already extracts these — it is what makes a
+    SHORTLIST verdict mean "these are the candidates" rather than "nothing was
+    identified". The conclusion renderers accept a `cluster=` argument and were
+    never given it, so the supported-cluster wording could not be reached from a
+    live run.
+
+    Reads both shapes the basis is stored in: a flat dict, and the nested
+    `{"basis": {...}}` that the router/audit path persists.
+    """
+    if not isinstance(basis_map, dict):
+        return []
+    source: Any = basis_map
+    nested = basis_map.get("basis")
+    if isinstance(nested, dict) and not basis_map.get("candidates"):
+        source = nested
+    raw = source.get("candidates") or ()
+    if not isinstance(raw, (list, tuple, set)):
+        return []
+    seen: List[str] = []
+    for item in raw:
+        text = str(item or "").strip()
+        # Short labels only: these are rendered inline in the writer contract,
+        # and a stray sentence-length candidate would blow the prompt up.
+        if text and len(text) <= 80 and text.lower() not in {s.lower() for s in seen}:
+            seen.append(text)
+    return seen[:8]
 
 
 def _length_hint(mode: str, ctx: Dict[str, Any]) -> str:
@@ -1931,6 +1968,13 @@ def _finalize(
                 _section_map(auditable),
                 convergence=convergence_map,
                 ranking_basis=ctx.get("ranking_basis") if isinstance(ctx.get("ranking_basis"), dict) else {},
+                # Same cluster the writer was given. Without it the audit
+                # classified any supported grouping as a violation, so a report
+                # that correctly presented a supported cluster was penalised for
+                # the very wording the contract asked for.
+                cluster=_basis_candidates(
+                    ctx.get("ranking_basis") if isinstance(ctx.get("ranking_basis"), dict) else {}
+                ),
             )
     except Exception as exc:
         import logging as _logging

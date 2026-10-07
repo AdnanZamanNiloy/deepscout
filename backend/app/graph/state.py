@@ -34,6 +34,11 @@ class ResearchState(TypedDict, total=False):
     answer_support: Dict[str, Any]
     confidence_breakdown: Dict[str, Any]
     confidence_history: List[float]
+    # True when the degraded-extraction cap (not an evidence deficit) is what
+    # holds confidence below target. Read by the depth controller so a run whose
+    # evidence could not be MEASURED stops expanding instead of re-extracting
+    # the same sources until the iteration ceiling.
+    confidence_degraded_capped: bool
     contradictions: List[Dict[str, Any]]
     mode: str
     decision_options: List[Dict[str, Any]]

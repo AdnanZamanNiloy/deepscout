@@ -152,6 +152,31 @@ def build_answer_audit(
         )
         lines.extend(["## Answer conformance (measured)", conformance_line, ""])
 
+    # Thesis fidelity: whether the answer actually carried the analyst's brief —
+    # its thesis, its insights, the relationships between them, the
+    # counter-evidence — rather than restating the source material. Measured
+    # state, audit-only, same contract as conformance above. It was computed and
+    # stored on every run but had no renderer, so a run could silently lose the
+    # analyst's framing and nothing in the audit recorded it.
+    fidelity = state.get("thesis_fidelity") or {}
+    if isinstance(fidelity, dict) and fidelity.get("score") is not None:
+        fidelity_line = (
+            f"Fidelity score {fidelity.get('score', 0)} · "
+            f"thesis {'carried' if fidelity.get('thesis_reflected', False) else 'missed'} · "
+            f"insights {fidelity.get('insights_carried', 0)}"
+            f"/{fidelity.get('insights_total', 0)} · "
+            f"relationships {fidelity.get('relationships_kept', 0)}"
+            f"/{fidelity.get('relationships_total', 0)} · "
+            f"counter-evidence {'kept' if fidelity.get('counter_kept', False) else 'dropped'} · "
+            f"{'not' if fidelity.get('not_recitation', True) else ''}"
+            f"{' ' if fidelity.get('not_recitation', True) else ''}recitation"
+        )
+        if fidelity.get("failures"):
+            fidelity_line += f" — {len(fidelity['failures'])} issue(s): " + "; ".join(
+                str(f) for f in fidelity["failures"][:3]
+            )
+        lines.extend(["## Thesis fidelity (measured)", fidelity_line, ""])
+
     # Research provenance: measured evidence accounting, conflicts, caveats.
     is_sufficient = bool(critique.get("is_sufficient", False))
     critique_reason = str(critique.get("reason", "")).strip()
