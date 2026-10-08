@@ -17,7 +17,7 @@ guarded by `tests/test_agents_facade.py::test_every_lazy_export_resolves`.
     critic_agent, redteam_agent                  — judgement + adversarial
     summarize_contradictions, compute_confidence — conflicts + scoring
     coverage_gaps                                — dynamic depth
-    ResearchBudget, retry/breaker helpers        — cost + reliability
+    ResearchBudget, retry/breaker helpers        — operational limits + reliability
 
 Executive decision (`app.core.decision`), scenarios (`app.core.scenarios`),
 self-diagnosis (`app.core.diagnose`) and the benchmark suite (`bench/`) live
@@ -65,10 +65,9 @@ _LAZY: dict[str, str] = {
     "ConfidenceReport": "app.agents.confidence",
     # depth control
     "coverage_gaps": "app.agents.stopping",
-    # budget / reliability
+    # operational limits / reliability
     "ResearchBudget": "app.agents.budget",
-    "BudgetExceeded": "app.agents.budget",
-    "estimate_tokens": "app.agents.budget",
+    "MODE_LIMIT_MULTIPLIER": "app.agents.budget",
     "retry_async": "app.agents.reliability",
     "CircuitBreaker": "app.agents.reliability",
     "gather_bounded": "app.agents.reliability",

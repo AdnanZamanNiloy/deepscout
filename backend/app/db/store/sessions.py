@@ -157,11 +157,13 @@ async def complete_research_run(
     run_id: str,
     status: str,
     confidence: float,
-    estimated_cost: float | None,
+    estimated_cost: float | None = None,
 ) -> None:
+    # `estimated_cost` is accepted for backward compatibility (the column stays
+    # in the schema) but the product no longer computes or reports cost.
     async with _connect(database_path) as db:
         await db.execute(
-            "UPDATE research_runs SET status = ?, confidence = ?, estimated_cost = ?, completed_at = ? WHERE id = ?",
-            (status, confidence, estimated_cost, _now(), run_id),
+            "UPDATE research_runs SET status = ?, confidence = ?, completed_at = ? WHERE id = ?",
+            (status, confidence, _now(), run_id),
         )
         await db.commit()

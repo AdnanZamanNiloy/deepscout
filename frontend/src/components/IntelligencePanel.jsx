@@ -106,7 +106,7 @@ export default function IntelligencePanel({
           <ConfidenceBreakdown breakdown={run.breakdown} />
           <RedTeamPanel redteam={run.redteam} />
           <EvidenceGrades distribution={run.evidenceDistribution} />
-          <BudgetMeter budget={run.budget} />
+          <RunUsageMeter usage={run.budget} />
 
           {run.error && run.resumable ? (
             <section className="intel-section">
@@ -133,7 +133,7 @@ function IdleState() {
         <li><IconTarget size={14} /> The seven-agent pipeline as it advances</li>
         <li><IconChart size={14} /> A confidence breakdown from measured signals</li>
         <li><IconShieldCheck size={14} /> Claim verification and citation health</li>
-        <li><IconAlert size={14} /> Cost, budget and adversarial review</li>
+        <li><IconAlert size={14} /> Adversarial review and dispute tracking</li>
       </ul>
     </section>
   );
@@ -198,46 +198,30 @@ function ConfidenceBreakdown({ breakdown }) {
   );
 }
 
-function BudgetMeter({ budget }) {
+function RunUsageMeter({ usage }) {
   /* Rendered only when the run actually reported telemetry, so a replay
-   * (which carries none) does not show a dead "arrives later" section. */
-  if (!budget || typeof budget !== "object") return null;
-  const tokens = budget.spent_tokens ?? 0;
-  const calls = budget.llm_calls ?? 0;
-  const usd = typeof budget.spent_usd === "number" ? budget.spent_usd : 0;
-  const util = typeof budget.utilization === "number" ? Math.round(budget.utilization * 100) : null;
-  const hits = budget.cache_hits ?? 0;
-  const hitRate = budget.cache_hit_rate ?? 0;
+   * (which carries none) does not show a dead "arrives later" section.
+   * Operational counts only — the product does not track cost or budget. */
+  if (!usage || typeof usage !== "object") return null;
+  const tokens = usage.spent_tokens ?? 0;
+  const calls = usage.llm_calls ?? 0;
+  const hits = usage.cache_hits ?? 0;
+  const hitRate = usage.cache_hit_rate ?? 0;
   const fmtTokens = tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : String(tokens);
   return (
     <section className="intel-section">
-      <h3>Cost &amp; budget</h3>
+      <h3>Run usage</h3>
       <div className="health-row">
         <span className="k">LLM calls</span>
         <span className="v">{calls}{hits > 0 ? ` (${hits} cached)` : ""}</span>
       </div>
       <div className="health-row">
-        <span className="k">Tokens spent</span>
+        <span className="k">Tokens</span>
         <span className="v">{fmtTokens}</span>
       </div>
-      <div className="health-row">
-        <span className="k">Estimated cost</span>
-        <span className="v">${usd < 0.01 && usd > 0 ? usd.toFixed(4) : usd.toFixed(3)}</span>
-      </div>
-      {util !== null ? (
-        <>
-          <div className="health-row" style={{ paddingBottom: 2 }}>
-            <span className="k">Budget utilization</span>
-            <span className="v" style={util >= 80 ? { color: "var(--deepscout-soft)" } : undefined}>{util}%</span>
-          </div>
-          <div className="bar budget-util-bar" style={{ marginBottom: 8 }}>
-            <div style={{ width: `${util}%` }} />
-          </div>
-        </>
-      ) : null}
       {hits > 0 ? (
         <div className="budget-sub note">
-          cache hit rate {Math.round(hitRate * 100)}% — repeated prompts served from disk, free
+          cache hit rate {Math.round(hitRate * 100)}% — repeated prompts served from disk
         </div>
       ) : null}
     </section>

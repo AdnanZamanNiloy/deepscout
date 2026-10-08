@@ -615,7 +615,7 @@ def orchestrate(
                 f"MAX_PARALLEL_AGENTS={max_parallel_agents}"
             )
 
-    from app.agents.budget import MODE_BUDGET_MULTIPLIER
+    from app.agents.budget import MODE_LIMIT_MULTIPLIER
 
     return OrchestrationPlan(
         complexity=complexity,
@@ -627,5 +627,5 @@ def orchestrate(
         mode=effective_mode,
         recommended_mode=recommended,
         targets=plan_targets(complexity, effective_mode, target_agents),
-        budget_multiplier=MODE_BUDGET_MULTIPLIER.get(effective_mode, 1.0),
+        budget_multiplier=MODE_LIMIT_MULTIPLIER.get(effective_mode, 1.0),
     )

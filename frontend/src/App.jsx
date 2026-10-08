@@ -285,12 +285,12 @@ export default function App() {
 
   /* One place that turns a run's terminal/stream status into a mission row.
    * All five call sites previously repeated the same field mapping; they now
-   * pass only what differs (session override, confidence, cost, extras). */
-  const saveRunMission = useCallback((run, { status, sessionId: sid, confidence = null, cost = null, ...extra }) => {
+   * pass only what differs (session override, confidence, extras). */
+  const saveRunMission = useCallback((run, { status, sessionId: sid, confidence = null, ...extra }) => {
     if (!run?.runId) return;
     saveMissions(upsertMission({
       sessionId: sid ?? sessionIdRef.current, runId: run.runId, query: run.query, mode: run.mode,
-      status, confidence, cost, ...extra,
+      status, confidence, ...extra,
     }));
   }, [saveMissions]);
 
@@ -486,7 +486,7 @@ export default function App() {
               if (msg) {
                 saveMissions(upsertMission({
                   sessionId: confirmedSession, runId: evt.request_id, query: msg.run.query,
-                  mode: msg.run.mode, status: "running", confidence: null, cost: null,
+                  mode: msg.run.mode, status: "running", confidence: null,
                   parentRunId: parentRef.current,
                 }));
               }
@@ -654,7 +654,6 @@ export default function App() {
           if (run.runId) {
             saveRunMission(run, {
               status: "completed", confidence: run.confidence,
-              cost: run.budget && typeof run.budget.spent_usd === "number" ? run.budget.spent_usd : null,
               degraded: run.degraded,
             });
           }

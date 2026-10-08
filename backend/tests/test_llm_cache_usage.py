@@ -70,7 +70,7 @@ async def test_cache_miss_on_different_prompt(tmp_path, monkeypatch):
     llm_cache.clear()
 
 
-async def test_usage_ledger_records_tokens_and_cost(tmp_path):
+async def test_usage_ledger_records_tokens(tmp_path):
     settings = _settings(tmp_path)
     client = LLMClient(settings)
 
@@ -88,12 +88,13 @@ async def test_usage_ledger_records_tokens_and_cost(tmp_path):
     snap = usage.snapshot()
     assert snap["llm_calls"] == 1
     assert snap["spent_tokens"] == 150
-    assert snap["spent_usd"] > 0
     assert snap["cache_hits"] == 0
-    assert snap["by_stage"]["planner"]["tokens"] == 150
+    # Cost tracking was removed: no dollar fields are reported.
+    assert "spent_usd" not in snap
+    assert "utilization" in snap  # operational ceiling, not spend
 
 
-async def test_cache_hits_refund_usd_but_count_tokens(tmp_path, monkeypatch):
+async def test_cache_hits_count_tokens_without_cost(tmp_path, monkeypatch):
     monkeypatch.setattr(llm_cache, "_force_disabled", False)
     llm_cache.set_enabled(True)
     settings = _settings(tmp_path)
@@ -107,24 +108,14 @@ async def test_cache_hits_refund_usd_but_count_tokens(tmp_path, monkeypatch):
 
         usage = start_run_usage("req-2", settings)
         await client.generate_json("sys", "same prompt")
-        spent_after_real_call = usage.budget.spent_usd
-        assert spent_after_real_call > 0
-
         await client.generate_json("sys", "same prompt")  # cache hit
         clear_run_usage()
 
     snap = usage.snapshot()
     assert snap["cache_hits"] == 1
     assert snap["cache_misses"] == 1
-    # A cache hit never billed a provider, so it must add $0 — recorded as a
-    # zero-cost ledger entry rather than credited back afterwards. Tokens and
-    # the call itself stay visible.
-    assert snap["spent_usd"] == round(spent_after_real_call, 6)
     assert snap["spent_tokens"] == 300
     assert snap["llm_calls"] == 2
-    # The cached record itself is zero-cost.
-    assert usage.budget.records[-1].cost_usd == 0.0
-    assert usage.budget.records[-1].kind == "llm"
 
     llm_cache.clear()
 
