@@ -49,7 +49,7 @@ async def fetch(db_path: str, days: int) -> dict:
         since = f"-{int(days)} days" if days > 0 else "-100 years"
         runs = await _all(
             db,
-            "SELECT id, query, status, confidence, estimated_cost, created_at "
+            "SELECT id, query, status, confidence, created_at "
             "FROM research_runs WHERE created_at >= datetime('now', ?) ORDER BY id",
             (since,),
         )
@@ -91,8 +91,6 @@ def render_text(data: dict, days: int) -> str:
         lines.append(f"  {status}: {count}")
     if health["avg_confidence"] is not None:
         lines.append(f"  avg confidence (completed): {health['avg_confidence']:.2f}")
-    if health["avg_cost"] is not None:
-        lines.append(f"  avg cost (completed): ${health['avg_cost']:.6f}")
     lines.append("")
 
     lines.append("Verification yield by source domain (top 8):")
