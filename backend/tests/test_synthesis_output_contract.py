@@ -137,7 +137,7 @@ def test_synthesis_answer_has_no_telemetry_strings():
                 "the pipeline itself reports only 80 of 96 facts verified."
             )}
 
-    result = _run(_TelemetryLLM())
+    result = _run(_TelemetryLLM(), synthesis_strict_cleanup=True)
     lowered = result.answer.lower()
     assert "pipeline confidence" not in lowered
     assert "below the 0.75 threshold" not in lowered

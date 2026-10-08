@@ -45,6 +45,7 @@ from app.agents.synthesis.citations import (
     _number_facts,
     _render_evidence_block,
     _render_ranges_block,
+    _render_source_excerpts,
     _source_lines,
 )
 from app.agents.synthesis.context_blocks import (
@@ -234,12 +235,28 @@ async def synthesize(
     raw_ambiguity = ctx.get("ambiguity")
     ambiguity_policy: Dict[str, Any] = raw_ambiguity if isinstance(raw_ambiguity, dict) else {}
 
+    # Process contracts are ALWAYS computed and kept on the run's audit/trace.
+    # Whether they are ALSO injected into the writer prompt is configurable: a
+    # strong model writes cleaner prose with fewer stacked constraints, and the
+    # post-hoc audits already enforce the same conclusions. Set
+    # synthesis_writer_process_contracts=True to steer the writer explicitly.
+    writer_contracts = bool(
+        getattr(getattr(llm, "settings", None), "synthesis_writer_process_contracts", False)
+    )
+    # Voice-flattening cleanup (telemetry scrub + repeated-limitation collapse)
+    # is off unless explicitly enabled; the audit profile always applies it.
+    # An explicit ctx value (tests, callers) wins over settings.
+    if "synthesis_strict_cleanup" not in ctx:
+        ctx["synthesis_strict_cleanup"] = bool(
+            getattr(getattr(llm, "settings", None), "synthesis_strict_cleanup", False)
+        )
+
     try:
         from app.agents.definition_lock import definition_lock, render_lock_contract
 
         lock = definition_lock(query, ambiguity_policy)
         lock_contract = render_lock_contract(lock)
-        if lock_contract:
+        if writer_contracts and lock_contract:
             length_hint = f"{length_hint}\n\n{lock_contract}"
         ctx["definition_lock"] = lock.to_dict()
     except Exception as exc:  # guidance must never break synthesis
@@ -260,7 +277,7 @@ async def synthesize(
         if is_superlative_query(query):
             basis = assess_comparative_basis(query, facts)
             basis_contract = render_ranking_contract(basis, query)
-            if basis_contract:
+            if writer_contracts and basis_contract:
                 length_hint = f"{length_hint}\n\n{basis_contract}"
             ctx["ranking_basis"] = basis.to_dict()
     except Exception as exc:  # guidance must never break synthesis
@@ -299,7 +316,7 @@ async def synthesize(
                 missing_evidence=str(convergence.get("missing_evidence", "") or ""),
             )
             contract = render_convergence_contract(query, gap, cluster=supported_cluster)
-            if contract:
+            if writer_contracts and contract:
                 length_hint = f"{length_hint}\n\n{contract}"
     except Exception as exc:  # guidance must never break synthesis
         logging.getLogger(__name__).warning("convergence_contract_failed", exc_info=exc)
@@ -323,7 +340,7 @@ async def synthesize(
             cluster=supported_cluster,
         )
         consistency = render_consistency_contract(status)
-        if consistency:
+        if writer_contracts and consistency:
             length_hint = f"{length_hint}\n\n{consistency}"
         ctx["report_status"] = status.to_dict()
     except Exception as exc:  # guidance must never break synthesis
@@ -359,7 +376,7 @@ async def synthesize(
             degraded=bool(ctx.get("degraded")),
         )
         construction_contract = render_construction_contract(construction)
-        if construction_contract:
+        if writer_contracts and construction_contract:
             length_hint = f"{length_hint}\n\n{construction_contract}"
         ctx["answer_construction"] = construction.to_dict()
     except Exception as exc:  # guidance must never break synthesis
@@ -377,7 +394,7 @@ async def synthesize(
         if str(policy.get("action", "") or "") in ("assume", "separate"):
             balance = assess_reading_evidence(facts, policy)
             balance_guidance = evidence_balance_guidance(balance)
-            if balance_guidance:
+            if writer_contracts and balance_guidance:
                 length_hint = f"{length_hint}\n\n{balance_guidance}"
             ctx["reading_evidence"] = balance.to_dict()
     except Exception as exc:  # guidance must never break synthesis
@@ -448,8 +465,19 @@ async def synthesize(
     payload: Dict[str, Any] = {}
     cap_index = 0
     timeout_second_chance = True
-    while cap_index < len(_FACT_CAP_LADDER):
-        fact_cap = _FACT_CAP_LADDER[cap_index]
+    # The single-pass writer is the primary path (section-wise is opt-in). It
+    # carries the WHOLE evidence view the model can fit: the ladder starts at
+    # the configured single-pass cap and shrinks only when a provider rejects
+    # the prompt size, so a large-context model sees the widest pool we can
+    # afford and synthesises across sources instead of summarising a slice.
+    configured_cap = int(
+        getattr(getattr(llm, "settings", None), "synthesis_single_pass_fact_cap", 0) or 0
+    ) or _FACT_CAP_LADDER[0]
+    cap_ladder = (configured_cap, *[c for c in _FACT_CAP_LADDER if c < configured_cap])
+    if not cap_ladder:
+        cap_ladder = _FACT_CAP_LADDER
+    while cap_index < len(cap_ladder):
+        fact_cap = cap_ladder[cap_index]
         top_facts = _stratified_top_facts(usable_facts, per_angle=10, cap=fact_cap)
         numbered, cited_facts = _number_facts(top_facts)
         angles = _angles_of(cited_facts)
@@ -494,8 +522,12 @@ async def synthesize(
             + "SUPPORTING EVIDENCE — cite each line by the number it begins with. "
             "Use only the evidence needed to support the brief above; do not "
             "enumerate every line:\n"
-            + _render_evidence_block(cited_facts)
+            + _render_evidence_block(cited_facts, limit=fact_cap)
             + "\n\n"
+            + _render_source_excerpts(
+                cited_facts,
+                ctx.get("source_excerpts") if isinstance(ctx.get("source_excerpts"), dict) else None,
+            )
             + _render_ranges_block(contradictions)
             + _render_context_block(ctx)
             + f"Sources (cite by number only):\n{_source_lines(numbered)}\n\n"
@@ -525,11 +557,11 @@ async def synthesize(
                 # Never more than one.
                 if (
                     timeout_second_chance
-                    and cap_index < len(_FACT_CAP_LADDER) - 1
+                    and cap_index < len(cap_ladder) - 1
                     and run_seconds_remaining() > 120.0
                 ):
                     timeout_second_chance = False
-                    cap_index = len(_FACT_CAP_LADDER) - 1
+                    cap_index = len(cap_ladder) - 1
                     logger.warning(
                         "[Synthesizer] provider stalled; one second chance at the smallest fact cap"
                     )

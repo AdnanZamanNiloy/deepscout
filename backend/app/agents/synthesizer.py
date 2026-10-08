@@ -159,6 +159,7 @@ from app.agents.synthesis.citations import (  # noqa: F401
     _number_facts,
     _render_evidence_block,
     _render_ranges_block,
+    _render_source_excerpts,
     _source_lines,
     _strip_sections,
     _value_grounded,

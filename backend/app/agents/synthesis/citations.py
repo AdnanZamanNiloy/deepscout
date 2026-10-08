@@ -164,6 +164,49 @@ def _render_evidence_block(cited_facts: Sequence[Dict[str, Any]], limit: int = 4
     return "\n".join(lines)
 
 
+def _render_source_excerpts(
+    cited_facts: Sequence[Dict[str, Any]],
+    source_excerpts: Dict[str, str] | None,
+    limit: int = 8,
+) -> str:
+    """Primary material for the writer: a bounded excerpt per cited source.
+
+    The claim list is distilled evidence; this is what the sources actually
+    say. Only the sources the cited facts point at are shown, and each excerpt
+    is already bounded upstream, so context cost is controlled. Numbered by the
+    SAME citation markers as the claims, so the writer can attribute a quote.
+    """
+    if not source_excerpts:
+        return ""
+    # Map source URL -> the citation number(s) that cite it.
+    number_by_url: Dict[str, int] = {}
+    for fact in cited_facts:
+        url = str(fact.get("source", "") or "").strip()
+        index = _safe_int(fact.get("citation"), 0)
+        if url and index and url not in number_by_url:
+            number_by_url[url] = index
+    parts: List[str] = []
+    seen: Set[int] = set()
+    for url, excerpt in source_excerpts.items():
+        index = number_by_url.get(url)
+        if not index or index in seen:
+            continue
+        text = re.sub(r"\s+", " ", str(excerpt or "")).strip()
+        if not text:
+            continue
+        seen.add(index)
+        parts.append(f"[{index}] {text}")
+        if len(parts) >= limit:
+            break
+    if not parts:
+        return ""
+    return (
+        "PRIMARY SOURCE EXCERPTS — what the cited sources actually say. Use "
+        "them to quote precisely, connect mechanisms and qualify claims; cite "
+        "the SAME [n] number as above:\n" + "\n\n".join(parts) + "\n\n"
+    )
+
+
 def _source_lines(numbered: Sequence[Dict[str, Any]]) -> str:
     out: List[str] = []
     for source in numbered:

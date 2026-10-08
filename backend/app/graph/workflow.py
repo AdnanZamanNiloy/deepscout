@@ -300,6 +300,30 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
             # counterarguments" from an unsearched pool.
             "counter_evidence_attempted": bool(state.get("counter_evidence_attempted")),
         }
+        # Raw source excerpts for the writer: the distilled claims read thin on
+        # their own. The verifier retains a bounded excerpt per source before it
+        # releases the full page; surface those so the writer can quote, connect
+        # and qualify from primary material instead of a claim list.
+        try:
+            from app.core.config import get_settings
+
+            max_sources = int(
+                getattr(get_settings(), "synthesis_source_excerpt_sources", 8) or 8
+            )
+            excerpts: Dict[str, str] = {}
+            for result in state.get("search_results", []) or []:
+                if not isinstance(result, dict):
+                    continue
+                url = str(result.get("url", "") or "").strip()
+                excerpt = str(result.get("source_excerpt", "") or "").strip()
+                if url and excerpt and url not in excerpts:
+                    excerpts[url] = excerpt
+                    if len(excerpts) >= max_sources:
+                        break
+            if excerpts:
+                base_context["source_excerpts"] = excerpts
+        except Exception as exc:
+            logger.warning("source_excerpt_collection_failed", error=str(exc), exc_info=exc)
         # Source-ledger composition: regulation dominance and non-Western
         # under-representation are surfaced on the report so a legal-summary
         # drift is visible, and so the writer can flag a provisional band.
