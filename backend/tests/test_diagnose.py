@@ -57,17 +57,16 @@ def test_critic_efficiency_empty():
 
 def test_run_health_mixes_statuses():
     runs = [
-        {"status": "completed", "confidence": 0.8, "estimated_cost": 0.001},
-        {"status": "completed", "confidence": 0.6, "estimated_cost": 0.003},
-        {"status": "failed", "confidence": 0.0, "estimated_cost": 0.0},
-        {"status": "timeout", "confidence": 0.0, "estimated_cost": 0.0},
+        {"status": "completed", "confidence": 0.8},
+        {"status": "completed", "confidence": 0.6},
+        {"status": "failed", "confidence": 0.0},
+        {"status": "timeout", "confidence": 0.0},
     ]
     health = run_health(runs)
     assert health["total"] == 4
     assert health["by_status"] == {"completed": 2, "failed": 1, "timeout": 1}
     assert health["fail_rate"] == 0.5
     assert health["avg_confidence"] == 0.7
-    assert health["avg_cost"] == 0.002
 
 
 def test_contradiction_watch_counts_sections():
@@ -85,7 +84,7 @@ def test_attention_flags_conservative():
 
 
 def test_attention_flags_quiet_on_healthy():
-    health = {"total": 10, "fail_rate": 0.0, "avg_cost": 0.0004, "by_status": {}}
+    health = {"total": 10, "fail_rate": 0.0, "by_status": {}}
     assert attention_flags(health, [], {"runs": 2, "expansion_rate": 0.0, "avg_confidence_gain": 0.0}) == []
 
 
@@ -114,11 +113,11 @@ def test_diagnosis_connection_is_read_only(tmp_path):
 def test_recommendations_mirror_flags():
     from app.core.diagnose import recommend
 
-    health = {"total": 10, "fail_rate": 0.3, "avg_cost": 0.02, "by_status": {}}
+    health = {"total": 10, "fail_rate": 0.3, "by_status": {}}
     domains = [{"domain": "spam.io", "claims": 12, "verified": 2, "verified_rate": 2 / 12, "avg_confidence": 0.4}]
     critic = {"runs": 10, "avg_iterations": 2.5, "expansion_rate": 0.9, "avg_confidence_gain": 0.01}
     recs = recommend(health, domains, critic)
-    assert len(recs) == 4
+    assert len(recs) == 3
     assert all(set(r) == {"problem", "suggestion"} for r in recs)
     assert any("LOW_QUALITY_DOMAINS" in r["suggestion"] for r in recs)
     assert any("sufficiency_threshold" in r["suggestion"] for r in recs)
@@ -127,5 +126,5 @@ def test_recommendations_mirror_flags():
 def test_recommendations_empty_when_healthy():
     from app.core.diagnose import recommend
 
-    health = {"total": 10, "fail_rate": 0.0, "avg_cost": 0.0004, "by_status": {}}
+    health = {"total": 10, "fail_rate": 0.0, "by_status": {}}
     assert recommend(health, [], {"runs": 2, "expansion_rate": 0.0, "avg_confidence_gain": 0.0}) == []

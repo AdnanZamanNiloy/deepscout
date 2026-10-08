@@ -85,7 +85,6 @@ def run_health(runs: List[Dict[str, Any]]) -> Dict[str, Any]:
         "by_status": by_status,
         "fail_rate": (failed / total) if total else 0.0,
         "avg_confidence": _mean("confidence"),
-        "avg_cost": _mean("estimated_cost"),
     }
 
 
@@ -112,8 +111,6 @@ def _finding_key(health: Dict[str, Any], domains: List[Dict[str, Any]],
     if critic["runs"] >= 5 and critic["expansion_rate"] > 0.8 and critic["avg_confidence_gain"] < 0.05:
         findings.append({"key": "wasteful_expansion", "rate": critic["expansion_rate"],
                          "gain": critic["avg_confidence_gain"]})
-    if health["avg_cost"] is not None and health["avg_cost"] > 0.01:
-        findings.append({"key": "high_cost", "cost": health["avg_cost"]})
     return findings
 
 
@@ -143,11 +140,6 @@ def attention_flags(
                 f"Critic expands {finding['rate']:.0%} of runs but gains only "
                 f"{finding['gain']:+.2f} confidence on average — expansion "
                 "may be burning budget for little improvement."
-            )
-        elif key == "high_cost":
-            flags.append(
-                f"Average run cost ${finding['cost']:.4f} is above the $0.01 comfort line — "
-                "review per-run budget caps."
             )
     return flags
 
@@ -180,11 +172,5 @@ def recommend(
                 "problem": "Expansion burns budget for little confidence gain.",
                 "suggestion": "Raise sufficiency_threshold in Settings (fewer expansions) "
                               "or lower max_iterations for the costly modes.",
-            })
-        elif key == "high_cost":
-            suggestions.append({
-                "problem": f"Average run cost ${finding['cost']:.4f}.",
-                "suggestion": "Default expensive queries to quick mode via the composer, "
-                              "and reduce per-run work (fewer expansion passes).",
             })
     return suggestions
