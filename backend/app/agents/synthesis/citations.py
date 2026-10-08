@@ -418,8 +418,7 @@ def _audit_units(body: str) -> List[str]:
 # tolerance made 2024 and 2025 "the same number", so a wrong year passed the
 # grounding check silently — the single most plausible fabrication in a
 # research report.
-def _is_year(value: float) -> bool:
-    return float(value).is_integer() and 1000.0 <= value <= 2999.0
+from app.core.primitives import is_year as _is_year  # noqa: F401
 
 
 def _value_grounded(value: float, evidence_values: Set[float], tolerance: float = 0.02) -> bool:

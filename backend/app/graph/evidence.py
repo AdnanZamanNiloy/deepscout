@@ -26,11 +26,7 @@ from app.graph.state import ResearchState
 logger = get_logger(__name__)
 
 
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
+from app.core.primitives import safe_float as _safe_float  # noqa: F401
 
 
 def _prepare_supporting_evidence(facts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

@@ -18,6 +18,11 @@ ignore = [
     # an unused cache_dir literal in the benchmark setup, and unused
     # timing markers kept for readability next to their pass.
     "F841",
+    # Unused function arguments are intentionally kept where they are part of a
+    # stable, call-compatible signature (e.g. render_quality_contract(query_type),
+    # complete_research_run(estimated_cost), node factories that take a fixed
+    # dependency set). Removing them would break callers for no behavioural gain.
+    "ARG001",
 ]
 
 [tool.ruff.lint.per-file-ignores]
