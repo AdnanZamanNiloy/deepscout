@@ -92,6 +92,69 @@ def test_sanitizer_repairs_query_opener():
     assert out.startswith("RAG refers to retrieval.")
 
 
+def test_sanitizer_keeps_numbered_items_as_a_list():
+    """A numbered block must survive as a list, never merge into one paragraph.
+
+    The ambiguity/coverage block ("1) **Sense** - note") was being folded into
+    the following prose by the paragraph merge, shipping "1. a 2. b 3. c" as a
+    single run-on paragraph.
+    """
+    from app.agents.synthesizer import _sanitize_answer_text
+
+    raw = (
+        "1) **Trends in artificial intelligence technology**, the direction of "
+        "model progress itself.\n"
+        "2) **Business and market adoption of AI**, how organisations put AI to "
+        "work.\n"
+        "3) **AI policy and regulation**, legislation and governance.\n"
+        "\nTail prose that wraps\nonto a second line."
+    )
+    out = _sanitize_answer_text(raw, "what is the current trend of ai")
+
+    numbered = out.split("\n\n")[0]
+    assert numbered.count("\n") == 2, numbered
+    assert numbered.startswith("1) **Trends in artificial intelligence technology**")
+    assert "\n2) **Business and market adoption of AI**" in out
+    assert "\n3) **AI policy and regulation**" in out
+    # Wrapped prose must still merge into one paragraph.
+    assert out.endswith("Tail prose that wraps onto a second line.")
+
+
+def test_sanitizer_ordered_list_does_not_duplicate_disambiguation():
+    """The disambiguation guard keys on "N) **", so markers must not be rewritten."""
+    from app.agents.synthesizer import _ensure_disambiguation, _sanitize_answer_text
+
+    ctx = {
+        "intent": {
+            "ambiguity": True,
+            "senses": [
+                {"label": "Trend", "note": "where the tech is heading"},
+                {"label": "Adoption", "note": "how organisations use it"},
+            ],
+        }
+    }
+    writer = (
+        "1) **Trend of the technology**, where capability is heading.\n"
+        "2) **Adoption of the technology**, how organisations use it.\n"
+        "\n## Findings\n\nBody text."
+    )
+    out = _ensure_disambiguation(_sanitize_answer_text(writer, "trend of ai"), ctx)
+    # The writer already numbered the senses: no second block prepended, and the
+    # existing items stay on their own lines.
+    assert out.count("1) **") == 1
+    assert "\n2) **Adoption of the technology**" in out
+
+
+def test_sanitizer_numbered_marker_needs_one_or_two_digits():
+    """A leading year or decimal is prose, not a list item."""
+    from app.agents.synthesizer import _sanitize_answer_text
+
+    raw = "2026 was pivotal for the industry.\n3.5 billion records were processed."
+    out = _sanitize_answer_text(raw, "what changed in 2026?")
+    assert "\n\n" not in out
+    assert "3.5 billion" in out
+
+
 def test_clean_snippet_strips_date_stamps():
     from app.agents.evidence_utils import clean_snippet_text
 
