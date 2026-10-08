@@ -50,10 +50,15 @@ def test_prompt_numbers_sources_and_bans_invention():
     llm = FakeLLM("Short answer [1].")
     asyncio.run(synthesizer_agent(llm, "What is RAG?", facts))
     assert "[1] en.wikipedia.org" in llm.seen["user"]
-    # v3 CITATION RULES block: no renumbering, no guessing, no uncited
-    # numbers — stronger than the old single sentence, different words.
-    assert "do not cite a number you were not given" in llm.seen["system"]
-    assert "does not\n    appear verbatim in the evidence" in llm.seen["system"]
+    # CITATION RULES: no renumbering, no guessing, no uncited numbers, and no
+    # number that is not in the evidence. Asserted on flattened whitespace and
+    # on fragments the rule cannot be stated without, so a prompt rewrite that
+    # keeps the rule cannot break the test on line-wrapping alone (it used to
+    # match one exact line break, which made it a reformat detector).
+    system_flat = " ".join(llm.seen["system"].lower().split())
+    assert "cite a number you were not given" in system_flat
+    assert "does not appear verbatim in the evidence" in system_flat
+    assert "never renumber" in system_flat
 
 
 def test_fallback_appends_legend():
@@ -539,7 +544,11 @@ def test_llm_prompt_carries_angles_and_evidence():
     # and single-pass alike), not duplicated into the top-level system prompt.
     assert "REASONING DEPTH" in seen["user"], "reasoning-depth contract must reach the writer"
     system_flat = " ".join(seen["system"].lower().split())
-    assert "separate them explicitly" in system_flat, "entity/sense separation rule must be present"
+    # The rule, not its punctuation: separate distinct entities/senses, or say
+    # the identity is ambiguous. Phrase-matched loosely so a rewrite that keeps
+    # the rule does not need this test edited.
+    assert "separate them" in system_flat, "entity/sense separation rule must be present"
+    assert "identity is ambiguous" in system_flat, "ambiguity fallback must be stated"
     assert "according to the research" in system_flat, "banned-phrase rule must be present"
     # The writing contract lives in the writer prompt, where the profile and
     # angles are known; it is adaptive now (no universal heading list), so it
