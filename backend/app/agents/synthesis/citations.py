@@ -46,12 +46,26 @@ MAX_LEGEND_SOURCES = 14
 # silently discarded — on a broad query with 30 domains that is most of the
 # evidence, and in the section-wise path it emptied sections and collapsed the
 # whole path. A legend line costs ~15 tokens; discarding verified evidence
-# costs the answer. The legend now sizes itself to the sources actually
-# present, bounded generously.
-MAX_LEGEND_SOURCES_HARD = 40
+# costs the answer. The legend sizes itself to the sources actually present,
+# bounded generously; the ceiling is overridable via
+# `synthesis_max_legend_sources` (a large-context model can cite a wide pool).
+MAX_LEGEND_SOURCES_HARD = 90
 
 # Caps tried in order when the provider rejects the request size.
-_FACT_CAP_LADDER = (40, 24, 14)
+_FACT_CAP_LADDER = (80, 40, 24, 14)
+
+
+def _legend_ceiling() -> int:
+    """Hard legend ceiling, from settings when available, else the constant."""
+    try:
+        from app.core.config import get_settings
+
+        return int(
+            getattr(get_settings(), "synthesis_max_legend_sources", MAX_LEGEND_SOURCES_HARD)
+            or MAX_LEGEND_SOURCES_HARD
+        )
+    except Exception:
+        return MAX_LEGEND_SOURCES_HARD
 
 
 def _legend_budget(facts: Sequence[Dict[str, Any]]) -> int:
@@ -62,7 +76,7 @@ def _legend_budget(facts: Sequence[Dict[str, Any]]) -> int:
         if f.get("source")
     }
     documents.discard("")
-    return max(MAX_LEGEND_SOURCES, min(MAX_LEGEND_SOURCES_HARD, len(documents)))
+    return max(MAX_LEGEND_SOURCES, min(_legend_ceiling(), len(documents)))
 
 
 def _number_facts(

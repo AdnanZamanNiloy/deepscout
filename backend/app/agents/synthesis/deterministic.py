@@ -241,7 +241,7 @@ def _deterministic_report(
     # The extractive path knows exactly which source each claim came from, so it
     # cites perfectly — claims were rendered with an identity token; now that
     # the used set is final, tokens become numbers.
-    numbered, pairs = _assign_numbers(used[:40], max_sources=MAX_LEGEND_SOURCES_HARD)
+    numbered, pairs = _assign_numbers(used[:80], max_sources=MAX_LEGEND_SOURCES_HARD)
     answer = "\n\n".join(sections) + "\n\n" + _legend_block(numbered)
     for fact, index in pairs:
         answer = answer.replace(_cite_token(fact), f"[{index}]")

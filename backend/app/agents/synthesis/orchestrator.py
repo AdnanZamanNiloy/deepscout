@@ -478,7 +478,9 @@ async def synthesize(
         cap_ladder = _FACT_CAP_LADDER
     while cap_index < len(cap_ladder):
         fact_cap = cap_ladder[cap_index]
-        top_facts = _stratified_top_facts(usable_facts, per_angle=10, cap=fact_cap)
+        # per_angle is bounded by fact_cap so a run with few angles still
+        # reaches the cap instead of being limited to per_angle x num_angles.
+        top_facts = _stratified_top_facts(usable_facts, per_angle=max(10, fact_cap), cap=fact_cap)
         numbered, cited_facts = _number_facts(top_facts)
         angles = _angles_of(cited_facts)
 

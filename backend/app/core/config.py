@@ -87,6 +87,12 @@ class Settings(BaseSettings):
     # top results kept per provider search before dedup/rank. Higher so the
     # ranker has more to choose the fetched top-N from.
     search_max_results: int = 15
+    # Sources summarised in one extractor call, and the hard ceiling on the
+    # report's numbered source legend. Raised from 12/40 so a broad run can
+    # cite the wide pool it actually retrieved instead of discarding evidence
+    # at the legend boundary. A large-context model can carry many sources.
+    summarizer_max_sources_per_call: int = 20
+    synthesis_max_legend_sources: int = 90
     # Retrieval access hardening: a registrable domain that returns a hard
     # block (403/451) or `search_domain_failure_threshold` transient failures
     # is skipped for `search_domain_cooldown_sec`, so later passes stop
