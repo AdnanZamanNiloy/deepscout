@@ -2,26 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import re
-from typing import Any, List, Set, Tuple
+from typing import List, Set, Tuple
 
 from app.agents.evidence_utils import extract_numbers
-
-
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _safe_int(value: Any, default: int = 0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        try:
-            return int(float(value))
-        except (TypeError, ValueError):
-            return default
+from app.core.primitives import safe_float as _safe_float, safe_int as _safe_int  # noqa: F401
 
 
 _TRIVIAL_NUMBERS: Set[float] = {float(n) for n in range(0, 11)}
@@ -62,8 +46,7 @@ def _values_match(a: Tuple[float, str], b: Tuple[float, str], tolerance: float =
     return abs(value_a - value_b) / scale <= tolerance
 
 
-def _is_year(value: float) -> bool:
-    return float(value).is_integer() and 1000.0 <= value <= 2999.0
+from app.core.primitives import is_year as _is_year  # noqa: F401
 
 
 def _now() -> datetime:

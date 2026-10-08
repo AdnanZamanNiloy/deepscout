@@ -14,24 +14,7 @@ import re
 from typing import Any, Dict, Set
 
 from app.agents.research_quality import independent_corroboration
-
-
-def _safe_int(value: Any, default: int = 0) -> int:
-    """int() that never raises. Dirty evidence must not crash synthesis."""
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        try:
-            return int(float(value))
-        except (TypeError, ValueError):
-            return default
-
-
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
+from app.core.primitives import safe_float as _safe_float, safe_int as _safe_int  # noqa: F401
 
 
 def _corroboration(fact: Dict[str, Any]) -> int:
