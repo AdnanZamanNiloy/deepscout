@@ -235,12 +235,12 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                 except Exception as exc:
                     logger.warning("persistence_failed", error=str(exc), exc_info=exc)
 
-            async def _finish_run(status: str, confidence: float, cost: float) -> None:
+            async def _finish_run(status: str, confidence: float) -> None:
                 """Terminal run write + session touch in one place, so every exit
                 path (completed/failed/timeout) keeps the chat's updated_at fresh."""
                 await _persist(complete_research_run(
                     settings.database_url, request_id, status,
-                    confidence=confidence, estimated_cost=cost,
+                    confidence=confidence,
                 ))
                 await _persist(touch_session(settings.database_url, session_id))
 
@@ -310,11 +310,11 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                     # Stored provider keys exist but nothing can decrypt them.
                     # Reported as itself: degrading to "no provider configured"
                     # would be a lie while the Providers tab lists a selection.
-                    await _finish_run("failed", 0.0, None)
+                    await _finish_run("failed", 0.0)
                     yield event_line("error", message=str(exc))
                     return
                 if not probe_ok:
-                    await _finish_run("failed", 0.0, None)
+                    await _finish_run("failed", 0.0)
                     yield event_line(
                         "error",
                         message=(
@@ -600,7 +600,7 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                                 ))
                                 saved_facts = len(facts)
             except TimeoutError:
-                await _finish_run("timeout", 0.0, round(usage.snapshot().get("spent_usd", 0.0) or 0.0, 6))
+                await _finish_run("timeout", 0.0)
                 yield event_line(
                     "error",
                     message=(
@@ -618,11 +618,10 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                 # apart from a real timeout; neither is resumable, and no
                 # report is saved on this path (only the normal completion
                 # below writes one), so a partial answer can never persist.
-                cost = round(usage.snapshot().get("spent_usd", 0.0) or 0.0, 6)
                 asyncio.get_running_loop().create_task(
                     complete_research_run(
                         settings.database_url, request_id, "cancelled",
-                        confidence=0.0, estimated_cost=cost,
+                        confidence=0.0,
                     )
                 )
                 asyncio.get_running_loop().create_task(
@@ -630,11 +629,11 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                 )
                 raise
             except ProviderSecretUnavailableError as exc:
-                await _finish_run("failed", 0.0, round(usage.snapshot().get("spent_usd", 0.0) or 0.0, 6))
+                await _finish_run("failed", 0.0)
                 yield event_line("error", message=str(exc))
                 return
             except Exception as exc:
-                await _finish_run("failed", 0.0, round(usage.snapshot().get("spent_usd", 0.0) or 0.0, 6))
+                await _finish_run("failed", 0.0)
                 message = str(exc)
                 if "No LLM provider configured" in message:
                     yield event_line(
@@ -656,7 +655,7 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
             confidence = float(final_state.get("confidence", 0.0))
             budget_snapshot = usage.snapshot()
 
-            await _finish_run("completed", confidence, round(float(budget_snapshot.get("spent_usd", 0.0) or 0.0), 6))
+            await _finish_run("completed", confidence)
             # Challenged flags land once contradictions are known (end of run).
             await _persist(mark_challenged_claims(
                 settings.database_url, request_id, last_snapshot.get("contradictions") or [],
@@ -796,8 +795,8 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
             except Exception as exc:
                 logger.warning("persistence_failed", error=str(exc), exc_info=exc)
 
-        async def _finish(status: str, confidence: float, cost: float) -> None:
-            await _persist_complete(settings.database_url, request_id, status, confidence, cost)
+        async def _finish(status: str, confidence: float) -> None:
+            await _persist_complete(settings.database_url, request_id, status, confidence)
             if resume_session_id:
                 await _persist(touch_session(settings.database_url, resume_session_id))
 
@@ -811,7 +810,7 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
             if llm_client is not None:
                 probe_ok, probe_detail = await llm_client.probe_all()
                 if not probe_ok:
-                    await _finish("failed", 0.0, None)
+                    await _finish("failed", 0.0)
                     yield event_line(
                         "error",
                         message=(
@@ -887,12 +886,12 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
                                                   breakdown=snapshot.get("confidence_breakdown") or {})
 
             except TimeoutError:
-                await _finish("timeout", 0.0, None)
+                await _finish("timeout", 0.0)
                 yield event_line("error", message="Resumed run timed out. Try again or raise RESEARCH_TIMEOUT_SEC.")
                 return
             except asyncio.CancelledError:
                 asyncio.get_running_loop().create_task(
-                    _persist_complete(settings.database_url, request_id, "cancelled", 0.0, None)
+                    _persist_complete(settings.database_url, request_id, "cancelled", 0.0)
                 )
                 if resume_session_id:
                     asyncio.get_running_loop().create_task(
@@ -900,14 +899,14 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
                     )
                 raise
             except Exception as exc:
-                await _finish("failed", 0.0, None)
+                await _finish("failed", 0.0)
                 yield event_line("error", message=f"Resumed run failed: {exc}")
                 return
 
             final_state = last_snapshot
             report = str(final_state.get("final_report", ""))
             confidence = float(final_state.get("confidence", 0.0))
-            await _finish("completed", confidence, None)
+            await _finish("completed", confidence)
             await _persist(mark_challenged_claims(
                 settings.database_url, request_id, last_snapshot.get("contradictions") or [],
             ))

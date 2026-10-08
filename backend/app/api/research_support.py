@@ -114,9 +114,13 @@ async def _persist_record(db: str, run_id: str, iteration: int, critique: dict,
         logger.warning("persistence_failed", error=str(exc), exc_info=exc)
 
 
-async def _persist_complete(db: str, run_id: str, status: str, confidence: float, cost: float) -> None:
+async def _persist_complete(
+    db: str, run_id: str, status: str, confidence: float, cost: float | None = None
+) -> None:
+    # `cost` is accepted for call-site compatibility but no longer stored — the
+    # product does not track spend.
     try:
-        await complete_research_run(db, run_id, status, confidence=confidence, estimated_cost=cost)
+        await complete_research_run(db, run_id, status, confidence=confidence)
     except Exception as exc:
         logger.warning("persistence_failed", error=str(exc), exc_info=exc)
 

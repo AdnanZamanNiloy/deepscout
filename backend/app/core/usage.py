@@ -1,11 +1,15 @@
-"""Per-run usage ledger: the wire connecting LLM calls to the budget governor.
+"""Per-run usage ledger: token/call counts and wall-clock for one research run.
 
-The LLMClient is app-scoped (one instance per process), but spend is per-run.
-Threading a budget object through every agent signature would touch a dozen
+The LLMClient is app-scoped (one instance per process), but usage is per-run.
+Threading a ledger object through every agent signature would touch a dozen
 call sites and the LangGraph state schema; instead the ledger rides a
 ContextVar — the same pattern degradation flags already use — so the LLM
-client, the search layer, the depth controller and the API routes can all
-read the same per-run accounting with zero signature changes.
+client, the search layer and the API routes can all read the same per-run
+accounting with zero signature changes.
+
+Cost and budget accounting were removed: the ledger reports OPERATIONAL counts
+(LLM calls, tokens, wall-clock, cache hits) for observability only. No prices,
+no dollar figures, no spend ceilings.
 
 Starlette serves each request inside its own task context, so concurrent
 research runs never see each other's ledgers.
@@ -24,7 +28,7 @@ logger = get_logger(__name__)
 
 
 class RunUsage:
-    """One research run's spend: budget + cache counters + timing."""
+    """One research run's usage: operational limits + cache counters + timing."""
 
     __slots__ = (
         "request_id", "budget", "mode", "started_at",
@@ -55,19 +59,11 @@ class RunUsage:
         model: Optional[str] = None,
         cached: bool = False,
     ) -> None:
-        """Record one LLM call. Cached hits record tokens (they still count
-        against free-tier daily quotas conceptually) but at zero cost —
-        diskcache serves them without a provider round-trip. The budget does
-        the zero-cost bookkeeping itself, so the run total is correct even if
-        another record lands between this call and the next."""
+        """Record one LLM call and its approximate token counts."""
         self.budget.record_llm(
             stage,
-            prompt=prompt,
-            completion=completion,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            model=model,
-            cached=cached,
+            input_tokens=input_tokens or 0,
+            output_tokens=output_tokens or 0,
         )
         if cached:
             self.cache_hits += 1
@@ -127,7 +123,7 @@ def clear_run_usage() -> None:
 
 
 def run_seconds_remaining() -> float:
-    """Wall-clock seconds left in the current research run's budget.
+    """Wall-clock seconds left in the current research run's time ceiling.
 
     Ladders consult this before spending a second provider attempt: a
     budget-aware retry is worth it, a retry that will be killed by the run

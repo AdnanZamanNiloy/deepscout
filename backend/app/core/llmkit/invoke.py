@@ -218,14 +218,14 @@ class ProviderInvocationMixin:
                         raise RuntimeError(f"HuggingFace model '{model_name}' error: {data.get('error')}")
                     if text is not None:
                         # HF inference returns bare text: estimate token usage.
-                        from app.agents.budget import estimate_tokens
+                        from app.core.llmkit.usage_accounting import _estimate_tokens
                         return CompletionResult(
                             text=text,
                             provider="huggingface",
                             model=model_name,
                             endpoint=url,
-                            input_tokens=estimate_tokens(prompt),
-                            output_tokens=estimate_tokens(text),
+                            input_tokens=_estimate_tokens(prompt),
+                            output_tokens=_estimate_tokens(text),
                         )
 
             tried = ", ".join(not_available_errors) if not_available_errors else "no models tried"

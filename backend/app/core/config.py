@@ -56,22 +56,25 @@ class Settings(BaseSettings):
     database_url: str = "./research.db"
 
     # Pipeline limits
-    max_parallel_search: int = 2
+    max_parallel_search: int = 3
     max_parallel_agents: int = 3  # hardware cap (8GB host) — raise only after load-testing
     # Concurrent LLM calls across the whole pipeline (planner + N summarizer
-    # workers + critic + synthesizer). Low by default: concurrent large
-    # prompts are what exhausts free-tier TPM/TPD quotas (observed live:
-    # Groq TPD 200K burned by 3 parallel ~6K-token summarizer calls).
-    max_parallel_llm: int = 2
+    # workers + critic + synthesizer). The old default of 2 was sized for a
+    # free tier whose TPM/TPD quotas a few parallel large prompts would exhaust.
+    # A paid/large-context endpoint has no such ceiling and stalls badly at 2
+    # (the semaphore, not the provider, becomes the bottleneck). Lower it again
+    # only for a strict free tier.
+    max_parallel_llm: int = 4
     max_iterations: int = 3
     # Retrieval depth: how many top-ranked results per sub-question get full
     # content fetched. Each fetch is ~6KB cleaned text kept only until
-    # summarization; 8 pages per angle is the deep-research floor (concurrency
-    # bounded by MAX_PARALLEL_SEARCH, content released after verification).
-    search_fetch_top_n: int = 8
+    # summarization; 10 pages per angle gives deeper reports more primary
+    # material (concurrency bounded by MAX_PARALLEL_SEARCH, content released
+    # after verification).
+    search_fetch_top_n: int = 10
     # Query fan-out: max search queries issued per pass (questions + their
     # alternate phrasings). Bounds latency when plans carry variants.
-    search_max_queries_per_pass: int = 8
+    search_max_queries_per_pass: int = 12
     # v3 retrieval knobs (defaults mirror the v3 modules' getattr fallbacks,
     # so adding them changes nothing until the v3 search is ported):
     # concurrent page fetches per search, bounded separately from query fan-out
@@ -81,8 +84,9 @@ class Settings(BaseSettings):
     search_retry_attempts: int = 3
     # query variants (incl. primary-source fan-out) per search contract
     max_queries_per_contract: int = 3
-    # top results kept per provider search before dedup/rank
-    search_max_results: int = 10
+    # top results kept per provider search before dedup/rank. Higher so the
+    # ranker has more to choose the fetched top-N from.
+    search_max_results: int = 15
     # Retrieval access hardening: a registrable domain that returns a hard
     # block (403/451) or `search_domain_failure_threshold` transient failures
     # is skipped for `search_domain_cooldown_sec`, so later passes stop
@@ -166,15 +170,19 @@ class Settings(BaseSettings):
     # re-probing an instance that is down or misconfigured every 15 seconds.
     search_searxng_cooldown_sec: float = 60.0
 
-    # Research budget governor (v3 budget module; enforced only once ported)
-    max_budget_usd: float = 0.50
-    max_budget_tokens: int = 400_000
+    # Research run operational limits. Wall-clock and call ceilings are liveness
+    # guards (a stalled provider must not hold the run past the interactive
+    # deadline; the fan-out needs a runaway guard). No cost/dollar budget.
     max_llm_calls: int = 60
     max_research_seconds: float = 300.0
-    strict_budget: bool = False
 
     # Timeouts (seconds)
-    llm_timeout_sec: float = 25.0
+    # 25s was sized for a free-tier 8B model that must fail fast to the next
+    # provider. A stronger large-context model legitimately needs 30-60s on a
+    # planner- or writer-sized prompt, and a premature timeout trips the
+    # breaker and degrades whole runs. 60s is the working default for a
+    # single good provider; lower it only when a free-tier chain must fail over.
+    llm_timeout_sec: float = 60.0
     # How long an LLM provider's circuit breaker stays OPEN after `threshold`
     # consecutive failures. Sized against the request budget a user actually
     # waits on: a healthy direct answer is ~2-3s end to end, so the previous
@@ -196,10 +204,13 @@ class Settings(BaseSettings):
     # Sampling temperature sent to a custom/OpenAI-compatible provider that does
     # not specify its own. A per-provider value (set in the Providers tab) wins;
     # this is the fallback. It has to be configurable because some models accept
-    # only a fixed set — a provider that allows exactly 0, 0.6 or 1 rejects the
-    # old hardcoded 0.1 with a 400 on EVERY call, which silently degraded the
+    # only a fixed set — a provider that allows exactly 0, 0.6 or 1 rejects an
+    # unsupported value with a 400 on EVERY call, which silently degraded the
     # whole pipeline to extraction with no way for the user to fix it.
-    llm_temperature: float = 0.1
+    # 0.3 is a deliberate middle: the writer wants enough variance for natural,
+    # non-repetitive prose, while extraction/planning stay stable. Set it lower
+    # (0.1/0.0) for strictly deterministic structured callers.
+    llm_temperature: float = 0.3
     search_timeout_sec: float = 20.0
     # Full multi-agent runs take minutes (retrieval + 6 LLM stages), the
     # same as upstream GPT Researcher. Per-provider fail-fasts (auth/402/
@@ -268,8 +279,38 @@ class Settings(BaseSettings):
     # written section by section and assembled, which stops a broad query
     # collapsing into one narrow thesis or a source dump. Degrades to the
     # single-pass writer when disabled or when a section call fails.
+    #
+    # DEFAULT OFF: one strong writer pass over the full evidence pool with a
+    # large-context model produces more coherent prose than N independent
+    # section calls stitched together (section-wise fragments voice and forces
+    # cross-section de-duplication). Enable for very long reports on
+    # small-context providers where a single prompt will not fit.
     synthesis_outline_enabled: bool = True
-    synthesis_section_wise_enabled: bool = True
+    synthesis_section_wise_enabled: bool = False
+    # Single-pass evidence view: how many facts the writer prompt carries (the
+    # first rung of the adaptive cap ladder). A large-context model can read a
+    # wide slice of the pool, which is what lets it synthesise across sources.
+    synthesis_single_pass_fact_cap: int = 80
+    # Raw source text the writer is shown alongside the distilled claims.
+    # Claims alone read thin: the writer cannot quote, connect or qualify what
+    # it never sees. A bounded excerpt per top source gives it primary material
+    # WITHOUT re-introducing the full-page memory footprint (the excerpt is
+    # capped and only the top sources are included).
+    synthesis_source_excerpt_chars: int = 1800
+    synthesis_source_excerpt_sources: int = 8
+    # Whether the writer prompt carries the process contracts (definition lock,
+    # ranking basis, convergence, consistency, construction, evidence balance).
+    # They are ALWAYS computed and kept on the run's audit/trace; this only
+    # controls whether they are ALSO injected into the writer prompt. A strong
+    # model writes more coherent prose with fewer stacked constraints — the
+    # audit layer still enforces the same conclusions post-hoc. Set False for
+    # prose quality; True to steer the writer explicitly.
+    synthesis_writer_process_contracts: bool = False
+    # Voice-flattening cleanup: drop sentences that narrate the pipeline's own
+    # metrics, and collapse repeated "the evidence does not establish…" phrasing
+    # to one instance. Valuable on the fixed-format audit profile (always on
+    # there); heavy-handed on a prose report, so off by default.
+    synthesis_strict_cleanup: bool = False
     # Context compression: merge near-duplicate claims into one thematic
     # entry before the writer sees them. Distinct claims are never dropped.
     synthesis_context_compression: bool = True
