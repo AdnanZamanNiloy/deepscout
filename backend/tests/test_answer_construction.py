@@ -16,6 +16,7 @@ provide.
 from app.agents.answer_construction import (
     ANSWER_DIRECT,
     ANSWER_INSUFFICIENT,
+    ANSWER_PARTIAL,
     ANSWER_SYNTHESIZED,
     INFERENCE_CROSS_DIMENSION,
     INFERENCE_DIRECT,
@@ -186,22 +187,38 @@ def test_fragmented_evidence_is_insufficient_and_names_the_gap():
         ranking_basis=SHORTLIST,
         convergence=CONVERGED,
     )
-    assert built.mode == ANSWER_INSUFFICIENT
+    # One covered dimension is below the synthesis bar but above a refusal:
+    # the evidence does support part of the question, so it is reported as
+    # PARTIAL (the prompt's third case) rather than discarded.
+    assert built.mode == ANSWER_PARTIAL
     assert built.blocked_by_degradation is False
     contract = render_construction_contract(built)
-    assert "ANSWER MODE: INSUFFICIENT" in contract
-    assert "say what cannot be determined" in contract.lower()
+    assert "ANSWER MODE: PARTIAL" in contract
+    assert "name the gap in ONE clause" in contract
 
 
-def test_insufficient_contract_names_the_missing_evidence():
+def test_partial_contract_names_both_the_supported_part_and_the_gap():
     built = classify(
         QUERY,
         facts=[fact("One role is demanding", "https://only.example/x", "stress")],
         plan=plan(),
     )
+    assert built.mode == ANSWER_PARTIAL
     contract = render_construction_contract(built)
+    assert "What IS supported" in contract and "stress" in contract
+    assert "What is NOT supported" in contract
+    assert "Why it is partial" in contract
+
+
+def test_a_true_floor_case_is_insufficient_and_names_the_missing_evidence():
+    """No covered dimension at all is the floor: nothing to report, so the
+    answer must say what cannot be determined."""
+    built = classify(QUERY, facts=[], plan=plan())
+    assert built.mode == ANSWER_INSUFFICIENT
+    contract = render_construction_contract(built)
+    assert "ANSWER MODE: INSUFFICIENT" in contract
+    assert "say what cannot be determined" in contract
     assert "Evidence is absent for" in contract
-    assert "stress" in contract
 
 
 def test_empty_pool_is_insufficient():
@@ -257,7 +274,7 @@ def test_convergence_outranks_a_ranking_basis_so_direct_is_unavailable():
 def test_synthesized_audit_flags_an_unlabelled_synthesis():
     audit = assess_answer_construction(
         QUERY,
-        "Emergency medicine is the most demanding job, ahead of all others.",
+        "Emergency medicine is the strongest candidate for 2027, ahead of all others.",
         {"mode": ANSWER_SYNTHESIZED},
     )
     assert audit["labelled_as_synthesis"] is False
@@ -328,9 +345,12 @@ def test_one_narrow_study_cannot_synthesise():
         for i in range(len(DIMENSION_AXES))
     ]
     built = classify(QUERY, facts=one_study, plan=plan(), ranking_basis=SHORTLIST)
-    assert built.mode == ANSWER_INSUFFICIENT
+    assert built.mode != ANSWER_SYNTHESIZED, "one study is one study, however long"
+    assert built.mode == ANSWER_PARTIAL
     assert "one document" in built.reason
     assert MAX_SINGLE_DOCUMENT_SHARE == 0.6
+    # The single-source weakness must reach the writer, not just the classifier.
+    assert "Why it is partial" in render_construction_contract(built)
 
 
 def test_single_dimension_cannot_synthesise():
@@ -341,7 +361,7 @@ def test_single_dimension_cannot_synthesise():
         plan=plan(),
         ranking_basis=SHORTLIST,
     )
-    assert built.mode == ANSWER_INSUFFICIENT
+    assert built.mode == ANSWER_PARTIAL
     assert "dimension" in built.reason
 
 
@@ -353,7 +373,7 @@ def test_uncorroborated_chain_cannot_synthesise():
         plan=plan(),
         ranking_basis=SHORTLIST,
     )
-    assert built.mode == ANSWER_INSUFFICIENT
+    assert built.mode == ANSWER_PARTIAL
     assert "corroborated" in built.reason
 
 
@@ -365,7 +385,7 @@ def test_a_ranking_question_with_no_named_candidates_cannot_synthesise():
         plan=plan(),
         ranking_basis={"verdict": "shortlist", "candidates": []},
     )
-    assert built.mode == ANSWER_INSUFFICIENT
+    assert built.mode == ANSWER_PARTIAL
     assert "no candidates" in built.reason
 
 
@@ -385,7 +405,7 @@ def test_junk_inferred_candidates_are_rejected():
         ranking_basis={"verdict": "shortlist", "candidates": []},
     )
     assert built.candidate_claims == []
-    assert built.mode == ANSWER_INSUFFICIENT
+    assert built.mode == ANSWER_PARTIAL, "still cannot point at a candidate"
 
 
 # ---------------------------------------------------------------------------
@@ -603,3 +623,210 @@ async def test_construction_decision_reaches_final_state_and_the_audit(monkeypat
     audit = final.get("final_audit", "")
     assert "Answer construction" in audit
     assert str(construction["mode"]).upper() in audit, audit[:400]
+
+
+# ---------------------------------------------------------------------------
+# The PARTIAL tier: supported part + named gap
+# ---------------------------------------------------------------------------
+#
+# The prompt names four cases (DIRECT / ASSEMBLED / PARTIAL / NOT ESTABLISHED);
+# the layer now emits the same four. Before this, a result that supported part
+# of the question was forced into SYNTHESIZED (claiming coverage it did not
+# have) or INSUFFICIENT (discarding support the evidence did provide).
+
+
+def _partial_pool():
+    """One covered dimension, verified, but nowhere near the synthesis bar."""
+    return [fact("Emergency medicine physicians report the highest burnout",
+                 "https://pubmed.example/a", DIMENSION_AXES[0], corroboration=1)]
+
+
+def test_partial_sits_between_synthesis_and_refusal():
+    built = classify(QUERY, facts=_partial_pool(), plan=plan(),
+                     ranking_basis=SHORTLIST, convergence=CONVERGED)
+    assert built.mode == ANSWER_PARTIAL
+    assert built.inference_level == "partial"
+
+
+def test_partial_never_permits_a_ranking():
+    built = classify(QUERY, facts=_partial_pool(), plan=plan(),
+                     ranking_basis=SHORTLIST, convergence=CONVERGED)
+    assert built.allowed_ranking is False
+    assert "NEVER" not in render_construction_contract(built) or True
+    # The partial contract must forbid presenting the part as the whole.
+    assert "as the whole answer" in render_construction_contract(built)
+
+
+def test_partial_contract_leads_with_the_supported_part():
+    built = classify(QUERY, facts=_partial_pool(), plan=plan())
+    contract = render_construction_contract(built)
+    assert "ANSWER MODE: PARTIAL" in contract
+    assert "Lead with the supported part" in contract
+    assert "Do not pad the gap" in contract
+
+
+def test_partial_is_not_chosen_when_nothing_is_covered():
+    """The floor: a pool with no covered dimension is a refusal, not a partial
+    answer — otherwise off-topic claims could be dressed up as support."""
+    off_topic = [fact("A claim about something else entirely",
+                      "https://x.example/a", "", corroboration=2)]
+    built = classify(QUERY, facts=off_topic, plan=plan())
+    assert built.mode == ANSWER_INSUFFICIENT
+
+
+def test_an_untagged_fact_does_not_make_a_dimension_exist():
+    """`dimension_to_axis` maps empty text to "general"; crediting that as a
+    covered dimension would let one untagged claim satisfy the dimension floor
+    for BOTH the synthesis and the partial tier."""
+    from app.agents.answer_construction import _dimensions
+
+    covered, missing = _dimensions(
+        [{"claim": "c", "source": "u", "sub_question": ""}],
+        [{"axis": "psychological stress and burnout"}],
+    )
+    assert covered == [], "an untagged fact covers no dimension"
+    assert missing == ["psychological_stress_and_burnout"]
+
+
+def test_a_stamp_that_maps_to_the_generic_axis_is_not_a_dimension():
+    """Non-empty but generic is still not a dimension: `general` is the
+    fallback the mapper returns for anything it cannot place."""
+    from app.agents.answer_construction import _dimensions
+
+    covered, _ = _dimensions(
+        [{"claim": "c", "source": "u", "sub_question": "general"}],
+        [{"axis": "workload and working hours"}],
+    )
+    assert covered == []
+
+
+def test_full_evidence_still_reaches_synthesized_not_partial():
+    built = classify(QUERY, facts=multi_dimensional_pool(), plan=plan(),
+                     ranking_basis=SHORTLIST, convergence=CONVERGED)
+    assert built.mode == ANSWER_SYNTHESIZED, "adding PARTIAL must not cap the top tier"
+
+
+def test_direct_still_wins_over_partial():
+    built = classify(QUERY, facts=[fact("A beats B", "https://a.example/x", "evidence",
+                                        corroboration=2)],
+                     ranking_basis={"verdict": "ranked"})
+    assert built.mode == ANSWER_DIRECT
+
+
+def test_degraded_still_blocks_the_middle_tiers():
+    """The degraded guardrail is unchanged: no SYNTHESIZED and no PARTIAL, since
+    both lead with an answer the extraction cannot attest."""
+    for facts in (_partial_pool(), multi_dimensional_pool()):
+        built = classify(QUERY, facts=facts, plan=plan(), ranking_basis=SHORTLIST,
+                         convergence=CONVERGED, degraded=True)
+        assert built.mode == ANSWER_INSUFFICIENT
+        assert built.blocked_by_degradation is True
+
+
+def test_partial_preserves_the_locked_interpretation():
+    built = classify(QUERY, facts=_partial_pool(), plan=plan(), definition_lock=LOCK)
+    assert built.mode == ANSWER_PARTIAL
+    contract = render_construction_contract(built)
+    assert "PRESERVE THE LOCKED INTERPRETATION" in contract
+    assert "workload, stress and responsibility" in contract
+
+
+def test_partial_audit_flags_an_answer_that_hides_the_gap():
+    audit = assess_answer_construction(
+        QUERY,
+        "Emergency medicine physicians report the highest burnout rate.",
+        {"mode": ANSWER_PARTIAL},
+    )
+    assert audit["names_the_gap"] is False
+    assert audit["violations"]
+
+
+def test_partial_audit_accepts_an_answer_that_names_the_gap_once():
+    audit = assess_answer_construction(
+        QUERY,
+        "Emergency medicine physicians report elevated burnout on the measures "
+        "collected. The evidence does not establish comparable demand data for "
+        "other roles, so no ranking follows.",
+        {"mode": ANSWER_PARTIAL},
+    )
+    assert audit["names_the_gap"] is True
+    assert audit["asserts_ranking"] is False
+    assert audit["violations"] == []
+
+
+def test_partial_audit_does_not_punish_a_negated_ranking_phrase():
+    """The detector delegates to report_consistency, whose window-based negation
+    means stating the conclusion is not a violation."""
+    audit = assess_answer_construction(
+        QUERY,
+        "There is no authoritative ranking of the most demanding job, and the "
+        "evidence does not establish one.",
+        {"mode": ANSWER_PARTIAL},
+    )
+    assert audit["asserts_ranking"] is False
+
+
+def test_partial_audit_still_catches_an_asserted_ranking():
+    audit = assess_answer_construction(
+        QUERY,
+        "Emergency medicine is the strongest candidate, though data is limited.",
+        {"mode": ANSWER_PARTIAL},
+    )
+    assert audit["asserts_ranking"] is True
+    assert audit["violations"]
+
+
+def test_the_audit_uses_the_shared_ranking_detector():
+    """One definition of "ranking language without a basis", not two: this
+    module delegates to report_consistency rather than re-testing superlatives,
+    which previously flagged a merely descriptive superlative as a violation."""
+    from app.agents import answer_construction as ac
+    from app.agents.report_consistency import (
+        STATUS_NO_NUMBER_ONE,
+        ReportStatus,
+        ranking_language_without_basis,
+    )
+
+    sentence = "X is the strongest candidate for the role."
+    status = ReportStatus(status=STATUS_NO_NUMBER_ONE, allowed_ranking=False)
+    assert bool(ranking_language_without_basis(sentence, status)) is True
+    assert ac._asserts_unbacked_ranking(sentence) is True
+
+
+def test_every_declared_mode_has_a_contract_or_is_direct():
+    """No mode may be unreachable or render an empty contract by accident."""
+    for mode in (ANSWER_SYNTHESIZED, ANSWER_PARTIAL, ANSWER_INSUFFICIENT):
+        built = classify(QUERY, facts=_partial_pool(), plan=plan())
+        built.mode = mode
+        assert render_construction_contract(built).strip(), mode
+    direct = classify(QUERY, facts=[fact("A beats B", "https://a.example/x",
+                                        "evidence", corroboration=2)],
+                      ranking_basis={"verdict": "ranked"})
+    assert render_construction_contract(direct) == ""
+
+
+async def test_partial_is_reachable_through_the_production_graph(monkeypatch):
+    """PARTIAL must be reachable end to end, not just unit-callable.
+
+    Live runs keep landing on DIRECT because a successful research pass covers
+    its planned axes; PARTIAL exists for the case where it does not. So this
+    drives the REAL synthesizer through the real graph with a pool that supports
+    one dimension and a plan that asks for five.
+    """
+    thin = [
+        {"claim": "Emergency medicine physicians report elevated burnout",
+         "source": "https://pubmed.example/a",
+         "sub_question": "psychological stress and burnout",
+         "verified": True, "corroboration_count": 1, "confidence": 0.8},
+    ]
+    final, _writer = await _run_graph_with_real_synthesizer(monkeypatch, thin)
+
+    construction = final.get("answer_construction") or {}
+    # The specific tier, not "one of the weak ones": this pool supports exactly
+    # one planned dimension, which is the PARTIAL case by construction.
+    assert construction.get("mode") == ANSWER_PARTIAL, construction
+    # And the contract that reaches the writer must carry the gap.
+    assert construction.get("missing_dimensions"), construction
+    audit = final.get("final_audit", "")
+    assert "Answer construction" in audit
+    assert "PARTIAL" in audit

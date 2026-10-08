@@ -172,7 +172,7 @@ def build_answer_audit(
             construction_line += (
                 " Candidates: " + ", ".join(str(c) for c in construction["candidate_claims"][:5]) + "."
             )
-        if construction.get("allowed_ranking") is False and mode == "SYNTHESIZED":
+        if construction.get("allowed_ranking") is False and mode in ("SYNTHESIZED", "PARTIAL"):
             construction_line += (
                 " No ranking is asserted: the evidence does not contain a comparison."
             )
