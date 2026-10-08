@@ -97,6 +97,10 @@ class ProviderIn(BaseModel):
     model: str = Field(..., min_length=1, max_length=200)
     # Optional: older clients omit it and the store falls back to `model`.
     model_name: str | None = Field(default=None, max_length=200)
+    # Optional sampling temperature for providers that restrict it. Omitted =
+    # unset (the global default applies); 0 is a real value, not "unset", so it
+    # is not defaulted here. The store validates the 0-2 range.
+    temperature: float | None = Field(default=None, ge=0, le=2)
 
 
 class ProviderUpdate(BaseModel):
@@ -105,6 +109,7 @@ class ProviderUpdate(BaseModel):
     api_key: str | None = Field(default=None, max_length=2000)
     model: str | None = Field(default=None, max_length=200)
     model_name: str | None = Field(default=None, max_length=200)
+    temperature: float | None = Field(default=None, ge=0, le=2)
 
 
 class ProviderTestIn(BaseModel):
@@ -153,6 +158,7 @@ async def create_llm_provider(body: ProviderIn, request: Request) -> Dict[str, A
         row = await provider_store.save_provider(
             _providers_db(request), name=body.name, base_url=body.base_url,
             model=body.model, api_key=body.api_key, model_name=body.model_name,
+            temperature=body.temperature,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
@@ -168,6 +174,14 @@ async def update_llm_provider(provider_id: int, body: ProviderUpdate, request: R
     existing = await provider_store.get_provider(db_path, provider_id)
     if existing is None:
         raise HTTPException(status_code=404, detail=f"Unknown provider id: {provider_id}")
+    # Only forwarded when the request actually carried the field.
+    # `model_fields_set` distinguishes "client omitted it" from "client sent
+    # null or 0"; a plain None default cannot, and forwarding an absent field
+    # would clear a temperature the caller never mentioned. The store's own
+    # sentinel default does the same job for direct callers.
+    update_kwargs: Dict[str, Any] = {}
+    if "temperature" in body.model_fields_set:
+        update_kwargs["temperature"] = body.temperature
     try:
         row = await provider_store.save_provider(
             db_path,
@@ -177,6 +191,7 @@ async def update_llm_provider(provider_id: int, body: ProviderUpdate, request: R
             model=body.model if body.model is not None else existing["model"],
             api_key=body.api_key,
             model_name=body.model_name,
+            **update_kwargs,
         )
     except LookupError:
         raise HTTPException(status_code=404, detail=f"Unknown provider id: {provider_id}")

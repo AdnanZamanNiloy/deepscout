@@ -30,7 +30,25 @@ import "./model-controls.css";
  * disables any chain and vice versa. Keys are encrypted at rest; the UI only
  * ever shows a last-4 hint. */
 
-const EMPTY = { name: "", base_url: "", api_key: "", model: "", model_name: "" };
+const EMPTY = {
+  name: "", base_url: "", api_key: "", model: "", model_name: "",
+  // Blank = unset (the server's default applies). Kept as a string so the
+  // field can be genuinely empty — "0" and "" must stay distinguishable,
+  // because 0 is a real temperature some models require.
+  temperature: "",
+};
+
+/* Parse the temperature field into what the API expects: "" -> omitted (unset),
+ * otherwise a number. Returns { value } or { error } so the form can reject a
+ * typo instead of silently sending nothing. */
+export function parseTemperature(raw) {
+  const text = String(raw ?? "").trim();
+  if (!text) return { value: undefined };
+  const number = Number(text);
+  if (!Number.isFinite(number)) return { error: "Temperature must be a number." };
+  if (number < 0 || number > 2) return { error: "Temperature must be between 0 and 2." };
+  return { value: number };
+}
 
 /* Tab order, exported for the test that locks this contract. The four
  * sections used to stack into one long scroll; each is now its own sub-page
@@ -114,6 +132,9 @@ function AddModelSection({ editing, onSaved, onCancel }) {
       ? {
         name: editing.name, base_url: editing.base_url, api_key: "",
         model: editing.model, model_name: editing.model_name || "",
+        // null/undefined -> blank field ("unset"), 0 -> "0".
+        temperature: editing.temperature === null || editing.temperature === undefined
+          ? "" : String(editing.temperature),
       }
       : EMPTY);
     setFormError("");
@@ -141,12 +162,22 @@ function AddModelSection({ editing, onSaved, onCancel }) {
     setSaved("");
     try {
       const label = form.model_name.trim();
+      const temp = parseTemperature(form.temperature);
+      if (temp.error) {
+        setFormError(temp.error);
+        setSaving(false);
+        return;
+      }
       if (editing) {
         // Blank label explicitly clears it back to the model ID; omitting the
         // key entirely would instead preserve the previously stored label.
         const payload = {
           name: form.name, base_url: form.base_url,
           model: form.model, model_name: label,
+          // Always sent, including null to clear back to the default: the
+          // server treats an omitted field as "keep the stored value", so a
+          // blank box must be forwarded explicitly as null.
+          temperature: temp.value === undefined ? null : temp.value,
         };
         if (form.api_key.trim()) payload.api_key = form.api_key;
         await updateProvider(editing.id, payload);
@@ -155,6 +186,9 @@ function AddModelSection({ editing, onSaved, onCancel }) {
         await createProvider({
           name: form.name, base_url: form.base_url,
           api_key: form.api_key, model: form.model, model_name: label,
+          // Omitted (undefined) on create = unset, which is the same thing a
+          // blank box means; no need to send null.
+          temperature: temp.value,
         });
         // Clear the form so the save is unmistakable. Previously the fields
         // kept their values on success, so an add was only visible as a
@@ -199,6 +233,17 @@ function AddModelSection({ editing, onSaved, onCancel }) {
               placeholder="e.g. GPT-4o mini" maxLength={200}
             />
             <span className="pv-hint">Display label. Defaults to the model ID.</span>
+          </div>
+          <div className="pv-field">
+            <label htmlFor="pv-temperature">Temperature <span className="pv-optional">optional</span></label>
+            <input
+              id="pv-temperature" value={form.temperature} onChange={set("temperature")}
+              inputMode="decimal" placeholder="default"
+            />
+            <span className="pv-hint">
+              Leave blank unless the model rejects the default. Some accept only
+              0, 0.6 or 1.
+            </span>
           </div>
           <div className="pv-field pv-span-2">
             <label htmlFor="pv-url">Base URL</label>
@@ -328,6 +373,12 @@ function ModelsSection({ providers, activeId, probes, timeouts, busyId, chainUse
                       <dt>API key</dt>
                       <dd>{p.has_key ? <code>{p.key_hint || "•••• stored"}</code> : <span className="pv-muted">none stored</span>}</dd>
                     </div>
+                    {typeof p.temperature === "number" ? (
+                      <div>
+                        <dt>Temperature</dt>
+                        <dd><code>{p.temperature}</code></dd>
+                      </div>
+                    ) : null}
                   </dl>
                   <p
                     className={`pv-probe${probeState ? ` probe-${probeState.state}` : ""}`}

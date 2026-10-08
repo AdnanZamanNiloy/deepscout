@@ -167,6 +167,10 @@ CREATE TABLE IF NOT EXISTS llm_providers (
     -- provider API). Kept nullable-with-default so every existing row and the
     -- ALTER in init_db resolve to the same shape.
     model_name TEXT DEFAULT '',
+    -- Sampling temperature for this provider. NULL = unset (use the global
+    -- LLM_TEMPERATURE default). Kept nullable so an explicit 0 stays distinct
+    -- from "unset": a provider limited to 0/0.6/1 must be able to say 0.
+    temperature REAL,
     is_active INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -321,6 +325,14 @@ async def init_db(database_path: str) -> None:
         provider_names = {r[1] for r in await provider_cols.fetchall()}
         if "model_name" not in provider_names:
             await db.execute("ALTER TABLE llm_providers ADD COLUMN model_name TEXT DEFAULT ''")
+        # Per-provider sampling temperature (additive, idempotent). Deliberately
+        # NULLABLE with no default: NULL means "unset, use the global default",
+        # which must stay distinguishable from an explicit 0.0 — 0 is a VALID
+        # and commonly required temperature (some models accept only 0, 0.6 or
+        # 1), so a DEFAULT would silently blur "the user chose 0" into "unset"
+        # and send 0.1 to a provider that rejects it.
+        if "temperature" not in provider_names:
+            await db.execute("ALTER TABLE llm_providers ADD COLUMN temperature REAL")
         # Provider fallback chains (additive, idempotent): ordered lists of
         # existing providers. A single enabled chain drives the runtime chain;
         # members are ordered by `position` and unique per chain.
