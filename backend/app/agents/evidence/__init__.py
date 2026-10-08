@@ -1,30 +1,24 @@
 """Evidence hygiene, scoring, deduplication and citation support checks.
 
+Upgrades in this version (behaviour-preserving unless noted):
+
+1. `dedupe_semantic_facts` NO LONGER DESTROYS METADATA.
+2. Merging records CROSS-SOURCE AGREEMENT instead of discarding it.
+3. Similarity has a cheap token prefilter in front of SequenceMatcher.
+4. `source_reliability_score` delegates to `sources.authority_score`.
+5. `verify_answer_support` also checks NUMBERS.
+6. New: `extract_numbers`, `numeric_conflict`, `claim_polarity`, `evidence_stats`.
+
 Refactor note
 -------------
 The implementation now lives in the `app.agents.evidence` package, split into
 single-responsibility modules (`domain`, `text`, `numbers`, `polarity`,
-`filtering`, `dedupe`, `support`, `cleaning`, `dates`, `stats`). This module is
-the stable facade: it re-exports every public and private name the rest of the
-codebase imports from `app.agents.evidence_utils`, so the import surface is
-UNCHANGED.
+`filtering`, `dedupe`, `support`, `cleaning`, `dates`, `stats`). This package
+`__init__` is the stable facade: it re-exports every public and private name the
+rest of the codebase imports from `app.agents.evidence_utils`, so the import
+surface is UNCHANGED.
 """
 from __future__ import annotations
-
-# Re-exported source-registry helpers: these were module-scope imports in the
-# pre-refactor `evidence_utils`, so consumers that imported them from here
-# (e.g. `canonical_url`) keep working unchanged.
-from app.agents.sources import (  # noqa: F401
-    LOW_TRUST_DOMAINS,
-    TIER_PEER_REVIEWED,
-    authority_score,
-    canonical_url,
-    classify_source,
-    documentary_authority,
-    evidence_freshness,
-    is_primary_source,
-    primary_source_share,
-)
 
 from app.agents.evidence.domain import (  # noqa: F401
     LOW_QUALITY_DOMAINS,
