@@ -184,25 +184,47 @@ def _normalize_query_concept(query: str) -> str:
 _BULLET_SEP_RE = re.compile(r"(?<=[.!?\]])\s+-\s+(?=[A-Z0-9\"'(])")
 
 
+# An ordered list item ("1) ", "2. "). The marker is capped at two digits so a
+# line that merely opens with a year or a decimal ("2026 was ...", "3.5 billion
+# people") is not mistaken for a list item and swallowed into the paragraph.
+_ORDERED_ITEM_RE = re.compile(r"^\d{1,2}[.)]\s+\S")
+
+
 def _sanitize_answer_text(answer: str, query: str) -> str:
     """Normalize the writer's markdown into the report's block structure.
 
     Preserves visual hierarchy: markdown headings become their own blocks,
-    consecutive "- " lines stay distinct list items (joined into one bullet
-    block), and paragraph breaks are kept. Only intra-line whitespace collapses;
-    consecutive prose lines still merge, so the model's line-wrapping does not
-    become line breaks.
+    consecutive "- " and "N) " lines stay distinct list items (joined into one
+    list block), and paragraph breaks are kept. Only intra-line whitespace
+    collapses; consecutive prose lines still merge, so the model's line-wrapping
+    does not become line breaks.
+
+    Ordered markers are kept exactly as the writer wrote them and are never
+    rewritten to "N." — `_ensure_disambiguation` recognises an existing numbered
+    block by its "N) **" shape, so normalizing the marker would make it prepend a
+    second, duplicate block.
     """
     raw_lines = (answer or "").replace("\r\n", "\n").split("\n")
     paras: List[str] = []
     current: List[str] = []
     bullets: List[str] = []
+    ordered: List[str] = []
 
     def _flush_bullets() -> None:
         nonlocal bullets
         if bullets:
             paras.append("\n".join(bullets))
             bullets = []
+
+    def _flush_ordered() -> None:
+        nonlocal ordered
+        if ordered:
+            paras.append("\n".join(ordered))
+            ordered = []
+
+    def _flush_lists() -> None:
+        _flush_ordered()
+        _flush_bullets()
 
     def _flush_prose() -> None:
         nonlocal current
@@ -215,21 +237,31 @@ def _sanitize_answer_text(answer: str, query: str) -> str:
         is_heading = bool(re.match(r"^#{1,6}\s+\S", line))
         if line.startswith("- "):
             _flush_prose()
+            _flush_ordered()
             for part in _BULLET_SEP_RE.split(line):
                 part = part.strip()
                 if part:
                     bullets.append(part if part.startswith("- ") else f"- {part}")
-        elif is_heading:
+        elif _ORDERED_ITEM_RE.match(line):
+            # A numbered item is its own list entry, never prose. Merging these
+            # into the surrounding paragraph is what flattened the ambiguity
+            # block's "1. a 2. b 3. c" into one run-on sentence. Consecutive
+            # items accumulate into one block (like bullets) and are flushed by
+            # the next non-ordered line.
+            _flush_prose()
             _flush_bullets()
+            ordered.append(line)
+        elif is_heading:
+            _flush_lists()
             _flush_prose()
             paras.append(line)
         elif line:
-            _flush_bullets()
+            _flush_lists()
             current.append(line)
         else:
-            _flush_bullets()
+            _flush_lists()
             _flush_prose()
-    _flush_bullets()
+    _flush_lists()
     _flush_prose()
     text = "\n\n".join(paras).strip()
 

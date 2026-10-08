@@ -38,6 +38,36 @@ function renderInline(text) {
   return nodes;
 }
 
+/* A numbered block that reached us already flattened onto a single line
+ * ("1. a 2. b 3. c"). Reports persisted before the backend preserved these line
+ * breaks still store the run-on form, so split the inline markers back into
+ * real list items instead of rendering one paragraph.
+ *
+ * Deliberately conservative — the inline markers must continue the same
+ * consecutive run AND every recovered item must start with a bold lead-in, the
+ * shape the ambiguity/coverage block uses ("N) **Label** - note"). Prose that
+ * merely contains something like "phase 2) of the plan" is left alone. */
+const INLINE_ORDERED_RE = /(?:^|\s)(\d{1,2})[.)]\s+(?=\S)/g;
+
+function splitInlineOrderedItems(body, startNum) {
+  INLINE_ORDERED_RE.lastIndex = 0;
+  const marks = [];
+  let m;
+  while ((m = INLINE_ORDERED_RE.exec(body)) !== null) marks.push(m);
+  if (!marks.length) return null;
+  const nums = marks.map((mk) => Number(mk[1]));
+  if (!nums.every((n, i) => n === startNum + 1 + i)) return null;
+  const parts = [];
+  for (let i = 0; i < marks.length; i++) {
+    const from = marks[i].index + marks[i][0].length;
+    const to = i + 1 < marks.length ? marks[i + 1].index : body.length;
+    const part = body.slice(from, to).trim();
+    if (part) parts.push(part);
+  }
+  if (!parts.length || !parts.every((p) => p.startsWith("**"))) return null;
+  return parts;
+}
+
 /* Minimal rich renderer for the report body: `## ` section headers,
  * `- `/`1. ` list items, and inline markdown become real hierarchy.
  * Backend owns the words — this only maps markers to elements. */
@@ -70,7 +100,7 @@ function renderRichText(body) {
   };
 
   const BULLET_RE = /^\s*[-*+]\s+(.*)$/;
-  const NUMBER_RE = /^\s*\d+[.)]\s+(.*)$/;
+  const NUMBER_RE = /^\s*(\d+)[.)]\s+(.*)$/;
 
   blocks.forEach((block) => {
     // A blank-line-separated block may itself contain several lines (list
@@ -108,7 +138,17 @@ function renderRichText(body) {
         const lineOrdered = Boolean(num);
         if (list.length && lineOrdered !== ordered) flushList();
         if (!list.length) ordered = lineOrdered;
-        list.push((num ? num[1] : bul[1]).trim());
+        const itemBody = (num ? num[2] : bul[1]).trim();
+        if (num) {
+          // A block whose numbered items were flattened onto one line.
+          const split = splitInlineOrderedItems(itemBody, Number(num[1]));
+          if (split) {
+            split.forEach((part) => list.push(part));
+            sawListLine = true;
+            continue;
+          }
+        }
+        list.push(itemBody);
         sawListLine = true;
       } else if (list.length && line.trim() && /^\s+/.test(line)) {
         // Indented continuation of the current item.
