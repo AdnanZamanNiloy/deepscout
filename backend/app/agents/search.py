@@ -1,609 +1,125 @@
-"""Search & retrieval layer.
+"""Search Agent — multi-provider search, fetch and ranking.
 
-Correctness fixes (each was silently costing evidence)
-------------------------------------------------------
-1. REDIRECTS WERE NOT FOLLOWED. `httpx` does not follow redirects by default and
-   `_fetch_with_client` only accepted status 200, so every page behind a 301/302
-   — which is most canonical URLs, every http->https upgrade, and nearly all
-   news sites — returned empty text. The result looked like "content fetch
-   failed" but was really "we never asked for the real page".
-
-2. BLOCKLIST MATCHED SUBSTRINGS OF THE WHOLE URL. `any(b in r.url ...)` blocked
-   any URL containing "x.com" anywhere, including paths and unrelated hosts like
-   "matrix.com", while missing nothing it was meant to catch. Matching is now
-   host-based.
-
-3. PLANNED VARIANTS WERE NEVER SEARCHED. The planner is instructed to emit 1-2
-   alternate phrasings per sub-question specifically because different phrasings
-   retrieve different sources — and `run_search` only ever searched
-   `question`. Variants and the primary-source query are now searched and their
-   results merged before ranking.
-
-4. CACHE KEY IGNORED search_type. A "news" search and an "encyclopedia" search
-   for the same words shared one cache entry, so whichever ran first defined
-   both for the whole TTL.
-
-5. DUPLICATE URLS COUNTED AS DISTINCT SOURCES. Dedup compared raw URL strings,
-   so `?utm_source=`, `#section`, `http://` and trailing-slash variants each
-   consumed a fetch slot and each inflated the "distinct sources" count that
-   gates the critic.
-
-Capability upgrades
--------------------
-* Primary-source providers (arXiv, Crossref, Wikipedia extracts) — free, no key,
-  and they return the documents that secondary sources quote.
-* Retries + per-provider circuit breakers, so a rate-limited provider costs one
-  timeout per cooldown instead of one per sub-question per pass.
-* Ranking that accounts for recency and primary-source status rather than
-  authority plus snippet length.
-* Response size caps: an unbounded `r.text` on a large document is a real
-  memory risk on an 8GB host.
+Refactor note
+-------------
+The helper layers (result type, text overlap, scoring, ranking, content fetch,
+SearXNG parsing and provider feed parsers) now live in the `app.agents.searchkit`
+package. This module is the stable facade: it defines `SearchClient` (the public
+class) and re-exports every helper name the rest of the codebase imports from
+`app.agents.search`, so the import surface is UNCHANGED.
 """
 from __future__ import annotations
 
 import asyncio
-import html
-import random
-import re
-import time
-from dataclasses import dataclass, field
-from html.parser import HTMLParser
-from typing import Any, Dict, List, Optional, Sequence, Union
-from urllib.parse import quote
-from xml.etree import ElementTree
+import html  # noqa: F401
+import random  # noqa: F401
+import re  # noqa: F401
+import time  # noqa: F401
+from dataclasses import dataclass, field  # noqa: F401
+from html.parser import HTMLParser  # noqa: F401
+from typing import Any, Dict, List, Optional, Sequence, Union  # noqa: F401
+from urllib.parse import quote  # noqa: F401
+from xml.etree import ElementTree  # noqa: F401
 
 import httpx
 
 from app.core.cache import cache_key, get_cache
 from app.core.config import Settings
 from app.core.logging import get_logger
-
 from app.agents.planner import SubQuestion
+from app.agents.searchkit.cache_mixin import CacheMixin
+from app.agents.searchkit.providers_mixin import ProviderSearchMixin
+from app.agents.searchkit.content_mixin import ContentMixin
 from app.agents.reliability import (
     RetryPolicy,
-    call_protected,
+    call_protected,  # noqa: F401
     gather_bounded,
-    get_breaker,
-    retry_after_from_headers,
+    get_breaker,  # noqa: F401
+    retry_after_from_headers,  # noqa: F401
 )
 from app.agents.retrieval_health import (
     DomainRegistry,
     FailedFetchLog,
     RetrievalHealth,
-    classify_fetch_failure,
-    failure_cools_host,
-    failure_is_transient,
+    classify_fetch_failure,  # noqa: F401
+    failure_cools_host,  # noqa: F401
+    failure_is_transient,  # noqa: F401
 )
 from app.agents.sources import (
-    TOPICALITY_AUTHORITY_FLOOR,
-    build_dimension_primary_query,
-    build_substitution_query,
-    canonical_url,
-    classify_source,
-    documentary_authority,
-    extract_domain as _host,
-    freshness_score,
-    is_primary_source,
-    is_topically_irrelevant,
+    TOPICALITY_AUTHORITY_FLOOR,  # noqa: F401
+    build_dimension_primary_query,  # noqa: F401
+    build_substitution_query,  # noqa: F401
+    canonical_url,  # noqa: F401
+    classify_source,  # noqa: F401
+    documentary_authority,  # noqa: F401
+    extract_domain as _host,  # noqa: F401
+    freshness_score,  # noqa: F401
+    is_primary_source,  # noqa: F401
+    is_topically_irrelevant,  # noqa: F401
     partition_site_targets,
-    topical_engagement,
-    topicality_floor_applies,
+    topical_engagement,  # noqa: F401
+    topicality_floor_applies,  # noqa: F401
+)
+
+from app.agents.searchkit.types import (  # noqa: F401
+    SearchResult,
+)
+from app.agents.searchkit.text import (  # noqa: F401
+    _normalize_text,
+    _semantic_overlap,
+    _is_semantic_duplicate,
+    _domain,
+)
+from app.agents.searchkit.scoring import (  # noqa: F401
+    BLOCKED_DOMAINS,
+    _is_blocked,
+    PREFERRED_HOST_BONUS,
+    PREFERRED_FAMILY_BONUS,
+    _preferred_domain_bonus,
+    _score_result,
+)
+from app.agents.searchkit.ranking import (  # noqa: F401
+    ORIGIN_CAP,
+    _apply_topical_floor,
+    _deduplicate_and_rank,
+)
+from app.agents.searchkit.fetch import (  # noqa: F401
+    _WIKI_USER_AGENT,
+    _BROWSER_USER_AGENT,
+    MAX_FETCH_BYTES,
+    _READABLE_TYPES,
+    _VisibleTextExtractor,
+    _clean_html,
+    BLOCK_PAGE_PHRASES,
+    _looks_like_block_page,
+    _extract_pdf_text,
+    FETCH_RETRY_AFTER_CAP_SEC,
+    _retry_after_header,
+    FetchOutcome,
+    _fetch_once,
+    _domain_of,
+)
+from app.agents.searchkit.searxng import (  # noqa: F401
+    _SITE_OPERATOR_RE,
+    _SEARXNG_MAX_QUERY_CHARS,
+    _searxng_enabled,
+    _searxng_endpoint,
+    _searxng_search_type_params,
+    _prepare_searxng_query,
+    _searxng_published,
+    _searxng_to_results,
+)
+from app.agents.searchkit.queries import (  # noqa: F401
+    _split_query,
+    contract_queries,
+)
+from app.agents.searchkit.providers import (  # noqa: F401
+    _arxiv_to_results,
+    _crossref_to_results,
+    _wiki_search_to_results,
 )
 
 logger = get_logger(__name__)
-
-# Bump when the shape of a cached search payload changes; stale entries would
-# otherwise serve pre-fix results for a full TTL.
-SEARCH_CACHE_VERSION = "search-v4"
-
-# =============================================================================
-# DATA STRUCTURE
-# =============================================================================
-
-@dataclass
-class SearchResult:
-    title: str
-    url: str
-    snippet: str
-    content: str = ""
-    sub_question: str = ""
-    provider: str = "unknown"
-    search_type: str = "general"
-    reliability_score: float = 0.0
-    content_length: int = 0
-    fetched_at: float = field(default_factory=time.time)
-    is_content_fetched: bool = False
-    # Publish date when the provider supplies one (DDG news `date`, Wikipedia
-    # revision `timestamp`, arXiv `published`, Crossref `issued`) or a fetch
-    # Last-Modified header. "" means unknown — never synthesized.
-    published_at: str = ""
-    # Which planned query actually produced this hit: the base question, a
-    # variant, or the primary-source-scoped variant. Kept so the trace can show
-    # which phrasings are earning their cost.
-    matched_query: str = ""
-    is_primary: bool = False
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "title": self.title,
-            "url": self.url,
-            "snippet": self.snippet,
-            "content": self.content or self.snippet,
-            "sub_question": self.sub_question,
-            "provider": self.provider,
-            "search_type": self.search_type,
-            "reliability_score": round(self.reliability_score, 3),
-            "content_length": self.content_length,
-            # Whether this page's content was actually fetched and read, as
-            # opposed to only appearing in the result list. The trace needs the
-            # distinction to show which sources were genuinely opened; without
-            # it here the flag lived only on the dataclass and never reached
-            # graph state, so "View web page" could never be grounded in fact.
-            # Additive key — existing readers ignore it.
-            "is_content_fetched": self.is_content_fetched,
-            "published_at": self.published_at,
-            "matched_query": self.matched_query,
-            "is_primary": self.is_primary,
-        }
-
-
-# =============================================================================
-# UTILITIES
-# =============================================================================
-
-def _normalize_text(text: str) -> str:
-    return re.sub(r"\W+", " ", (text or "").lower()).strip()
-
-
-def _semantic_overlap(a: str, b: str) -> float:
-    a_words = set(_normalize_text(a).split())
-    b_words = set(_normalize_text(b).split())
-    if not a_words or not b_words:
-        return 0.0
-    return len(a_words & b_words) / len(a_words | b_words)
-
-
-def _is_semantic_duplicate(a: str, b: str, threshold: float = 0.6) -> bool:
-    return _semantic_overlap(a, b) >= threshold
-
-
-def _domain(url: str) -> str:
-    return _host(url)
-
-
-# =============================================================================
-# CONFIG
-# =============================================================================
-
-BLOCKED_DOMAINS = {
-    "pinterest.com", "instagram.com", "facebook.com",
-    "twitter.com", "x.com", "tiktok.com", "youtube.com",
-    "amazon.com", "ebay.com", "quora.com",
-}
-
-
-def _is_blocked(url: str) -> bool:
-    """Host-based blocklist check.
-
-    The previous substring test (`"x.com" in url`) blocked any URL whose path or
-    host merely contained a blocked string — "matrix.com", "netflix.com/x.com/",
-    a query parameter mentioning youtube.com — and was therefore both too
-    aggressive and unpredictable.
-    """
-    host = _host(url)
-    if not host:
-        return True
-    return any(host == b or host.endswith(f".{b}") for b in BLOCKED_DOMAINS)
-
-
-# Wikimedia (and many publishers) 403 script default UAs. Contact-style string
-# per https://meta.wikimedia.org/wiki/User-Agent_policy.
-_WIKI_USER_AGENT = "DeepScout-research/1.0 (personal research assistant)"
-
-# Generic page fetch uses a browser UA: many publishers block identifying/script
-# UAs on article pages (the MediaWiki API above is the exception — it explicitly
-# wants an identifying UA).
-_BROWSER_USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/128.0.0.0 Safari/537.36"
-)
-
-# Hard ceiling on a single fetched document. `r.text` on an unbounded response
-# decodes the whole body into a Python str; one 200MB PDF or misconfigured
-# endpoint is enough to OOM an 8GB host mid-run.
-MAX_FETCH_BYTES = 3_000_000
-
-# How many pages may rest on a single underlying source. Two is enough to show
-# agreement without letting one study's republication fill the result set.
-ORIGIN_CAP = 2
-
-# Content types worth reading. Anything else (video, images, archives) costs
-# bandwidth and yields nothing.
-_READABLE_TYPES = ("text/html", "text/plain", "application/xhtml", "application/pdf",
-                   "application/json", "text/xml", "application/xml")
-
-
-# =============================================================================
-# SCORING
-# =============================================================================
-
-# Reward a result that came from a publisher a query STEERED toward without
-# hard-filtering on it. Sized below the topicality and tier gaps on purpose: a
-# preferred publisher that does not actually discuss the question must still
-# lose to one that does.
-PREFERRED_HOST_BONUS = 0.16
-PREFERRED_FAMILY_BONUS = 0.08
-
-
-def _preferred_domain_bonus(url: str, targets: Sequence[str]) -> float:
-    """Bonus for a host matching one of the query's soft `site:` targets.
-
-    Matches subdomains, so a `site:gov.bd` target is satisfied by `bbs.gov.bd`
-    and a `site:worldbank.org` target by `data.worldbank.org`.
-    """
-    if not targets:
-        return 0.0
-    domain = _host(url)
-    if not domain:
-        return 0.0
-    best = 0.0
-    for target in targets:
-        term = (target or "").strip().lower().lstrip(".")
-        if not term:
-            continue
-        if domain == term:
-            best = max(best, PREFERRED_HOST_BONUS)
-        elif domain.endswith(f".{term}"):
-            best = max(best, PREFERRED_FAMILY_BONUS)
-    return best
-
-
-def _score_result(result: SearchResult, query: str, need=None, preferred=()) -> float:
-    """Rank a result before any content is fetched.
-
-    Authority alone answers "is this publisher worth listening to", which is not
-    the same question as "does this document answer what was asked". A live run
-    showed why that distinction is load-bearing: asked for the latest revenue
-    guidance from a company's most recent earnings filing, eight encyclopedia
-    pages defining "forward guidance" outranked the issuer's own investor
-    relations pages. Those publishers are authoritative and the document was
-    still the wrong type.
-
-    So scoring now folds in, per result:
-      * evidence-type fit  — does this tier match the KIND of document required
-      * definition misfit — a glossary page returned to a non-definition question
-      * entity engagement  — does it actually mention what the question is about
-      * originality         — is it the source, or a page quoting one
-
-    Recency is still scored by decay against the result's own search_type, so a
-    2019 news hit sinks while a 2019 paper does not. The flat Wikipedia penalty
-    remains, but does not apply when Wikipedia is the right answer.
-    """
-    profile = classify_source(result.url)
-    base = documentary_authority(
-        result.url, result.title or "", result.snippet or "", result.content or ""
-    )
-
-    snippet = result.snippet or ""
-    content = result.content or ""
-    haystack = f"{result.title or ''} {snippet} {content}"
-
-    richness = min(0.10, len(snippet) / 1500)
-    entity_tokens = need.entity_tokens if need is not None else ()
-    engagement = topical_engagement(
-        query, haystack, entity_tokens, result.title or "", result.url
-    )
-    content_bonus = 0.06 if result.is_content_fetched else 0.0
-    primary_bonus = 0.10 if profile.is_primary else 0.0
-    recency = freshness_score(result.published_at, result.search_type or "default")
-    recency_weight = 0.12 if (result.search_type or "").lower() == "news" else 0.06
-    # The Wikipedia penalty is a tie-breaker for questions that do not want an
-    # encyclopedia. It must not fire when one was asked for, or the penalised
-    # source is the correct answer. `want_encyclopedic` is computed before use.
-    want_encyclopedic = False
-    if need is not None:
-        from app.agents.evidence_type import EV_ENCYCLOPEDIC, required_types
-
-        wanted = required_types(need) or frozenset((need.primary,))
-        want_encyclopedic = EV_ENCYCLOPEDIC in wanted
-    wiki_penalty = 0.15 if "wikipedia.org" in (result.url or "") and not want_encyclopedic else 0.0
-
-    total = (
-        # Authority is discounted by how much of the question's subject this
-        # document engages. Additive relevance could never do this: authority
-        # spans 0.95 while a relevance bonus spanned 0.25, so an authoritative
-        # page about a different subject beat the on-topic answer by ~0.37 and
-        # nothing dropped it. Multiplying means irrelevance can outrank a tier
-        # gap, while on-topic ordering is otherwise unchanged.
-        (base * (
-            TOPICALITY_AUTHORITY_FLOOR
-            + (1.0 - TOPICALITY_AUTHORITY_FLOOR) * engagement
-        ))
-        + richness
-        + (engagement * 0.25)
-        + content_bonus
-        + primary_bonus
-        + (recency * recency_weight)
-        - wiki_penalty
-        + _preferred_domain_bonus(result.url, preferred)
-    )
-
-    if need is not None:
-        from app.agents.sources import (
-            definition_misfit,
-            entity_miss,
-            evidence_fit,
-            first_party_bonus,
-            is_original_source,
-        )
-
-        fit, _why = evidence_fit(profile, wanted)
-        total += fit
-        total += definition_misfit(result.title or "", snippet, need.asks_definition)
-        total += entity_miss(query, need.entity_tokens, haystack, result.url)
-        total += first_party_bonus(result.url, need.entity_tokens)
-        # Prefer the original document over a page quoting it — but only when
-        # the document is the KIND asked for. A study is the original source of
-        # itself, and that earns it nothing on a "what is X" question.
-        if fit > 0 and is_original_source(result.url, result.title or "", snippet, content):
-            total += 0.12
-    return total
-
-
-# =============================================================================
-# RANK + DEDUP
-# =============================================================================
-
-def _apply_topical_floor(ranked, query, need) -> list:
-    """Discard results that do not engage the question's subject at all.
-
-    Ranking cannot do this job on its own. Even with authority discounted by
-    topicality, a provider that returns eight off-topic pages still puts one in
-    front of the fetch budget, and the summarizer then spends its context
-    reading it. The recorded failure mode is concrete: a Bangladesh query
-    surfaced a Malawi electrification paragraph, and because extractive fallback
-    claims self-verify, the confidence engine scored the result "High".
-
-    So relevance is enforced as a floor, not a preference. Results that engage
-    nothing the question is about are dropped before ranking output.
-
-    Two guards keep this from becoming a recall bug:
-      * a query with no substantive subject is never filtered — there is
-        nothing to be irrelevant to;
-      * if EVERY result is below the floor, the single most-engaging one is
-        kept. Returning nothing from a non-empty provider response is a
-        retrieval decision, not a quality one, and an honest weak result beats
-        a silently empty evidence base. It is logged, because "we only found
-        something off-topic" is exactly what a report should not hide.
-    """
-    if not ranked:
-        return ranked
-    entity_tokens = need.entity_tokens if need is not None else ()
-    if not topicality_floor_applies(query, entity_tokens):
-        return ranked
-
-    kept, below = [], []
-    for r in ranked:
-        text = f"{r.title or ''} {r.snippet or ''} {r.content or ''}"
-        if is_topically_irrelevant(query, text, entity_tokens, r.title or "", r.url):
-            below.append(r)
-        else:
-            kept.append(r)
-    if below and not kept:
-        best = below[-1]  # `ranked` is score-descending; the floor only reorders
-        for r in below:
-            if topical_engagement(
-                query,
-                f"{r.title or ''} {r.snippet or ''} {r.content or ''}",
-                entity_tokens,
-                r.title or "",
-                r.url,
-            ) > topical_engagement(
-                query,
-                f"{best.title or ''} {best.snippet or ''} {best.content or ''}",
-                entity_tokens,
-                best.title or "",
-                best.url,
-            ):
-                best = r
-        logger.info(
-            "[Search] no result engaged the query's subject; keeping the closest of %d",
-            len(below),
-        )
-        return [best]
-    if below:
-        logger.info(
-            "[Search] dropped %d off-topic result(s) below the engagement floor",
-            len(below),
-        )
-    return kept
-
-
-def _deduplicate_and_rank(results, query, max_results=10, search_type: str = "", need=None,
-                          preferred=()):
-    """Canonical-URL dedup, scoring, near-duplicate removal, domain diversity.
-
-    Also caps how many results may share one UNDERLYING source. Five outlets
-    republishing the same study are one piece of evidence repeated, not five
-    corroborating ones; without the cap they fill the fetch budget and crowd
-    out the primary document they are all quoting.
-
-    `preferred` is the set of publishers the queries STEERED toward without
-    hard-filtering on them; matching hosts get a ranking bonus so the steering
-    still buys something after the provider stopped filtering.
-    """
-    seen: set = set()
-    filtered: List[SearchResult] = []
-
-    for r in results:
-        if not r.url:
-            continue
-        key = canonical_url(r.url)
-        if not key or key in seen:
-            continue
-        if _is_blocked(r.url):
-            continue
-        seen.add(key)
-        if search_type and (not r.search_type or r.search_type == "general"):
-            r.search_type = search_type
-        r.is_primary = is_primary_source(r.url)
-        filtered.append(r)
-
-    for r in filtered:
-        r.reliability_score = _score_result(r, query, need, preferred)
-
-    ranked = sorted(filtered, key=lambda r: r.reliability_score, reverse=True)
-    ranked = _apply_topical_floor(ranked, query, need)
-
-    # Near-duplicate snippets. Restricted to same-domain pairs plus very high
-    # overlap across domains: two independent publishers describing the same
-    # fact in similar words is CORROBORATION, and dropping the second copy is
-    # how the pipeline used to destroy its own cross-source agreement signal
-    # before it was ever measured.
-    diverse: List[SearchResult] = []
-    for r in ranked:
-        duplicate = False
-        for kept in diverse:
-            same_host = _domain(r.url) == _domain(kept.url)
-            threshold = 0.6 if same_host else 0.85
-            if _is_semantic_duplicate(r.snippet, kept.snippet, threshold):
-                duplicate = True
-                break
-        if not duplicate:
-            diverse.append(r)
-
-    selected: List[SearchResult] = []
-    domain_count: Dict[str, int] = {}
-    origin_count: Dict[str, int] = {}
-    for r in diverse:
-        d = _domain(r.url)
-        cap = 1 if "wikipedia.org" in d else 2
-        if domain_count.get(d, 0) >= cap:
-            continue
-        # Independence cap: at most ORIGIN_CAP pages may rest on one original.
-        # The original itself is exempt so it is never the page dropped.
-        from app.agents.sources import is_original_source, underlying_source_key
-
-        origin = underlying_source_key(r.url, r.title or "", r.snippet or "", r.content or "")
-        is_original = is_original_source(r.url, r.title or "", r.snippet or "", r.content or "")
-        if not is_original and origin_count.get(origin, 0) >= ORIGIN_CAP:
-            continue
-        selected.append(r)
-        domain_count[d] = domain_count.get(d, 0) + 1
-        # The original does not consume the republication budget: it is the
-        # source every other page is quoting, so counting it would halve the
-        # allowance for the very repetition the cap exists to limit.
-        if not is_original:
-            origin_count[origin] = origin_count.get(origin, 0) + 1
-        if len(selected) >= max_results:
-            break
-
-    return selected
-
-
-# =============================================================================
-# CONTENT FETCH
-# =============================================================================
-
-class _VisibleTextExtractor(HTMLParser):
-    """Extract readable text while dropping non-visible markup."""
-
-    _SKIP_TAGS = frozenset({"script", "style", "noscript", "template", "svg",
-                            "nav", "footer", "form", "aside"})
-    _BLOCK_TAGS = frozenset({
-        "p", "div", "br", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5",
-        "h6", "section", "article", "header", "footer", "nav", "aside",
-        "main", "figure", "figcaption", "table", "tr", "td", "th",
-        "blockquote", "pre", "hr",
-    })
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self._chunks: List[str] = []
-        self._skip_depth = 0
-
-    def handle_starttag(self, tag: str, attrs) -> None:
-        name = (tag or "").lower()
-        if name in self._SKIP_TAGS:
-            self._skip_depth += 1
-            return
-        if name in self._BLOCK_TAGS:
-            self._chunks.append("\n")
-
-    def handle_endtag(self, tag: str) -> None:
-        name = (tag or "").lower()
-        if name in self._SKIP_TAGS:
-            self._skip_depth = max(0, self._skip_depth - 1)
-            return
-        if name in self._BLOCK_TAGS:
-            self._chunks.append("\n")
-
-    def handle_data(self, data: str) -> None:
-        if self._skip_depth or not data or not data.strip():
-            return
-        self._chunks.append(data.strip() + " ")
-
-    def text(self) -> str:
-        return re.sub(r"[ \t\f\v]+", " ", "".join(self._chunks)).strip()
-
-
-def _clean_html(raw: str, max_chars: int = 12000) -> str:
-    """HTML -> readable text.
-
-    The character cap rose from 6000 to 12000: the summarizer now chunks long
-    documents, so truncating the source at 6000 characters was discarding
-    material the extractor could use. Fetch-side caps still bound memory.
-    """
-    try:
-        extractor = _VisibleTextExtractor()
-        extractor.feed(raw or "")
-        extractor.close()
-        text = extractor.text()
-    except Exception as exc:
-        logger.warning("[Search] HTML clean failed, using regex fallback: %s", exc, exc_info=exc)
-        text = re.sub(r"<[^>]+>", " ", raw or "")
-    text = html.unescape(text)
-    text = re.sub(r"\n[ \t]*\n+", "\n\n", text)
-    text = re.sub(r"[ \t\f\v]{2,}", " ", text).strip()
-    return text[:max_chars]
-
-
-BLOCK_PAGE_PHRASES = (
-    "access denied",
-    "verify you are human",
-    "enable javascript",
-    "please complete the security check",
-    "unusual traffic from your computer network",
-    "are you a robot",
-    "request blocked",
-)
-
-
-def _looks_like_block_page(text: str) -> bool:
-    lowered = (text or "").lower()
-    return len(lowered) < 600 and any(p in lowered for p in BLOCK_PAGE_PHRASES)
-
-
-def _extract_pdf_text(content: bytes, url: str) -> str:
-    """Best-effort first pages of a PDF. PyMuPDF is optional."""
-    try:
-        try:
-            import pymupdf
-        except ImportError:
-            import fitz as pymupdf
-    except ImportError:
-        logger.warning("[Search] PyMuPDF missing, skipping PDF: %s", url[:80])
-        return ""
-    try:
-        pages = []
-        with pymupdf.open(stream=content, filetype="pdf") as doc:
-            for page in doc[:8]:
-                pages.append(page.get_text())
-        return re.sub(r"\s+", " ", "\n".join(pages)).strip()[:12000]
-    except Exception as exc:
-        logger.warning("[Search] PDF extract failed for %s: %s", url[:80], exc, exc_info=exc)
-        return ""
 
 
 async def _fetch_content(url: str, client: httpx.AsyncClient | None = None):
@@ -628,12 +144,10 @@ async def _fetch_content(url: str, client: httpx.AsyncClient | None = None):
         logger.warning("[Search] content fetch failed for %s: %s", url[:80], exc, exc_info=exc)
     return "", ""
 
-
 async def _fetch_with_client(client: httpx.AsyncClient, url: str):
     """One page fetch with redirects, type filtering and a size ceiling."""
     outcome = await _fetch_once(client, url)
     return outcome.text, outcome.last_modified
-
 
 async def _fetch_content_outcome(
     client: httpx.AsyncClient,
@@ -691,502 +205,13 @@ async def _fetch_content_outcome(
         await asyncio.sleep(delay)
     return outcome
 
-
-# Capture the original primitive so `_fetch_content_outcome` can tell whether a
-# test/caller replaced it (patch seam) and use the status-aware path otherwise.
 _fetch_content_original = _fetch_content
 
 
-# Ceiling for a provider-supplied Retry-After on the FETCH path, matching the
-# exponential backoff this same loop falls back to (see `_fetch_content_outcome`).
-# A publisher sending `Retry-After: 52` must not be able to spend 52 seconds of
-# a research run on one page; the host cooldown handles a publisher that needs
-# longer, by not calling it again rather than sleeping through it.
-FETCH_RETRY_AFTER_CAP_SEC = 6.0
+SEARCH_CACHE_VERSION = "search-v4"
 
 
-def _retry_after_header(response) -> float:
-    """Parse a Retry-After header (seconds form) from a response, capped.
-
-    Delegates to the shared parser so the search-provider and page-fetch retry
-    paths cannot disagree about what Retry-After means, and bounds it to this
-    loop's own backoff ceiling.
-    """
-    headers = getattr(response, "headers", None)
-    value = retry_after_from_headers(headers, cap=FETCH_RETRY_AFTER_CAP_SEC)
-    return 0.0 if value is None else value
-
-
-@dataclass
-class FetchOutcome:
-    """Structured result of one page fetch.
-
-    The old `(text, last_modified)` tuple collapsed every failure — 403, 429,
-    timeout, 404 — into the same empty string, which is exactly why a blocked
-    host could not be told apart from a page with no text and why the same
-    wall was re-paid for on every pass. The status/reason travels with the
-    text so the caller can cool the host, skip the URL and count the failure.
-    """
-
-    text: str = ""
-    last_modified: str = ""
-    status: Optional[int] = None
-    reason: str = "ok"
-    attempts: int = 0
-    retry_after: float = 0.0
-
-    @property
-    def ok(self) -> bool:
-        return bool(self.text)
-
-
-async def _fetch_once(client: httpx.AsyncClient, url: str) -> FetchOutcome:
-    """One raw fetch: returns text + the HTTP status/reason that produced it.
-
-    Content-type filtering and block-page detection still yield empty text,
-    but they now carry a reason so the caller does not cool a host for
-    returning, say, an unreadable PDF.
-    """
-    try:
-        r = await client.get(url, follow_redirects=True)
-    except Exception as exc:
-        reason = classify_fetch_failure(None, exc)
-        logger.warning("[Search] fetch %s failed (%s): %s", url[:80], reason, exc)
-        return FetchOutcome(status=None, reason=reason, attempts=1)
-
-    status = int(getattr(r, "status_code", 0) or 0)
-    if not r.is_success:
-        reason = classify_fetch_failure(status)
-        logger.debug("[Search] fetch %s returned %s (%s)", url[:80], status, reason)
-        return FetchOutcome(status=status, reason=reason, attempts=1,
-                            retry_after=_retry_after_header(r))
-
-    content_type = str(r.headers.get("content-type", "") or "").lower()
-    last_modified = str(r.headers.get("last-modified", "") or "")
-
-    is_pdf = "application/pdf" in content_type or url.lower().split("?")[0].endswith(".pdf")
-    if not is_pdf and content_type and not any(t in content_type for t in _READABLE_TYPES):
-        logger.debug("[Search] skipping unreadable content-type %s for %s", content_type, url[:60])
-        return FetchOutcome(status=status, reason="other", attempts=1)
-
-    body = r.content
-    if len(body) > MAX_FETCH_BYTES:
-        logger.warning(
-            "[Search] truncating oversized response (%d bytes) from %s",
-            len(body), url[:80],
-        )
-        body = body[:MAX_FETCH_BYTES]
-
-    if is_pdf:
-        return FetchOutcome(text=_extract_pdf_text(body, url),
-                            last_modified=last_modified, status=status,
-                            reason="ok", attempts=1)
-
-    try:
-        raw = body.decode(r.encoding or "utf-8", errors="replace")
-    except (LookupError, UnicodeDecodeError):
-        raw = body.decode("utf-8", errors="replace")
-
-    text = _clean_html(raw)
-    if _looks_like_block_page(text):
-        logger.warning("[Search] block page detected, dropping: %s", url[:80])
-        return FetchOutcome(text="", last_modified=last_modified,
-                            status=status, reason="forbidden", attempts=1)
-    return FetchOutcome(text=text, last_modified=last_modified,
-                        status=status, reason="ok", attempts=1)
-
-
-def _domain_of(url: str) -> str:
-    """Registrable-domain key for cooldown/failure accounting.
-
-    Uses the shared `registrable_domain` so two hosts under one publisher
-    (blog.example.com / www.example.com) cool down together.
-    """
-    try:
-        from app.core.evidence_grade import registrable_domain
-
-        return registrable_domain(url)
-    except Exception:  # pragma: no cover - defensive
-        return _host(url)
-
-
-# =============================================================================
-# QUERY PREPARATION
-# =============================================================================
-
-_SITE_OPERATOR_RE = re.compile(r"site:(\S+)", re.IGNORECASE)
-
-# SearXNG accepts long queries, but an unbounded string is both a wasted
-# upstream fan-out and a sign of a malformed query.
-_SEARXNG_MAX_QUERY_CHARS = 400
-
-
-# =============================================================================
-# SEARXNG: the self-hosted metasearch backend
-# =============================================================================
-#
-# Replaces the Tavily / DuckDuckGo provider layer. One local HTTP service
-# aggregates many upstream engines, so the search stack needs no external
-# search API key and no per-query licence cost.
-#
-# Query shape is grounded in the SearXNG source rather than assumed:
-#
-#   GET /search?q=<query>&format=json&categories=...&language=...&pageno=...
-#
-# (`searx/webapp.py` reads `q` and `format` from the request form; the response
-# envelope comes from `webutils.get_json_response`.)
-#
-# The `site:` handling that used to be a Tavily `include_domains` list is now
-# native query syntax, which SearXNG forwards to its engines. That keeps the
-# hard/soft partition intact and actually SIMPLIFIES it: hard targets ride along
-# in the query text, soft ones never reach the provider at all and are applied
-# later as a ranking preference.
-
-
-def _searxng_enabled(settings: Settings) -> bool:
-    """Is the SearXNG backend switched on and pointed somewhere?"""
-    if not bool(getattr(settings, "searxng_enabled", True)):
-        return False
-    return bool(_searxng_endpoint(settings))
-
-
-def _searxng_endpoint(settings: Settings) -> str:
-    """Base URL of the SearXNG instance, without a trailing slash."""
-    base = str(getattr(settings, "searxng_url", "") or "").strip()
-    return base.rstrip("/")
-
-
-def _searxng_search_type_params(search_type: str, settings: Settings) -> Dict[str, Any]:
-    """Per-search-type category/language/time overrides for the aggregate.
-
-    A news contract wants the `news` category and a recent window; an academic
-    one wants `science`. Overriding per type is what keeps one instance usable
-    for every contract shape, which a single global category list could not do.
-    """
-    stype = (search_type or "").strip().lower()
-    configured = str(getattr(settings, "searxng_categories", "") or "").strip()
-    categories = configured or "general,science"
-    params: Dict[str, Any] = {"categories": categories}
-
-    if stype == "news":
-        # Keep `news` alongside the configured set rather than replacing it:
-        # a current-events question still benefits from the open-web engines.
-        if "news" not in categories:
-            params["categories"] = f"{categories},news"
-        params["time_range"] = "month"
-    elif stype == "academic":
-        # Scholarly indexes first; `news` and images only add noise here.
-        params["categories"] = "science"
-        # Papers do not decay in a week; do not filter them by recency.
-        params.pop("time_range", None)
-    elif stype == "statistical":
-        # Official statistics live on the open web; recency is handled by our
-        # own freshness scoring, not by discarding older documents.
-        params["categories"] = "general,science"
-
-    language = str(getattr(settings, "searxng_language", "") or "").strip()
-    if language:
-        params["language"] = language
-    return params
-
-
-def _prepare_searxng_query(
-    query: Any, search_type: str = "", settings: Optional[Settings] = None
-) -> tuple[str, Dict[str, Any]]:
-    """Normalize a query and build the SearXNG request parameters.
-
-    HARD `site:` targets are kept in the query text because SearXNG forwards
-    them to its engines natively; SOFT targets are stripped, because a guessed
-    publisher must never narrow the candidate set (that was the original bug
-    this partition exists to prevent). Excluded domains have no SearXNG
-    equivalent, so the caller applies them post-hoc -- see
-    `_searxng_to_results`.
-    """
-    text = query if isinstance(query, str) else str(query or "")
-    split = partition_site_targets(text)
-    hard = list(split.hard)
-
-    # SearXNG understands `site:` inside the query, so a hard target is simply
-    # appended. Deduplicated and order-stable.
-    kept_terms = [t for t in hard if t]
-    stripped = _SITE_OPERATOR_RE.sub("", text)
-    stripped = stripped.replace("(", " ").replace(")", " ")
-    stripped = re.sub(r"\s+\bOR\b\s*$", "", stripped, flags=re.IGNORECASE)
-    stripped = re.sub(r"(?:^|\s)-\s*$", " ", stripped)
-    stripped = re.sub(r"\s+", " ", stripped).strip()
-    if kept_terms:
-        stripped = f"{stripped} " + " OR ".join(f"site:{t}" for t in kept_terms)
-        stripped = re.sub(r"\s+", " ", stripped).strip()
-
-    params: Dict[str, Any] = {}
-    if settings is not None:
-        params = _searxng_search_type_params(search_type, settings)
-    params.update({
-        "q": stripped[:_SEARXNG_MAX_QUERY_CHARS],
-        "format": "json",
-    })
-    params["pageno"] = 1
-    safe = int(getattr(settings, "searxng_safesearch", 0) or 0) if settings else 0
-    params["safesearch"] = max(0, min(2, safe))
-    # NB: there is deliberately no result-count parameter here. SearXNG has no
-    # per-request result limit -- per-engine counts live in the instance's
-    # settings.yml -- so an invented parameter would just be ignored upstream.
-    # `searxng_max_results` is applied client-side in `_searxng_search`.
-    return stripped[:_SEARXNG_MAX_QUERY_CHARS], params
-
-
-def _searxng_published(row: Dict[str, Any]) -> str:
-    """Best available publish date from a SearXNG result.
-
-    `MainResult.publishedDate` is a real datetime (serialized ISO by
-    `webutils.JSONEncoder`); paper results carry `date_of_publication`; and
-    `pubdate` is the older string form some engines still populate.
-    """
-    for key in ("publishedDate", "date_of_publication", "pubdate"):
-        value = row.get(key)
-        if isinstance(value, (list, tuple)) and value:
-            value = value[0]
-        text = str(value or "").strip()
-        if text:
-            return text
-    return ""
-
-
-def _searxng_to_results(
-    payload: Any, query: str, exclude_domains: Sequence[str] = ()
-) -> List["SearchResult"]:
-    """Map a SearXNG /search?format=json response to SearchResults.
-
-    Pure -- the network call stays in `_searxng_search` so this is testable
-    offline. Fields follow `searx.result_types.MainResult`: `title`, `content`
-    (the snippet), `url`, `publishedDate`.
-
-    Two things the metasearch makes necessary that a single-provider API did
-    not:
-      * `engine` is recorded on the provider string, so the trace can show which
-        upstream index actually produced a hit (DuckDuckGo, Mojeek, arXiv...).
-      * `-site:` exclusions are applied here, because SearXNG has no equivalent
-        request parameter for them.
-    """
-    results: List[SearchResult] = []
-    items = payload.get("results", []) if isinstance(payload, dict) else []
-    if not isinstance(items, list):
-        return results
-    blocked = {d.strip().lower().lstrip(".") for d in (exclude_domains or ()) if d}
-    for row in items:
-        if not isinstance(row, dict):
-            continue
-        url = str(row.get("url") or "").strip()
-        if not url:
-            continue
-        engine = str(row.get("engine") or "").strip()
-        if engine.startswith("plugin:"):
-            engine = engine.split(":", 1)[1]
-        provider = f"searxng:{engine}" if engine else "searxng"
-        if blocked and any(
-            _host(url) == d or _host(url).endswith(f".{d}") for d in blocked
-        ):
-            continue
-        content = str(row.get("content") or "").strip()
-        # A paper result's abstract lives in `content` too, but the journal /
-        # DOI metadata is worth carrying: `detect_primary_refs` reads a DOI out
-        # of the snippet to recognise the ORIGINAL of a study.
-        extras = []
-        for key in ("journal", "doi", "publisher"):
-            value = row.get(key)
-            if isinstance(value, (list, tuple)):
-                value = " ".join(str(v) for v in value if v)
-            value = str(value or "").strip()
-            if value:
-                extras.append(value)
-        snippet = content or str(row.get("title") or "")
-        if extras:
-            snippet = f"{snippet} [{'; '.join(extras)}]" if snippet else "; ".join(extras)
-        results.append(SearchResult(
-            title=re.sub(r"<[^>]+>", "", str(row.get("title") or "")),
-            url=url,
-            snippet=snippet[:1500],
-            content=content[:12000],
-            provider=provider,
-            published_at=_searxng_published(row),
-            matched_query=query,
-        ))
-    return results
-
-
-def _split_query(query: Any) -> tuple[str, str]:
-    """Split any accepted query shape into (question_text, search_type)."""
-    if isinstance(query, dict):
-        return (
-            str(query.get("question", "") or "").strip(),
-            str(query.get("search_type", "") or "").strip(),
-        )
-    if isinstance(query, (tuple, list)) and len(query) == 2:
-        return (str(query[0] or "").strip(), str(query[1] or "").strip())
-    return (str(query or "").strip(), "")
-
-
-def contract_queries(contract: Any, max_queries: int = 3) -> List[str]:
-    """Every query one delegation contract should actually run.
-
-    Base question, then the planner's variants, then the primary-source-scoped
-    variant. Variants exist precisely because different phrasings retrieve
-    different documents, and until now they were parsed, validated, stored and
-    never used. Capped so a 5-contract plan cannot fan out to 20 searches.
-
-    The primary-source-scoped variant is RESERVED a slot, not appended last and
-    truncated: it is the query aimed at the publisher that owns the fact
-    (site:worldbank.org, site:arxiv.org, ...), and it was being dropped on any
-    contract the model had already given two variants — which is every
-    high-value contract. Reserving the slot is what actually raises the
-    independent/primary-source yield the source ledger reports.
-
-    When the contract carries no primary query but its search_type/domain has a
-    registered publisher hint, one is BUILT here rather than skipped: a primary
-    procurement slot is guaranteed for every dimension that can have one, so a
-    missing planner field can never silently drop the primary search again.
-    """
-    question, _ = _split_query(contract)
-    queries: List[str] = []
-    if question:
-        queries.append(question)
-    primary = ""
-    if isinstance(contract, dict):
-        primary = re.sub(r"\s+", " ", str(contract.get("primary_source_query", "") or "")).strip()
-    if not primary and question:
-        # Defensive per-dimension guaranteed primary query. Builds a plain
-        # hint-scoped variant first, then falls back to the authoritative
-        # registry, so a contract with no primary query still gets a slot.
-        search_type = str(contract.get("search_type", "") or "") if isinstance(contract, dict) else ""
-        domain = str(contract.get("domain", "") or "") if isinstance(contract, dict) else ""
-        primary = build_dimension_primary_query(question, search_type, domain)
-    budget = max(1, max_queries)
-    # Hold one slot for the primary query whenever it exists and there is room
-    # for more than the base question.
-    variant_budget = budget
-    if primary and budget > 1:
-        variant_budget = budget - 1
-    if isinstance(contract, dict):
-        for variant in contract.get("variants") or ():
-            text = re.sub(r"\s+", " ", str(variant or "")).strip()
-            if text and text.lower() != question.lower():
-                queries.append(text)
-            if len(queries) >= variant_budget:
-                break
-    if primary:
-        queries.append(primary)
-    deduped: List[str] = []
-    for q in queries:
-        if not any(_semantic_overlap(q, kept) >= 0.92 for kept in deduped):
-            deduped.append(q)
-        if len(deduped) >= budget:
-            break
-    return deduped
-
-
-# =============================================================================
-# PRIMARY-SOURCE PROVIDERS (free, no API key, return the actual documents)
-# =============================================================================
-
-def _arxiv_to_results(xml_text: str, query: str) -> List[SearchResult]:
-    """Parse an arXiv Atom feed. Pure, so it is testable without network."""
-    out: List[SearchResult] = []
-    try:
-        root = ElementTree.fromstring(xml_text or "")
-    except ElementTree.ParseError as exc:
-        logger.warning("[Search] arXiv XML parse failed: %s", exc)
-        return out
-    ns = {"a": "http://www.w3.org/2005/Atom"}
-    for entry in root.findall("a:entry", ns):
-        title = (entry.findtext("a:title", default="", namespaces=ns) or "").strip()
-        summary = (entry.findtext("a:summary", default="", namespaces=ns) or "").strip()
-        published = (entry.findtext("a:published", default="", namespaces=ns) or "").strip()
-        link = ""
-        for candidate in entry.findall("a:link", ns):
-            if candidate.get("rel") in (None, "alternate"):
-                link = candidate.get("href", "") or ""
-                break
-        if not link:
-            link = (entry.findtext("a:id", default="", namespaces=ns) or "").strip()
-        if not link or not title:
-            continue
-        clean_summary = re.sub(r"\s+", " ", summary)
-        out.append(SearchResult(
-            title=re.sub(r"\s+", " ", title),
-            url=link,
-            snippet=clean_summary[:1200],
-            content=clean_summary[:6000],
-            provider="arxiv",
-            search_type="academic",
-            published_at=published,
-            matched_query=query,
-        ))
-    return out
-
-
-def _crossref_to_results(payload: Any, query: str) -> List[SearchResult]:
-    """Map a Crossref /works response to SearchResults.
-
-    Crossref indexes the DOI record itself: title, venue, date and abstract come
-    from the publisher, not from a page that mentions the paper. That is the
-    definition of a primary bibliographic source.
-    """
-    out: List[SearchResult] = []
-    items = ((payload or {}).get("message") or {}).get("items") or []
-    for row in items:
-        if not isinstance(row, dict):
-            continue
-        doi = str(row.get("DOI", "") or "")
-        url = str(row.get("URL", "") or (f"https://doi.org/{doi}" if doi else ""))
-        titles = row.get("title") or []
-        title = str(titles[0]) if titles else ""
-        if not url or not title:
-            continue
-        abstract = re.sub(r"<[^>]+>", " ", str(row.get("abstract", "") or ""))
-        abstract = re.sub(r"\s+", " ", html.unescape(abstract)).strip()
-        container = row.get("container-title") or []
-        venue = str(container[0]) if container else ""
-        parts = ((row.get("issued") or {}).get("date-parts") or [[]])[0]
-        published = "-".join(f"{p:02d}" if i else str(p) for i, p in enumerate(parts[:3])) if parts else ""
-        summary = abstract or f"{title}. {venue}".strip()
-        out.append(SearchResult(
-            title=re.sub(r"\s+", " ", title),
-            url=url,
-            snippet=summary[:1200],
-            content=abstract[:6000],
-            provider="crossref",
-            search_type="academic",
-            published_at=published,
-            matched_query=query,
-        ))
-    return out
-
-
-def _wiki_search_to_results(data: Any, query: str) -> List[SearchResult]:
-    results: List[SearchResult] = []
-    for item in ((data or {}).get("query") or {}).get("search") or []:
-        if not isinstance(item, dict):
-            continue
-        title = str(item.get("title", "") or "")
-        if not title:
-            continue
-        results.append(SearchResult(
-            title=title,
-            url=f"https://en.wikipedia.org/wiki/{quote(title.replace(' ', '_'))}",
-            snippet=html.unescape(re.sub(r"<.*?>", "", str(item.get("snippet", "") or ""))),
-            provider="wikipedia",
-            search_type="encyclopedia",
-            published_at=str(item.get("timestamp", "") or ""),
-            matched_query=query,
-        ))
-    return results
-
-
-# =============================================================================
-# MAIN CLIENT
-# =============================================================================
-
-class SearchClient:
+class SearchClient(CacheMixin, ProviderSearchMixin, ContentMixin):
     """Multi-provider search with per-provider fault isolation.
 
     Concurrency is bounded twice: `semaphore` limits whole sub-question searches
@@ -1194,7 +219,6 @@ class SearchClient:
     contract that ranks 10 fetchable pages cannot monopolize the event loop or
     the socket pool.
     """
-
     def __init__(self, settings: Settings):
         self.settings = settings
         self._search_limit = max(1, int(getattr(settings, "max_parallel_search", 3) or 3))
@@ -1222,9 +246,6 @@ class SearchClient:
             max_urls=int(getattr(settings, "search_failed_url_memory_max", 2048) or 2048)
         )
         self.health = RetrievalHealth()
-
-    # -- public API --------------------------------------------------------
-
     async def run_search(
         self, sub_questions: List[Union[SubQuestion, str, tuple]]
     ) -> List[Dict[str, Any]]:
@@ -1272,7 +293,6 @@ class SearchClient:
                 results.append(r.to_dict())
 
         return results
-
     async def run_grounding_search(self, query: str) -> List[Dict[str, Any]]:
         """Cheap single-query search for the planner's terminology grounding.
 
@@ -1291,9 +311,6 @@ class SearchClient:
         """
         batch = await self._search(query, fetch_content=False)
         return [r.to_dict() for r in batch]
-
-    # -- per-contract search ----------------------------------------------
-
     async def _search(self, query, *, fetch_content: bool = True) -> List[SearchResult]:
         settings = self.settings
         question_text, search_type = _split_query(query)
@@ -1407,452 +424,6 @@ class SearchClient:
         except Exception as exc:
             logger.warning("[Search] cache write failed, continuing uncached: %s", exc, exc_info=exc)
         return ranked
-
-    @classmethod
-    def _decode_cached(cls, cached: Any) -> List[SearchResult]:
-        """Cache entries are plain dicts (portable across processes and
-        pickle-safe). Entries written by an older build stored SearchResult
-        objects directly, so both shapes are accepted for one TTL."""
-        if not isinstance(cached, list):
-            return []
-        out: List[SearchResult] = []
-        for row in cached:
-            if isinstance(row, SearchResult):
-                out.append(row)
-            elif isinstance(row, dict):
-                out.append(cls._from_cache(row))
-        return out
-
-    @staticmethod
-    def _to_cache(result: SearchResult) -> Dict[str, Any]:
-        payload = result.to_dict()
-        payload["is_content_fetched"] = result.is_content_fetched
-        payload["reliability_score"] = result.reliability_score
-        return payload
-
-    @staticmethod
-    def _from_cache(row: Dict[str, Any]) -> SearchResult:
-        result = SearchResult(
-            title=str(row.get("title", "")),
-            url=str(row.get("url", "")),
-            snippet=str(row.get("snippet", "")),
-            content=str(row.get("content", "")),
-            provider=str(row.get("provider", "cache")),
-            search_type=str(row.get("search_type", "general")),
-            published_at=str(row.get("published_at", "")),
-            matched_query=str(row.get("matched_query", "")),
-        )
-        result.reliability_score = float(row.get("reliability_score", 0.0) or 0.0)
-        result.content_length = int(row.get("content_length", 0) or 0)
-        result.is_content_fetched = bool(row.get("is_content_fetched", bool(result.content)))
-        result.is_primary = bool(row.get("is_primary", is_primary_source(result.url)))
-        return result
-
-    async def _providers_for(self, query: str, search_type: str) -> List[SearchResult]:
-        """Fan out one query across the providers that suit its search_type.
-
-        Provider choice is now type-driven instead of one-size-fits-all: an
-        academic contract queries arXiv and Crossref (which return the papers
-        themselves), a statistical contract stays on general web search where
-        agency pages live, and Wikipedia always runs because it is free and
-        high-trust for background.
-        """
-        stype = (search_type or "").strip().lower()
-        tasks: List[Any] = []
-
-        if _searxng_enabled(self.settings):
-            tasks.append(self._searxng_search(query, search_type=stype))
-
-        if stype == "academic":
-            tasks.append(self._arxiv(query))
-            tasks.append(self._crossref(query))
-        elif stype in ("encyclopedia", "", "general"):
-            tasks.append(self._wiki(query))
-        elif stype == "statistical":
-            tasks.append(self._wiki(query))
-
-        batches = await asyncio.gather(*tasks, return_exceptions=True)
-        collected: List[SearchResult] = []
-        for batch in batches:
-            if isinstance(batch, BaseException):
-                logger.warning("[Search] provider error: %s", type(batch).__name__)
-                continue
-            collected.extend(batch or [])
-        return collected
-
-    async def _searxng_search(self, query: str, search_type: str = "") -> List[SearchResult]:
-        """Query the self-hosted SearXNG instance. Primary web search.
-
-        Same reliability contract as the provider it replaces: bounded retries
-        with jitter, a circuit breaker, and a deterministic empty result on
-        failure so one dead backend degrades a run instead of ending it. Zero
-        usable hits counts as a FAILURE, not an answer -- an aggregate that
-        returns nothing usually means it is misconfigured or its engines are
-        all failing, and that must show up in health rather than be mistaken
-        for "no such document exists".
-        """
-        base = _searxng_endpoint(self.settings)
-        if not base:
-            logger.warning("[Search] searxng_url is not configured; skipping web search")
-            return []
-
-        clean_query, params = _prepare_searxng_query(query, search_type, self.settings)
-        if not clean_query:
-            return []
-        url = f"{base}/search"
-
-        # `-site:` has no SearXNG request parameter, so exclusions are applied
-        # to the mapped results instead of to the upstream query.
-        excluded = partition_site_targets(query).excluded
-
-        timeout = float(getattr(self.settings, "searxng_timeout_sec", 30.0) or 30.0)
-
-        async def _call() -> List[SearchResult]:
-            async with httpx.AsyncClient(
-                timeout=timeout, follow_redirects=True,
-                headers={"Accept": "application/json"},
-            ) as client:
-                r = await client.get(url, params=params)
-                r.raise_for_status()
-                payload = r.json()
-            if not isinstance(payload, dict):
-                raise ValueError("SearXNG returned a non-object payload")
-            mapped = _searxng_to_results(payload, clean_query, excluded)
-            cap = int(getattr(self.settings, "searxng_max_results", 30) or 30)
-            if cap > 0:
-                mapped = mapped[:cap]
-            if not mapped:
-                raise ValueError("SearXNG returned no usable results")
-            unresponsive = payload.get("unresponsive_engines") or []
-            if unresponsive:
-                logger.info(
-                    "[Search] searxng: %d unresponsive upstream engine(s)", len(unresponsive)
-                )
-            self._count("searxng", "ok")
-            return mapped
-
-        async def _fallback() -> List[SearchResult]:
-            self._count("searxng", "fail")
-            return []
-
-        return await call_protected(
-            _call,
-            name="searxng",
-            policy=self._retry,
-            breaker=get_breaker(
-                "searxng",
-                failure_threshold=3,
-                cooldown=float(
-                    getattr(self.settings, "search_searxng_cooldown_sec", 60.0) or 60.0
-                ),
-            ),
-            fallback=_fallback,
-        )
-
-    async def _attach_content(self, ranked: List[SearchResult]) -> None:
-        """Download the top N pages concurrently under a fetch bulkhead.
-
-        Access-hardening rules, all additive to the existing fetch bulkhead:
-          * a domain that is cooling down (403/429/timeout history this run)
-            is SKIPPED, not retried — later passes stop re-paying for a wall;
-          * a canonical URL that already failed this run is never re-fetched;
-          * TRANSIENT failures get bounded retries with jitter/Retry-After;
-            403 fails fast and cools the host;
-          * every outcome is counted in `self.health`, so a run that found
-            nothing because publishers blocked it is distinguishable from a
-            run where the evidence genuinely was not there.
-        """
-        fetch_n = max(1, int(getattr(self.settings, "search_fetch_top_n", 3) or 3))
-        targets = ranked[:fetch_n]
-        if not targets:
-            return
-
-        fetch_retries = max(1, int(getattr(self.settings, "search_fetch_retry_attempts", 2) or 2))
-        # URL -> was the host already cooling when we skipped? The fallback
-        # query below only fires when an AUTHORITATIVE host was unavailable,
-        # so we remember which domains caused a skip.
-        unavailable_domains: List[str] = []
-
-        async with httpx.AsyncClient(
-            timeout=12,
-            follow_redirects=True,
-            headers={"User-Agent": _BROWSER_USER_AGENT},
-            limits=httpx.Limits(max_connections=self._fetch_limit),
-        ) as client:
-
-            async def _attach(r: SearchResult) -> None:
-                if r.content:
-                    # Providers that already returned text (SearXNG, arXiv,
-                    # Crossref) must never be re-fetched.
-                    r.content_length = len(r.content)
-                    r.is_content_fetched = True
-                    # Count the ATTEMPT too. This branch used to record only a
-                    # success, so `successful_fetch_rate` divided by zero
-                    # attempts and reported 0.0 for a run where every result
-                    # arrived fully readable. That was survivable when the
-                    # primary provider rarely shipped inline text; SearXNG
-                    # ships it for most results, so the metric would have read
-                    # "0% of pages were readable" on a perfectly healthy run
-                    # and bench/eval_retrieval gates on exactly that number.
-                    self.health.record_attempt()
-                    self.health.record_success(
-                        domain=_domain_of(r.url),
-                        primary=r.is_primary or is_primary_source(r.url),
-                        url=canonical_url(r.url),
-                        authoritative=classify_source(r.url).is_primary,
-                    )
-                    return
-
-                domain = _domain_of(r.url)
-                key = canonical_url(r.url)
-
-                # Already-known-dead document: do not spend a request again.
-                if self.failed_fetches.seen(key):
-                    self.health.record_skip("duplicate_failure")
-                    logger.debug("[Search] skipping known-failed URL: %s", r.url[:80])
-                    return
-
-                # Host on cooldown: skip without a request.
-                if domain and self.domain_registry.is_cooling(domain):
-                    self.health.record_skip("cooldown")
-                    unavailable_domains.append(domain)
-                    logger.debug(
-                        "[Search] skipping cooled-down domain %s (%.0fs left)",
-                        domain, self.domain_registry.remaining(domain),
-                    )
-                    return
-
-                self.health.record_attempt()
-
-                def _note_retry(attempt: int, reason: str) -> None:
-                    # Each transient retry is itself a failed attempt against
-                    # the host, so it counts toward the cooldown streak: an
-                    # exhausted retry budget IS "repeated failure".
-                    self.health.record_retry(succeeded=False)
-                    if domain and failure_cools_host(reason):
-                        before = self.domain_registry.is_cooling(domain)
-                        self.domain_registry.record_failure(domain, reason)
-                        if not before and self.domain_registry.is_cooling(domain):
-                            self.health.record_cooldown_opened()
-                            unavailable_domains.append(domain)
-
-                outcome = await _fetch_content_outcome(
-                    client, r.url, max_attempts=fetch_retries,
-                    timeout=self._timeout, on_retry=_note_retry,
-                )
-                if outcome.ok:
-                    if outcome.attempts > 1:
-                        # A retry that did not need the observer's fail note.
-                        self.health.retries_succeeded += 1
-                    r.content = outcome.text
-                    r.content_length = len(outcome.text)
-                    r.is_content_fetched = True
-                    if not r.published_at:
-                        r.published_at = outcome.last_modified
-                    self.health.record_success(
-                        domain=domain,
-                        primary=r.is_primary or is_primary_source(r.url),
-                        url=key,
-                        authoritative=classify_source(r.url).is_primary,
-                    )
-                    if domain:
-                        self.domain_registry.record_success(domain)
-                    return
-
-                self.health.record_failure(outcome.reason)
-                if failure_cools_host(outcome.reason):
-                    if domain and not self.domain_registry.is_cooling(domain):
-                        # The retry callback above already counted each
-                        # transient attempt; only the FIRST failure of this
-                        # fetch reaches here uncooled (403 has no retries).
-                        self.domain_registry.record_failure(domain, outcome.reason)
-                        self.health.record_cooldown_opened()
-                    if outcome.reason == "forbidden" and domain not in unavailable_domains:
-                        unavailable_domains.append(domain)
-                self.failed_fetches.mark(key, outcome.reason)
-                logger.info(
-                    "[Search] fetch failed for %s (%s, %d attempt(s))",
-                    r.url[:80], outcome.reason, outcome.attempts,
-                )
-
-            await gather_bounded(
-                [(lambda r=r: _attach(r)) for r in targets], self._fetch_limit
-            )
-
-            if unavailable_domains:
-                await self._primary_fallback(
-                    ranked, unavailable_domains, client=client,
-                    max_attempts=fetch_retries,
-                )
-
-    async def _primary_fallback(
-        self,
-        ranked: List[SearchResult],
-        unavailable_domains: List[str],
-        *,
-        client: httpx.AsyncClient | None = None,
-        max_attempts: int = 2,
-    ) -> None:
-        """When an authoritative host is unavailable, acquire EQUIVALENT
-        evidence from a DIFFERENT authoritative/independent publisher.
-
-        This reuses the existing primary-source machinery
-        (`build_substitution_query`): it builds a `site:`-scoped query aimed at an
-        authoritative publisher in the SAME jurisdiction as the one that failed,
-        issues it through the SAME search providers, and appends any new results
-        to `ranked` so the caller's content-attach and downstream ranking see
-        them. It is a targeted substitution, not a new search system and not a
-        retry of the blocked host.
-
-        Bounded: at most `search_primary_fallback_max` queries per contract,
-        only when the setting is enabled, and only for results whose host is
-        actually unavailable.
-        """
-        if not bool(getattr(self.settings, "search_primary_fallback_enabled", True)):
-            return
-        blocked = {d for d in unavailable_domains if d}
-        if not blocked:
-            return
-        max_fallbacks = max(0, int(getattr(self.settings, "search_primary_fallback_max", 2) or 0))
-        if max_fallbacks <= 0:
-            return
-
-        # Phase 1 — plan (sync): select up to max_fallbacks blocked results
-        # and build their substitution queries. No I/O, same selection rules
-        # as the old interleaved loop (the ranked slice was always taken up
-        # front, so appending during processing never fed back into it).
-        planned: List[tuple] = []
-        acquired_urls = {canonical_url(r.url) for r in ranked}
-        for result in ranked[: max(1, int(getattr(self.settings, "search_fetch_top_n", 3) or 3))]:
-            if len(planned) >= max_fallbacks:
-                break
-            host = _domain_of(result.url)
-            if host not in blocked:
-                continue
-            question = result.sub_question or result.matched_query or result.title
-            fallback_query = build_substitution_query(
-                question, result.search_type or "general", host, max_sites=2
-            )
-            fallback_query = (fallback_query or "").strip()
-            if not fallback_query:
-                continue
-            planned.append((result, fallback_query))
-        if not planned:
-            return
-
-        # Phase 2 — fetch concurrently: each substitution query is an
-        # independent provider round; running them serially doubled the
-        # wall time of an already-degraded retrieval path (live baseline).
-        batches_list = await asyncio.gather(
-            *(
-                self._providers_for(fallback_query, result.search_type or "general")
-                for result, fallback_query in planned
-            ),
-            return_exceptions=True,
-        )
-
-        # Phase 3 — merge in plan order (deterministic dedup/scoring order).
-        for (result, fallback_query), batches in zip(planned, batches_list):
-            if isinstance(batches, BaseException):
-                logger.warning(
-                    "[Search] primary fallback query failed (%s): %s",
-                    type(batches).__name__, batches,
-                )
-                self.health.record_fallback_query(0)
-                continue
-            new_hits = 0
-            for candidate in batches or []:
-                candidate_domain = _domain_of(candidate.url)
-                key = canonical_url(candidate.url)
-                if not candidate.url or key in acquired_urls:
-                    continue
-                # Never substitute with another host that is also unavailable.
-                if candidate_domain and (
-                    candidate_domain in blocked
-                    or self.domain_registry.is_cooling(candidate_domain)
-                ):
-                    continue
-                acquired_urls.add(key)
-                candidate.is_primary = is_primary_source(candidate.url)
-                candidate.reliability_score = _score_result(
-                    candidate, result.sub_question or result.matched_query
-                )
-                ranked.append(candidate)
-                new_hits += 1
-                if new_hits >= max_fallbacks:
-                    break
-            self.health.record_fallback_query(new_hits)
-            logger.info(
-                "[Search] primary fallback for %s: query=%s new_hits=%d",
-                ",".join(sorted(blocked))[:80], fallback_query[:80], new_hits,
-            )
-        # Re-rank so substituted primary hits compete on the existing score,
-        # not on insertion position. Pure function of the same scorer.
-        ranked.sort(key=lambda r: r.reliability_score, reverse=True)
-        await self._attach_fallback_content(
-            ranked, acquired_urls, client=client, max_attempts=max_attempts
-        )
-
-    async def _attach_fallback_content(
-        self,
-        ranked: List[SearchResult],
-        acquired_urls: set,
-        *,
-        client: httpx.AsyncClient | None = None,
-        max_attempts: int = 2,
-    ) -> None:
-        """Fetch content for the substituted primary hits so a fallback
-        acquisition is equivalent evidence, not a bare snippet. Bounded to the
-        substituted results only; failures are counted like any other fetch."""
-        if client is None:
-            return
-        targets = [r for r in ranked if canonical_url(r.url) in acquired_urls and not r.content]
-        if not targets:
-            return
-
-        async def _attach(r: SearchResult) -> None:
-            domain = _domain_of(r.url)
-            key = canonical_url(r.url)
-            if self.failed_fetches.seen(key) or (
-                domain and self.domain_registry.is_cooling(domain)
-            ):
-                self.health.record_skip(
-                    "cooldown" if domain and self.domain_registry.is_cooling(domain)
-                    else "duplicate_failure"
-                )
-                return
-            self.health.record_attempt()
-            outcome = await _fetch_content_outcome(
-                client, r.url, max_attempts=max_attempts, timeout=self._timeout,
-            )
-            if outcome.ok:
-                r.content = outcome.text
-                r.content_length = len(outcome.text)
-                r.is_content_fetched = True
-                if not r.published_at:
-                    r.published_at = outcome.last_modified
-                self.health.record_success(
-                    domain=domain, primary=r.is_primary,
-                    url=key, authoritative=classify_source(r.url).is_primary,
-                )
-                if domain:
-                    self.domain_registry.record_success(domain)
-                return
-            self.health.record_failure(outcome.reason)
-            if failure_cools_host(outcome.reason) and domain:
-                self.domain_registry.record_failure(domain, outcome.reason)
-            self.failed_fetches.mark(key, outcome.reason)
-
-        await gather_bounded(
-            [(lambda r=r: _attach(r)) for r in targets], self._fetch_limit
-        )
-
-    def _count(self, provider: str, outcome: str) -> None:
-        bucket = self.provider_stats.setdefault(provider, {"ok": 0, "fail": 0, "results": 0})
-        if outcome in bucket:
-            bucket[outcome] += 1
-        self.health.record_provider_call(succeeded=(outcome == "ok"))
-
     def health_snapshot(self) -> Dict[str, Any]:
         """Retrieval-health telemetry for this run (additive; read by the
         benchmark/ledger). Includes the provider success/failure table and the
@@ -1865,122 +436,3 @@ class SearchClient:
         snapshot["cooling_domains"] = self.domain_registry.cooling_domains()
         snapshot["failed_urls_remembered"] = len(self.failed_fetches)
         return snapshot
-
-    # =========================
-    # PROVIDERS
-    # =========================
-
-    async def _wiki(self, query) -> List[SearchResult]:
-        async def _call() -> List[SearchResult]:
-            async with httpx.AsyncClient(
-                timeout=self._timeout,
-                follow_redirects=True,
-                headers={"User-Agent": _WIKI_USER_AGENT},
-            ) as client:
-                r = await client.get(
-                    "https://en.wikipedia.org/w/api.php",
-                    params={
-                        "action": "query",
-                        "list": "search",
-                        "srsearch": str(query),
-                        "srlimit": 5,
-                        "format": "json",
-                    },
-                )
-                r.raise_for_status()
-                data = r.json()
-            self._count("wikipedia", "ok")
-            return _wiki_search_to_results(data, str(query))
-
-        async def _empty() -> List[SearchResult]:
-            self._count("wikipedia", "fail")
-            return []
-
-        return await call_protected(
-            _call,
-            name="wikipedia",
-            policy=RetryPolicy(attempts=2, base_delay=0.5, max_delay=3.0, timeout=self._timeout),
-            breaker=get_breaker("wikipedia", failure_threshold=4, cooldown=45.0),
-            fallback=_empty,
-        )
-
-    async def _arxiv(self, query) -> List[SearchResult]:
-        """arXiv Atom API — preprints, free, no key.
-
-        Worth a provider slot because an academic contract that lands on a blog
-        summarizing a paper is strictly worse evidence than the paper, and the
-        general web search reliably prefers the blog.
-        """
-        text = re.sub(r"\s+", " ", _SITE_OPERATOR_RE.sub("", str(query))).strip()
-        if not text:
-            return []
-
-        async def _call() -> List[SearchResult]:
-            async with httpx.AsyncClient(
-                timeout=self._timeout,
-                follow_redirects=True,
-                headers={"User-Agent": _WIKI_USER_AGENT},
-            ) as client:
-                r = await client.get(
-                    "https://export.arxiv.org/api/query",
-                    params={
-                        "search_query": f"all:{text[:200]}",
-                        "start": 0,
-                        "max_results": 6,
-                        "sortBy": "relevance",
-                    },
-                )
-                r.raise_for_status()
-                payload = r.text
-            self._count("arxiv", "ok")
-            return _arxiv_to_results(payload, text)
-
-        async def _empty() -> List[SearchResult]:
-            self._count("arxiv", "fail")
-            return []
-
-        return await call_protected(
-            _call,
-            name="arxiv",
-            policy=RetryPolicy(attempts=2, base_delay=1.0, max_delay=4.0, timeout=self._timeout),
-            breaker=get_breaker("arxiv", failure_threshold=3, cooldown=90.0),
-            fallback=_empty,
-        )
-
-    async def _crossref(self, query) -> List[SearchResult]:
-        """Crossref works API — DOI metadata and abstracts, free, no key."""
-        text = re.sub(r"\s+", " ", _SITE_OPERATOR_RE.sub("", str(query))).strip()
-        if not text:
-            return []
-
-        async def _call() -> List[SearchResult]:
-            async with httpx.AsyncClient(
-                timeout=self._timeout,
-                follow_redirects=True,
-                headers={"User-Agent": _WIKI_USER_AGENT},
-            ) as client:
-                r = await client.get(
-                    "https://api.crossref.org/works",
-                    params={
-                        "query.bibliographic": text[:300],
-                        "rows": 5,
-                        "select": "DOI,URL,title,abstract,container-title,issued",
-                        "sort": "relevance",
-                    },
-                )
-                r.raise_for_status()
-                payload = r.json()
-            self._count("crossref", "ok")
-            return _crossref_to_results(payload, text)
-
-        async def _empty() -> List[SearchResult]:
-            self._count("crossref", "fail")
-            return []
-
-        return await call_protected(
-            _call,
-            name="crossref",
-            policy=RetryPolicy(attempts=2, base_delay=1.0, max_delay=4.0, timeout=self._timeout),
-            breaker=get_breaker("crossref", failure_threshold=3, cooldown=90.0),
-            fallback=_empty,
-        )
