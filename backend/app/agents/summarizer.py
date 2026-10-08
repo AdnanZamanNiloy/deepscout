@@ -237,7 +237,9 @@ def specialist_system_prompt(role: str = "general") -> str:
 # budget divided across sources is a far better trade than a fixed per-source
 # truncation, which wasted budget on thin sources and starved rich ones.
 EXCERPT_CHAR_BUDGET = 22_000
-MAX_SOURCES_PER_CALL = 12
+# Historical cap was 12; a large-context model can extract from more sources in
+# one call. Overridable per run via `summarizer_max_sources_per_call`.
+MAX_SOURCES_PER_CALL = 20
 MIN_EXCERPT_CHARS = 600
 MAX_EXCERPT_CHARS = 3_500
 
@@ -248,14 +250,18 @@ _EXCERPT_BUDGET_LADDER = (EXCERPT_CHAR_BUDGET, 12_000, 6_000)
 
 
 def _allocate_excerpts(
-    results: Sequence[Dict[str, Any]], budget: int = EXCERPT_CHAR_BUDGET
+    results: Sequence[Dict[str, Any]],
+    budget: int = EXCERPT_CHAR_BUDGET,
+    max_sources: int = MAX_SOURCES_PER_CALL,
 ) -> List[Dict[str, Any]]:
     """Split the excerpt budget across sources proportionally to what they have.
 
     A source with 400 characters of text gets 400; a source with 30,000 gets a
     fair share of the remainder rather than the same 1000 as everything else.
+    `max_sources` caps how many sources one extractor call sees; a large-context
+    model can take more than the historical 12.
     """
-    chosen = list(results)[:MAX_SOURCES_PER_CALL]
+    chosen = list(results)[: max(1, max_sources)]
     if not chosen:
         return []
     available = [
@@ -445,6 +451,9 @@ async def summarizer_agent(
             "about the sense above may be extracted.\n"
         )
 
+    max_sources_per_call = max(
+        1, int(getattr(llm.settings, "summarizer_max_sources_per_call", MAX_SOURCES_PER_CALL) or MAX_SOURCES_PER_CALL)
+    )
     cache = get_cache(llm.settings)
     key = cache_key(
         "summarize_facts",
@@ -481,7 +490,7 @@ async def summarizer_agent(
         fallback_reason = "no_facts_parsed"
         while budget_index < len(_EXCERPT_BUDGET_LADDER):
             excerpt_budget = _EXCERPT_BUDGET_LADDER[budget_index]
-            compact_results = _allocate_excerpts(quality_results, excerpt_budget)
+            compact_results = _allocate_excerpts(quality_results, excerpt_budget, max_sources_per_call)
             user_prompt = (
                 f"Research query: {query}\n\n"
                 f"{sense_block}"
@@ -571,7 +580,7 @@ async def summarizer_agent(
             "provider_timeout", "providers_unavailable", "payload_too_large",
         ):
             compact_results = _allocate_excerpts(
-                quality_results, _EXCERPT_BUDGET_LADDER[-1]
+                quality_results, _EXCERPT_BUDGET_LADDER[-1], max_sources_per_call
             )
             strict_prompt = (
                 f"Research query: {query}\n\n"
