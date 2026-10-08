@@ -306,8 +306,15 @@ def _finalize(
     hundred words of appendix, overshooting every time.
     """
     answer = _sanitize_answer_text(answer, query)
-    answer = _scrub_pipeline_telemetry(answer)
-    answer = _reduce_redundant_audit_language(answer)
+    # Voice-flattening cleanup. `_sanitize_answer_text` above is structural
+    # (markdown block normalisation) and always runs. These two sand off
+    # personality and repeated-limitation phrasing — valuable on the audit
+    # profile, heavy-handed on a prose report. Enabled only when the run flags
+    # strict cleanup (or the fixed-format audit profile runs).
+    strict_cleanup = bool(ctx.get("synthesis_strict_cleanup")) or profile.name == "audit"
+    if strict_cleanup:
+        answer = _scrub_pipeline_telemetry(answer)
+        answer = _reduce_redundant_audit_language(answer)
     answer = _ensure_disambiguation(answer, ctx)
 
     # Only the audit profile is a fixed-format artifact. For every other

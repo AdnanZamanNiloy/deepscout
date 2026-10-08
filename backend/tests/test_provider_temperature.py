@@ -265,11 +265,11 @@ def test_unset_temperature_falls_back_to_the_settings_default(monkeypatch):
     assert payload["temperature"] == 0.2
 
 
-def test_default_is_the_old_hardcoded_value_for_compatibility(monkeypatch):
-    """Every existing provider that never set a temperature keeps behaving
-    exactly as before."""
+def test_default_temperature_is_prose_friendly(monkeypatch):
+    """A provider that never set a temperature gets the configured default
+    (0.3) — enough variance for natural prose, not the old 0.1."""
     payload = _capture_custom_payload(monkeypatch, dict(_CUSTOM))
-    assert payload["temperature"] == 0.1
+    assert payload["temperature"] == 0.3
 
 
 def test_none_temperature_uses_the_default_not_zero(monkeypatch):

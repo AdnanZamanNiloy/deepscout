@@ -158,7 +158,8 @@ _PROCESS_PHRASES = (
 def test_process_noise_is_scrubbed_from_the_answer():
     result = asyncio.run(
         synthesize(_ProcessNoiseWriter(), "What are the current trends in AI as of 2026?",
-                   _facts(), {"intent": {}, "sub_questions": _sub_questions(), "mode": "standard"},
+                   _facts(), {"intent": {}, "sub_questions": _sub_questions(), "mode": "standard",
+                              "synthesis_strict_cleanup": True},
                    compress_context=False)
     )
     lowered = result.answer.lower()
@@ -328,8 +329,17 @@ def test_audit_profile_keeps_the_fixed_format():
 class _RecordingWriter:
     """Writer that records the prompts it is given, then answers."""
 
-    def __init__(self):
+    def __init__(self, process_contracts=True):
         self.prompts = []
+        # The integration tests below assert the process contracts reach the
+        # writer prompt. Injection is opt-in (default off for prose quality), so
+        # the recording writer enables it explicitly; the default-off behaviour
+        # is asserted separately.
+        from types import SimpleNamespace
+
+        self.settings = SimpleNamespace(
+            synthesis_writer_process_contracts=process_contracts
+        )
 
     async def generate_json(self, system_prompt, user_prompt, **kwargs):
         self.prompts.append(f"{system_prompt}\n{user_prompt}")
@@ -413,6 +423,20 @@ def test_construction_contract_reaches_the_writer_prompt():
     # The lock is derived, so assert against what it actually resolved to.
     assert "PRESERVE THE LOCKED INTERPRETATION" in combined
     assert "sustained psychological demand" in combined
+
+
+def test_process_contracts_are_opt_in_for_the_writer_prompt():
+    """By default the process contracts stay in the audit layer and are NOT
+    stacked into the writer prompt (cleaner prose from a strong model); the
+    decision is still mirrored to the caller's context."""
+    writer = _RecordingWriter(process_contracts=False)
+    ctx = _construction_context()
+    asyncio.run(synthesize(writer, _CONSTRUCTION_QUERY, _construction_facts(), ctx,
+                           compress_context=False))
+    combined = "\n".join(writer.prompts)
+    assert "ANSWER MODE: SYNTHESIZED" not in combined
+    # The audit still records the decision.
+    assert isinstance(ctx.get("answer_construction"), dict)
 
 
 def test_construction_decision_is_mirrored_to_the_callers_context():

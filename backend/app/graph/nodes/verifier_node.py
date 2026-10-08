@@ -44,6 +44,18 @@ def make_verifier_node(verify_facts):
         # released), falling back to the snippet when content was already empty.
         from app.core.evidence_grade import CORROBORATION_EXCERPT_CHARS
 
+        # The writer is shown primary material, not only distilled claims: keep
+        # a larger bounded excerpt per source before releasing the full page.
+        # Bounded (a couple KB) so the 8GB memory rule still holds — the full
+        # page text is released; only an excerpt survives.
+        try:
+            from app.core.config import get_settings
+
+            source_excerpt_chars = int(
+                getattr(get_settings(), "synthesis_source_excerpt_chars", 1800) or 1800
+            )
+        except Exception:
+            source_excerpt_chars = 1800
         for result in state.get("search_results", []):
             if not isinstance(result, dict) or "content" not in result:
                 continue
@@ -54,6 +66,8 @@ def make_verifier_node(verify_facts):
                 result["corroboration_excerpt"] = re.sub(
                     r"\s+", " ", raw
                 ).strip()[:CORROBORATION_EXCERPT_CHARS]
+            if raw and not result.get("source_excerpt"):
+                result["source_excerpt"] = raw.strip()[:source_excerpt_chars]
             result["content"] = ""
 
         logger.info("verifier_done", **stats)
