@@ -533,8 +533,9 @@ async def synthesize(
             + _render_ranges_block(contradictions)
             + _render_context_block(ctx)
             + f"Sources (cite by number only):\n{_source_lines(numbered)}\n\n"
-            "Return JSON in this schema: "
-            '{"answer": "<final synthesized report with [n] citations>"}'
+            "Return ONLY valid JSON with a single key named exactly \"answer\", "
+            "whose value is the full report markdown string. "
+            'Schema: {"answer": "<final synthesized report with [n] citations>"}'
         )
         try:
             set_stage_hint("synthesizer")

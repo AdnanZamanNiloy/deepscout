@@ -174,6 +174,30 @@ class CriticVerdictModel(BaseModel):
 class SynthesizerAnswerModel(BaseModel):
     answer: str = Field(min_length=1)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _salvage_answer(cls, data):
+        """Recover the report from a shape-confused model.
+
+        The writer is told to return {"answer": "<report>"}, but models
+        occasionally echo a different key ("text", "report", "content",
+        "response") or nest the text. A missing `answer` used to raise a
+        ValidationError that dropped the ENTIRE synthesis to the extractive
+        fallback — losing a perfectly good model-written report to a key-name
+        slip. Salvage any substantial string field before giving up.
+        """
+        if not isinstance(data, dict) or data.get("answer"):
+            return data
+        for key in ("text", "report", "content", "response", "output", "result", "final_report"):
+            value = data.get(key)
+            if isinstance(value, str) and value.strip():
+                return {**data, "answer": value}
+        # A single unknown string field is still the report.
+        strings = [v for v in data.values() if isinstance(v, str) and len(v.strip()) > 40]
+        if len(strings) == 1:
+            return {**data, "answer": strings[0]}
+        return data
+
 
 class AnalyticalRelationshipModel(BaseModel):
     """One connection between findings named by the Analytical Synthesis Agent."""

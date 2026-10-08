@@ -18,7 +18,7 @@ from dataclasses import dataclass  # noqa: F401
 from typing import Any, Awaitable, Callable, Dict, List, Mapping, Tuple, Type  # noqa: F401
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential_jitter  # noqa: F401
 
 from app.core.config import Settings
@@ -149,6 +149,12 @@ class LLMClient(ProviderInvocationMixin, JSONParseMixin, UsageAccountingMixin, P
                 PromptTooLargeError,
                 NoProviderConfiguredError,
             ):
+                raise
+            except ValidationError:
+                # A schema mismatch is deterministic: the same model returned
+                # the same wrong shape, so re-calling cannot fix it and only
+                # burns the research budget. Surface it immediately so the
+                # caller's deterministic fallback runs once.
                 raise
             except Exception as exc:
                 if attempt == retries - 1:
