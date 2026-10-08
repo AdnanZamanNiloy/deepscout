@@ -132,13 +132,55 @@ def test_priority_directive_reaches_writer_prompt():
 
 
 def test_system_prompt_forbids_internal_decision_machinery():
+    """The prompt must keep the pipeline's own machinery out of the answer.
+
+    Asserted on the prompt's actual wording, not a paraphrase: this checks the
+    ban is still PRESENT after a prompt rewrite, which is the failure mode a
+    pure phrase-match would otherwise hide (it would keep passing on a stale
+    phrase while the ban itself was dropped).
+    """
     lowered = SYNTHESIZER_SYSTEM_PROMPT.lower()
+    # Internal labels and decision scaffolding.
     assert "option a" in lowered
     assert "recommended option" in lowered
-    assert "dimension ranking" in lowered
-    # Uncertainty compression + direct answer first are present.
+    assert "scoring" in lowered and "planner terms" in lowered
+    # Process language (the pipeline describing itself rather than the subject).
+    assert "process language" in lowered
+    assert "pipeline stages" in lowered
+    assert "relevance n/100" in lowered
+    # Uncertainty compression + answer-first are present.
     assert "compress uncertainty" in lowered
     assert "what is not known" in lowered
+    assert "answer first" in lowered
+
+
+def test_system_prompt_states_the_runtime_contracts_take_precedence():
+    """The prompt is the standing layer; the per-report contracts appended to
+    the user message override its style/structure rules. Without this the
+    answer-construction contract and the prompt could disagree about whether a
+    synthesis may be labelled as one, and the model would arbitrate."""
+    lowered = SYNTHESIZER_SYSTEM_PROMPT.lower()
+    assert "precedence" in lowered
+    for contract in ("definition lock", "ranking basis", "convergence",
+                     "consistency", "answer construction", "disambiguation"):
+        assert contract in lowered, contract
+    # ...but never the citation rules or the process-language ban.
+    assert "never the citation rules" in lowered
+
+
+def test_system_prompt_forbids_a_writer_supplied_sources_list():
+    """The numbered legend is appended by _legend_block, so a writer-emitted
+    sources list is duplicated work that _strip_sections then removes."""
+    assert "write no sources list" in SYNTHESIZER_SYSTEM_PROMPT.lower()
+
+
+def test_system_prompt_names_the_answer_cases_without_printing_them():
+    """DIRECT / ASSEMBLED / PARTIAL / NOT ESTABLISHED map onto the construction
+    modes; the case NAMES must never reach the reader."""
+    lowered = SYNTHESIZER_SYSTEM_PROMPT.lower()
+    for case in ("direct:", "assembled:", "partial:", "not established:"):
+        assert case in lowered, case
+    assert "never print the case names" in lowered
 
 
 # --- 4. source authority preference (dedup) ----------------------------------
