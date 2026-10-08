@@ -338,7 +338,7 @@ def render_docx(doc: ReportDocument) -> bytes:
 
     def add_runs(paragraph, text: str) -> None:
         """Render **bold** spans instead of dropping them."""
-        for idx, chunk in enumerate(re.split(r"(\*\*[^*]+\*\*)", text)):
+        for chunk in re.split(r"(\*\*[^*]+\*\*)", text):
             if not chunk:
                 continue
             if chunk.startswith("**") and chunk.endswith("**"):

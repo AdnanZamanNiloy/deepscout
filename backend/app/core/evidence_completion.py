@@ -237,7 +237,7 @@ def primary_source_followups(
     thin.sort(key=lambda pair: (pair[0], pair[1]))
 
     out: List[str] = []
-    for share, dim in thin:
+    for _share, dim in thin:
         item = by_dim.get(dim)
         if not isinstance(item, dict):
             continue
