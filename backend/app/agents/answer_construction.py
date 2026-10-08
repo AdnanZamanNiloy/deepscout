@@ -58,15 +58,27 @@ from app.agents.planner import dimension_to_axis
 
 ANSWER_DIRECT = "direct"
 ANSWER_SYNTHESIZED = "synthesized"
+# PARTIAL: a material part of the question IS supported, but not enough to carry
+# a full answer. The prompt names this case ("lead with that part and name the
+# gap in one clause"), so the layer needs it too — otherwise a genuinely partial
+# result is forced into SYNTHESIZED (claiming more coverage than exists) or into
+# INSUFFICIENT (throwing away support the evidence does provide).
+ANSWER_PARTIAL = "partial"
 ANSWER_INSUFFICIENT = "insufficient"
 
-ALL_ANSWER_MODES = (ANSWER_DIRECT, ANSWER_SYNTHESIZED, ANSWER_INSUFFICIENT)
+ALL_ANSWER_MODES = (
+    ANSWER_DIRECT,
+    ANSWER_SYNTHESIZED,
+    ANSWER_PARTIAL,
+    ANSWER_INSUFFICIENT,
+)
 
 # Inference levels. How far the delivered answer stands from a source that
 # states it outright. Surfaced so the writer (and the audit) can calibrate
 # language instead of treating every supported answer as equally direct.
 INFERENCE_DIRECT = "direct"              # a source states the answer
 INFERENCE_CROSS_DIMENSION = "cross_dimension"  # assembled from independent dimensions
+INFERENCE_PARTIAL = "partial"            # a supported part, and a named gap
 INFERENCE_NONE = "none"                  # nothing to stand on
 
 # --- thresholds ------------------------------------------------------------
@@ -88,7 +100,20 @@ INFERENCE_NONE = "none"                  # nothing to stand on
 # distinct publishers are enough" is how the two gates would drift apart.
 MIN_SYNTHESIS_DIMENSIONS = 2
 MIN_SYNTHESIS_CORROBORATED = 1
+
+# The PARTIAL floor. Below the synthesis bar but above a refusal: at least one
+# planned dimension the evidence actually speaks to. Deliberately low, because
+# this tier's whole job is to report support that EXISTS rather than discard it
+# — while still requiring a covered dimension, so a pool of off-topic claims
+# cannot be dressed up as a partial answer.
+MIN_PARTIAL_DIMENSIONS = 1
 MAX_SINGLE_DOCUMENT_SHARE = 0.6
+
+# `dimension_to_axis` maps empty or unmappable text to this, so an UNTAGGED fact
+# would otherwise be credited with covering a dimension called "general" — and
+# could satisfy MIN_SYNTHESIS_DIMENSIONS on its own. It is the absence of a
+# dimension, not one.
+_GENERIC_AXIS = "general"
 
 # How many items the contract carries. Bounded because this text is prepended to
 # every section prompt (AGENTS.md 5: the 8GB host pays for every token, and the
@@ -218,7 +243,9 @@ def _dimensions(pool: Sequence[Mapping[str, Any]], plan: Sequence[Mapping[str, A
             _text(fact.get("search_type")),
         )
         axis = (axis or "").strip()
-        if axis and axis not in covered:
+        # An untagged fact normalises to _GENERIC_AXIS, which is the ABSENCE of a
+        # dimension, not one — otherwise it would count as coverage on its own.
+        if axis and axis != _GENERIC_AXIS and axis not in covered:
             covered.append(axis)
 
     planned: List[str] = []
@@ -230,7 +257,7 @@ def _dimensions(pool: Sequence[Mapping[str, Any]], plan: Sequence[Mapping[str, A
             _text(item.get("search_type")),
         )
         axis = (axis or "").strip()
-        if axis and axis not in planned:
+        if axis and axis != _GENERIC_AXIS and axis not in planned:
             planned.append(axis)
 
     missing = [a for a in planned if a not in covered]
@@ -527,10 +554,27 @@ def classify(
         blockers.append("no candidates are named anywhere in the evidence")
 
     if blockers:
+        # Below the synthesis bar is not automatically a refusal. If any planned
+        # dimension is covered by a verified claim, the evidence DOES support
+        # part of the question, and PARTIAL reports that part with its gap named
+        # instead of discarding it. Without this tier the only alternatives were
+        # to over-claim a synthesis or to answer nothing.
+        if len(covered) >= MIN_PARTIAL_DIMENSIONS and verified:
+            return AnswerConstruction(
+                mode=ANSWER_PARTIAL,
+                reason=(
+                    "part of the question is supported but a full answer is not: "
+                    + "; ".join(blockers)
+                ),
+                inference_level=INFERENCE_PARTIAL,
+                allowed_ranking=False,
+                allows_cluster=len(candidates) >= 2,
+                **base,
+            )
         return AnswerConstruction(
             mode=ANSWER_INSUFFICIENT,
             reason=(
-                "the evidence cannot support a defensible synthesis: "
+                "the evidence cannot support a defensible answer: "
                 + "; ".join(blockers)
             ),
             inference_level=INFERENCE_NONE,
@@ -565,6 +609,52 @@ def render_construction_contract(construction: AnswerConstruction) -> str:
         # A direct answer needs no construction instruction; every existing
         # contract (definition lock, consistency, convergence) already applies.
         return ""
+
+    if construction.mode == ANSWER_PARTIAL:
+        parts = [
+            "ANSWER MODE: PARTIAL — part of the question is supported and the "
+            "rest is not. Lead with the supported part, stated as an answer, "
+            "then name the gap in ONE clause. Never present the supported part "
+            "as the whole answer.",
+            "Do not pad the gap, do not speculate into it, and do not restate "
+            "the limitation more than once.",
+        ]
+        if construction.supported_dimensions:
+            parts.append(
+                "What IS supported: "
+                + ", ".join(construction.supported_dimensions[:MAX_CONTRACT_DIMENSIONS])
+                + "."
+            )
+        if construction.missing_dimensions:
+            parts.append(
+                "What is NOT supported (name it once): "
+                + ", ".join(construction.missing_dimensions[:MAX_CONTRACT_DIMENSIONS])
+                + "."
+            )
+        # Why this is partial rather than a full synthesis. The reader deciding
+        # how far to trust the supported part needs the reason named.
+        parts.append(
+            f"Why it is partial and not a complete answer: {construction.reason}."
+        )
+        if construction.candidate_claims:
+            listed = "; ".join(construction.candidate_claims[:MAX_CONTRACT_CLAIMS])
+            parts.append(
+                f"Strongest supported candidate(s): {listed}. State them as the "
+                "best the evidence supports on the covered part, NOT as the "
+                "answer a source gives to the whole question."
+            )
+        if construction.contradictions:
+            parts.append(
+                "Unresolved conflicts to report rather than resolve: "
+                + " | ".join(construction.contradictions[:2])
+            )
+        if construction.locked_interpretation:
+            parts.append(
+                "PRESERVE THE LOCKED INTERPRETATION — the partial answer must "
+                f"address the question as fixed before research: {construction.locked_interpretation}. "
+                "Do not let the available evidence redefine it."
+            )
+        return "\n".join(parts)
 
     if construction.mode == ANSWER_INSUFFICIENT:
         parts = [
@@ -652,6 +742,55 @@ def render_construction_contract(construction: AnswerConstruction) -> str:
     return "\n".join(parts)
 
 
+def _asserts_unbacked_ranking(text: str) -> bool:
+    """Does `text` assert an ordering the evidence does not contain?
+
+    Delegates to `report_consistency.ranking_language_without_basis` rather
+    than re-testing superlatives here. That detector is the established one and
+    uses WINDOW-based negation, so "the evidence establishes no ranking" and
+    "no single #1" are correctly not violations, while "X is the strongest
+    candidate" is. A second, cruder superlative check in this module flagged a
+    merely descriptive "the highest measured burnout rate" as a ranking.
+    """
+    try:
+        from app.agents.report_consistency import (
+            STATUS_NO_NUMBER_ONE,
+            ReportStatus,
+            ranking_language_without_basis,
+        )
+
+        # A synthesis/partial mode is exactly the state in which the evidence
+        # does not support an ordering, so it forbids one.
+        status = ReportStatus(status=STATUS_NO_NUMBER_ONE, allowed_ranking=False)
+        hits = ranking_language_without_basis(text, status)
+    except Exception:
+        return False
+    if not hits:
+        return False
+    # A superlative carrying the contract's OWN hedging vocabulary is the
+    # wording this layer asks for ("the strongest evidence-based candidate"),
+    # not a ranking claim. report_consistency does not know that vocabulary, so
+    # without this filter the audit would flag a report for obeying its
+    # instructions. Only a superlative with no such hedge anywhere near it is a
+    # violation.
+    low = str(text or "").lower()
+    # Deliberately NOT the bare word "candidate": "X is the strongest candidate
+    # for 2027" is precisely the ranking claim this check exists to catch. Only
+    # wording that frames the claim as an assembled reading qualifies.
+    hedges = ("synthesis", "synthesised", "synthesized", "assembled",
+              "evidence-based", "evidence based", "supported cluster",
+              "not a ranking", "not a published ranking", "no single source")
+    for hit in hits:
+        start = low.find(hit)
+        if start == -1:
+            continue
+        window = low[max(0, start - 60): start + len(hit) + 60]
+        if any(hedge in window for hedge in hedges):
+            continue
+        return True
+    return False
+
+
 def assess_answer_construction(
     query: str,
     answer: str,
@@ -685,17 +824,35 @@ def assess_answer_construction(
                 "mode is SYNTHESIZED but the answer never labels itself as a "
                 "synthesis or an inference"
             )
-        ranked = bool(_RANKING_RE.search(text[:1600])) and not any(
-            neg in low
-            for neg in ("no source ranks", "not a ranking", "cannot be ranked",
-                        "no authoritative ranking", "no published ranking",
-                        "no ranking exists", "not ranked")
-        )
+        ranked = _asserts_unbacked_ranking(text)
         out["asserts_ranking"] = ranked
         if ranked:
             out["violations"].append(
                 "mode is SYNTHESIZED but the answer asserts a ranking the "
                 "evidence does not contain"
+            )
+
+    elif mode == ANSWER_PARTIAL:
+        # The two things a partial answer must do: say what IS supported, and
+        # name that it is incomplete. Either alone is a failure — leading with
+        # the gap hides the answer, and leading with the part without the gap
+        # lets a partial answer pass as the whole.
+        out["names_the_gap"] = any(
+            marker in low
+            for marker in ("does not", "not established", "no evidence", "cannot",
+                           "insufficient", "not supported", "unanswered",
+                           "remains unclear", "partial", "limited to")
+        )
+        if not out["names_the_gap"]:
+            out["violations"].append(
+                "mode is PARTIAL but the answer never says which part is "
+                "unsupported"
+            )
+        out["asserts_ranking"] = _asserts_unbacked_ranking(text)
+        if out["asserts_ranking"]:
+            out["violations"].append(
+                "mode is PARTIAL but the answer asserts a ranking the evidence "
+                "does not contain"
             )
 
     elif mode == ANSWER_INSUFFICIENT:
