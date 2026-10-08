@@ -325,7 +325,7 @@ def _rank_impl(
     if impact_reserve > 0:
         max_rel = max(relevance) if relevance else 0.0
         reserved = 0
-        for score, i, fact in scored:
+        for _score, i, fact in scored:
             if reserved >= impact_reserve or len(selected) >= limit:
                 break
             if not _is_high_impact(fact):
@@ -348,7 +348,7 @@ def _rank_impl(
     while remaining and len(selected) < limit:
         best_index = 0
         best_value = None
-        for pos, (score, i, fact) in enumerate(remaining):
+        for pos, (score, _i, fact) in enumerate(remaining):
             publisher = _publisher_key(fact)
             bonus = _W_DIVERSITY if publisher and publisher not in seen_publishers else 0.0
             if id(fact) in reserved_ids:

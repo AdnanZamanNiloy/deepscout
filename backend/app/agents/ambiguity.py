@@ -200,17 +200,6 @@ def _reading_labels(intent: Mapping[str, Any], query: str = "") -> List[str]:
     return labels[:MAX_INTERPRETATIONS]
 
 
-def _probabilities(intent: Mapping[str, Any]) -> List[float]:
-    out: List[float] = []
-    for item in intent.get("senses") or ():
-        if isinstance(item, Mapping):
-            try:
-                out.append(float(item.get("probability", 0.0) or 0.0))
-            except (TypeError, ValueError):
-                out.append(0.0)
-    return out
-
-
 def _has_disambiguating_context(query: str) -> bool:
     """Did the query itself already choose a reading?
 
@@ -581,7 +570,6 @@ def decide_ambiguity(
     """
     intent = intent if isinstance(intent, Mapping) else {}
     labels = _reading_labels(intent, query)
-    probs = _probabilities(intent)
 
     # 1. No plausible readings at all: nothing to decide.
     if len(labels) < MIN_INTERPRETATIONS:
@@ -641,7 +629,7 @@ def decide_ambiguity(
                     priors[label] = float(item.get("probability", 0.0) or 0.0)
                 except (TypeError, ValueError):
                     priors[label] = 0.0
-    chosen_reading, scored = select_reading(
+    chosen_reading, _ = select_reading(
         candidates, query, evidence_counts=evidence_counts, priors=priors
     )
     if chosen_reading is not None:
