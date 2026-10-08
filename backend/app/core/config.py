@@ -193,6 +193,13 @@ class Settings(BaseSettings):
     # before the breaker opened. Applies to the custom provider only;
     # Groq/HF keep llm_timeout_sec.
     custom_llm_timeout_sec: float = 60.0
+    # Sampling temperature sent to a custom/OpenAI-compatible provider that does
+    # not specify its own. A per-provider value (set in the Providers tab) wins;
+    # this is the fallback. It has to be configurable because some models accept
+    # only a fixed set — a provider that allows exactly 0, 0.6 or 1 rejects the
+    # old hardcoded 0.1 with a 400 on EVERY call, which silently degraded the
+    # whole pipeline to extraction with no way for the user to fix it.
+    llm_temperature: float = 0.1
     search_timeout_sec: float = 20.0
     # Full multi-agent runs take minutes (retrieval + 6 LLM stages), the
     # same as upstream GPT Researcher. Per-provider fail-fasts (auth/402/

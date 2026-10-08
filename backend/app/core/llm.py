@@ -4,7 +4,7 @@ from app.core.logging import get_logger
 import re
 import time
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Dict, List, Tuple, Type
+from typing import Any, Awaitable, Callable, Dict, List, Mapping, Tuple, Type
 
 import httpx
 from pydantic import BaseModel
@@ -643,6 +643,9 @@ class LLMClient:
                 "endpoint": endpoint,
                 "model": str(active.get("model", "") or ""),
                 "name": str(active.get("name", "") or "active provider"),
+                # May be None (unset), which _post_custom resolves to the global
+                # default. Carried as-is, never coerced here: 0 is a real choice.
+                "temperature": active.get("temperature"),
             }, True
         return self._custom_config(), False
 
@@ -693,6 +696,7 @@ class LLMClient:
                 "endpoint": endpoint,
                 "model": model,
                 "name": str(row.get("name", "") or "provider"),
+                "temperature": row.get("temperature"),
             })
         return configs
 
@@ -1094,6 +1098,22 @@ class LLMClient:
             endpoint = base + "/chat/completions"
         return {"api_key": key, "endpoint": endpoint, "model": model}
 
+    def _temperature_for(self, custom: Mapping[str, Any]) -> float:
+        """Sampling temperature for a custom provider.
+
+        An explicit per-provider value wins; unset (None) falls back to the
+        configured default. `None` and `0` are kept distinct on purpose: 0 is
+        the deterministic setting some models require, so treating a falsy 0 as
+        "unset" would send 0.1 to exactly the provider that cannot take it.
+        """
+        value = custom.get("temperature") if isinstance(custom, Mapping) else None
+        if value is None:
+            return float(getattr(self.settings, "llm_temperature", 0.1) or 0.1)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float(getattr(self.settings, "llm_temperature", 0.1) or 0.1)
+
     @retry(
         reraise=True,
         stop=stop_after_attempt(4),
@@ -1127,7 +1147,12 @@ class LLMClient:
                 },
                 json={
                     "model": custom["model"],
-                    "temperature": 0.1,
+                    # Per-provider temperature when the user set one, else the
+                    # global default. This was hardcoded 0.1 until a model that
+                    # accepts ONLY 0/0.6/1 rejected every single call with a 400
+                    # ("invalid temperature"), which degraded the whole pipeline
+                    # to extraction with no way for the user to fix it.
+                    "temperature": self._temperature_for(custom),
                     # generate_json always JSON-parses the reply, so request
                     # JSON mode instead of hoping the model obeys the prompt.
                     "response_format": {"type": "json_object"},

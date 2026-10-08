@@ -205,3 +205,7 @@
 .pv-timeout input{width:72px;padding:5px 9px;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--t1);font-size:12.5px;outline:none}
 
 @media (max-width: 460px){.pv-model-list{grid-template-columns:minmax(0,1fr)}}
+
+/* "optional" marker on a form label. Distinguishes a field that may be left
+   blank from one that must be filled, without a second colour. */
+.pv-optional{font-weight:500;color:var(--t4);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}

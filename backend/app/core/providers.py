@@ -40,6 +40,12 @@ def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# Distinguishes "the caller omitted temperature" from "the caller cleared it".
+# A plain None cannot do both: an update that never mentions temperature must
+# keep the stored value, while a create that omits it must resolve to unset.
+_TEMPERATURE_UNSET = object()
+
+
 class ProviderSecretUnavailableError(ValueError):
     """A stored provider key exists, but the current secret cannot open it.
 
@@ -176,6 +182,44 @@ def _validate_model_name(model_name: Optional[str], *, fallback: str) -> str:
     return label or fallback
 
 
+def _validate_temperature(value: Any) -> Optional[float]:
+    """None = unset (use the global default); a float in [0, 2] otherwise.
+
+    None and 0.0 are DIFFERENT states and both are meaningful: 0 is the
+    deterministic setting some models require, while None means "whatever the
+    global default is". Collapsing them would send 0.1 to a provider that only
+    accepts 0. Out-of-range values are rejected rather than clamped, so a typo
+    surfaces instead of silently changing sampling.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str) and not value.strip():
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("Temperature must be a number between 0 and 2.")
+    if number != number:  # NaN
+        raise ValueError("Temperature must be a number between 0 and 2.")
+    if not (0.0 <= number <= 2.0):
+        raise ValueError("Temperature must be between 0 and 2.")
+    return number
+
+
+def _row(row: Any, key: str, default: Any = None) -> Any:
+    """Column access that tolerates a row predating an additive migration.
+
+    The PRAGMA migrations in init_db keep every database converged, but a row
+    is also reachable from a caller that opened its own connection, and
+    `row[key]` raises for a column the table does not have yet.
+    """
+    try:
+        keys = row.keys()
+    except AttributeError:
+        return default
+    return row[key] if key in keys else default
+
+
 def _public(row: Any) -> Dict[str, Any]:
     """Wire shape: everything except the key (hint only)."""
     return {
@@ -185,7 +229,10 @@ def _public(row: Any) -> Dict[str, Any]:
         "model": row["model"],
         # Wire shape only: the persisted column lands with the migration above,
         # but a row read from a database that predates it still resolves.
-        "model_name": _validate_model_name(row["model_name"], fallback=row["model"]),
+        "model_name": _validate_model_name(_row(row, "model_name", ""), fallback=row["model"]),
+        # None = unset (the UI shows the global default and omits it on save).
+        "temperature": _row(row, "temperature"),
+
         "is_active": bool(row["is_active"]),
         "has_key": bool(row["api_key_enc"]),
         "key_hint": row["key_hint"] or "",
@@ -218,14 +265,23 @@ async def save_provider(
     model: str,
     api_key: Optional[str] = None,
     model_name: Optional[str] = None,
+    temperature: Any = _TEMPERATURE_UNSET,
 ) -> Dict[str, Any]:
     """Insert (provider_id None) or update. api_key None on update keeps the
     stored key; empty string on insert is rejected. Name must stay unique.
 
     `model_name` is the optional human label; blank falls back to the model id.
+    `temperature` None means "unset — use the global default"; an explicit 0 is
+    preserved as 0, because some models accept only 0/0.6/1 and must be able to
+    say so.
     """
     name, base_url, model = _validate(name, base_url, model)
     label = _validate_model_name(model_name, fallback=model)
+    # A sentinel distinguishes "field omitted, keep the stored value" from
+    # "explicitly cleared to unset". Updating a name must not wipe a temperature
+    # the caller never mentioned.
+    temperature_provided = temperature is not _TEMPERATURE_UNSET
+    temp = _validate_temperature(temperature) if temperature_provided else None
     async with aiosqlite.connect(database_path) as db:
         db.row_factory = aiosqlite.Row
         if provider_id is None:
@@ -237,9 +293,9 @@ async def save_provider(
             hint = f"••••{key[-4:]}"
             try:
                 cur = await db.execute(
-                    "INSERT INTO llm_providers (name, base_url, api_key_enc, key_hint, model, model_name, is_active, created_at, updated_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
-                    (name, base_url, encrypt_api_key(key), hint, model, label, _utcnow(), _utcnow()),
+                    "INSERT INTO llm_providers (name, base_url, api_key_enc, key_hint, model, model_name, temperature, is_active, created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+                    (name, base_url, encrypt_api_key(key), hint, model, label, temp, _utcnow(), _utcnow()),
                 )
             except Exception as exc:
                 if "UNIQUE" in str(exc).upper():
@@ -269,11 +325,14 @@ async def save_provider(
             # An omitted label keeps the stored one; a blank one clears it back
             # to the model id, so the two fields stay independent.
             if model_name is None:
-                label = _validate_model_name(existing["model_name"], fallback=model)
+                label = _validate_model_name(_row(existing, "model_name", ""), fallback=model)
+            # An omitted temperature keeps the stored one (see the sentinel note).
+            if not temperature_provided:
+                temp = _row(existing, "temperature")
             await db.execute(
-                "UPDATE llm_providers SET name = ?, base_url = ?, api_key_enc = ?, key_hint = ?, model = ?, model_name = ?, updated_at = ?"
+                "UPDATE llm_providers SET name = ?, base_url = ?, api_key_enc = ?, key_hint = ?, model = ?, model_name = ?, temperature = ?, updated_at = ?"
                 " WHERE id = ?",
-                (name, base_url, enc, hint, model, label, _utcnow(), int(provider_id)),
+                (name, base_url, enc, hint, model, label, temp, _utcnow(), int(provider_id)),
             )
             new_id = int(provider_id)
         await db.commit()
@@ -333,6 +392,9 @@ async def get_active_provider(database_path: str) -> Optional[Dict[str, Any]]:
         "base_url": data["base_url"],
         "api_key": decrypt_api_key(data["api_key_enc"]),
         "model": data["model"],
+        # None = unset; the LLM client falls back to the global default rather
+        # than assuming a value here.
+        "temperature": _row(data, "temperature"),
     }
 
 
@@ -352,6 +414,9 @@ async def get_provider_secret(database_path: str, provider_id: int) -> Optional[
         "base_url": data["base_url"],
         "api_key": decrypt_api_key(data["api_key_enc"]),
         "model": data["model"],
+        # None = unset; the LLM client falls back to the global default rather
+        # than assuming a value here.
+        "temperature": _row(data, "temperature"),
     }
 
 
