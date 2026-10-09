@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Sequence
 from app.agents.contradiction import summarize_contradictions
 from app.agents.evidence_utils import extract_domain
 from app.agents.research_quality import IndependenceReport, TemporalProfile
+from app.agents.synthesis.primitives import order_by_assumed_reading
 from app.agents.sources import canonical_url, primary_source_share
 
 from app.agents.synthesis.findings import _ledger_warnings
@@ -59,11 +60,9 @@ def _render_interpretations_block(intent: Dict[str, Any], ambiguity: Dict[str, A
     # stated the right assumption in one sentence and then listed the other
     # reading as "1)" and defined the term by it — the writer correctly followed
     # the list and contradicted the decision.
-    assumption_label = str(policy.get("assumption", "") or "").strip()
-    if action == "assume" and assumption_label:
-        readings = sorted(
-            readings,
-            key=lambda r: str(r.get("label", "")).strip() != assumption_label,
+    if action == "assume":
+        readings = order_by_assumed_reading(
+            readings, policy, lambda r: str(r.get("label", ""))
         )
 
     listed = "\n".join(
@@ -135,9 +134,7 @@ def _render_ambiguity_block(intent: Dict[str, Any], policy: Dict[str, Any] | Non
 
     # The assumed reading leads the list whenever the policy states one, so
     # "meaning 1" is the meaning the pipeline chose.
-    assumed = str((policy or {}).get("assumption", "") or "").strip()
-    if assumed:
-        senses = sorted(senses, key=lambda s: str(s.get("label", "")).strip() != assumed)
+    senses = order_by_assumed_reading(senses, policy, lambda s: str(s.get("label", "")))
 
     listed = "\n".join(
         f"  {i + 1}) **{str(s.get('label')).strip()}**"

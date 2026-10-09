@@ -28,6 +28,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Sequence
 
+from app.agents.synthesis.primitives import order_by_assumed_reading
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -246,11 +247,9 @@ def build_outline(
     # treats as primary, and the classifier's own order put the off-meaning
     # sense first — how "most demanding skill" got an answer about employer
     # demand even after the policy had chosen the difficulty reading.
-    assumed = str((ambiguity or {}).get("assumption", "") or "").strip()
-    if assumed:
-        senses = sorted(
-            senses, key=lambda s: str(s.get("label", "")).strip() != assumed
-        )
+    senses = order_by_assumed_reading(
+        senses, ambiguity, lambda s: str(s.get("label", ""))
+    )
     ambiguous = bool(intent.get("ambiguity")) and len(senses) >= 2
 
     ordered = sorted(

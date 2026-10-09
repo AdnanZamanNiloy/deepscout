@@ -16,6 +16,7 @@ from typing import Any, Dict, List
 
 from app.agents.evidence_utils import split_into_sentences
 
+from app.agents.synthesis.primitives import order_by_assumed_reading
 from app.agents.synthesis.sections import _dedupe_heading
 
 
@@ -303,11 +304,7 @@ def _deterministic_disambiguation(
     ]
     if len(senses) < 2:
         return ""
-    assumed = str((policy or {}).get("assumption", "") or "").strip()
-    if assumed:
-        senses = sorted(
-            senses, key=lambda s: str(s.get("label", "")).strip() != assumed
-        )
+    senses = order_by_assumed_reading(senses, policy, lambda s: str(s.get("label", "")))
     lines = []
     for i, sense in enumerate(senses[:3], 1):
         label = str(sense.get("label", "")).strip()
