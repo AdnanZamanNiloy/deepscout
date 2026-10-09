@@ -284,8 +284,17 @@ def _sanitize_answer_text(answer: str, query: str) -> str:
     return text.strip()
 
 
-def _deterministic_disambiguation(intent: Dict[str, Any]) -> str:
-    """The numbered 'n) **Sense** — explanation' block the gate requires."""
+def _deterministic_disambiguation(
+    intent: Dict[str, Any], policy: Dict[str, Any] | None = None
+) -> str:
+    """The numbered 'n) **Sense** — explanation' block the gate requires.
+
+    `policy` is the ambiguity DECISION. When it names an assumed reading that
+    reading leads, so "meaning 1" is the meaning the pipeline actually chose —
+    rather than whatever order the classifier happened to return. The two
+    disagreed live: the pipeline assumed "Stressful or difficult" and the report
+    announced "taken to mean the skills carrying the heaviest employer demand".
+    """
     if not isinstance(intent, dict) or not intent.get("ambiguity"):
         return ""
     senses = [
@@ -294,6 +303,11 @@ def _deterministic_disambiguation(intent: Dict[str, Any]) -> str:
     ]
     if len(senses) < 2:
         return ""
+    assumed = str((policy or {}).get("assumption", "") or "").strip()
+    if assumed:
+        senses = sorted(
+            senses, key=lambda s: str(s.get("label", "")).strip() != assumed
+        )
     lines = []
     for i, sense in enumerate(senses[:3], 1):
         label = str(sense.get("label", "")).strip()
@@ -316,7 +330,9 @@ def _ensure_disambiguation(answer: str, ctx: Dict[str, Any]) -> str:
         return answer
     if re.search(r"^\s*\d+\)\s*\*\*[^*]{2,120}\*\*", answer or "", re.M):
         return answer
-    block = _deterministic_disambiguation(intent)
+    block = _deterministic_disambiguation(
+        intent, ctx.get("ambiguity") if isinstance(ctx.get("ambiguity"), dict) else None
+    )
     if not block:
         return answer
     heading = re.search(r"^##\s+Executive Summary\s*$", answer or "", re.M)

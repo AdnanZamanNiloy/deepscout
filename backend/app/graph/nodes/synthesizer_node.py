@@ -57,6 +57,8 @@ def make_synthesizer_node(
                     usable,
                     state.get("sub_questions", []),
                     intent=intent,
+                    ambiguity=state.get("ambiguity")
+                    if isinstance(state.get("ambiguity"), dict) else None,
                 )
             except Exception as exc:
                 logger.warning("outline_build_failed", error=str(exc), exc_info=exc)

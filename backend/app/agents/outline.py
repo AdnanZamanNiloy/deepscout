@@ -200,6 +200,7 @@ def build_outline(
     sub_questions: Sequence[Any] = (),
     *,
     intent: Dict[str, Any] | None = None,
+    ambiguity: Dict[str, Any] | None = None,
 ) -> AnswerOutline:
     """Deterministically derive the answer's section outline.
 
@@ -240,6 +241,16 @@ def build_outline(
         s for s in (intent.get("senses") or [])
         if isinstance(s, dict) and str(s.get("label", "")).strip()
     ]
+    # The assumed reading leads the sense sections, for the same reason it leads
+    # the disambiguation block: a section ORDERED first is the one the writer
+    # treats as primary, and the classifier's own order put the off-meaning
+    # sense first — how "most demanding skill" got an answer about employer
+    # demand even after the policy had chosen the difficulty reading.
+    assumed = str((ambiguity or {}).get("assumption", "") or "").strip()
+    if assumed:
+        senses = sorted(
+            senses, key=lambda s: str(s.get("label", "")).strip() != assumed
+        )
     ambiguous = bool(intent.get("ambiguity")) and len(senses) >= 2
 
     ordered = sorted(

@@ -197,11 +197,16 @@ def _reading_labels(intent: Mapping[str, Any], query: str = "") -> List[str]:
     """
     query_tokens = _subject_tokens(query)
     labels: List[str] = []
+    off_meaning_labels: List[str] = []
+    seen: set[str] = set()
 
     def _add(label: str) -> None:
         label = str(label or "").strip()
-        if not label or label in labels:
+        # One dedup set across BOTH lists: a reading offered on both channels
+        # (as `senses` and as `interpretations`) is still one reading.
+        if not label or label in seen:
             return
+        seen.add(label)
         # A restatement of the query adds no choice.
         if _is_restatement(label, query_tokens):
             return
@@ -210,7 +215,21 @@ def _reading_labels(intent: Mapping[str, Any], query: str = "") -> List[str]:
         # word they wrote and which one they might have meant. What must never
         # happen is adopting it as the interpretation, which `select_reading`
         # prevents. Dropping it would hide the distinction instead of making it.
-        labels.append(label)
+        #
+        # But it must never be the FIRST reading either. Position 0 is what the
+        # report announces it assumed and what the synthesis prompt treats as
+        # primary, and the classifier commonly returns the off-meaning sense
+        # first — which is how "most demanding skill" was answered as "most
+        # in-demand skill" even after the guard existed.
+        off_meaning = _violates_meaning_preservation(
+            query, label, intent.get("meaning_boundaries") or ()
+        )
+        if off_meaning:
+            off_meaning_labels.append(label)
+        else:
+            labels.append(label)
+
+    on_meaning = labels
 
     for item in intent.get("senses") or ():
         if isinstance(item, Mapping):
@@ -218,7 +237,8 @@ def _reading_labels(intent: Mapping[str, Any], query: str = "") -> List[str]:
     for item in intent.get("interpretations") or ():
         if isinstance(item, Mapping):
             _add(item.get("label", ""))
-    return labels[:MAX_INTERPRETATIONS]
+    # On-meaning readings lead; off-meaning ones are still offered, last.
+    return (on_meaning + off_meaning_labels)[:MAX_INTERPRETATIONS]
 
 
 def _has_disambiguating_context(query: str) -> bool:
@@ -339,7 +359,12 @@ def _violates_meaning_preservation(
     if not boundaries:
         return False
     query_tokens = _query_tokens_with_splits(query)
-    reading_tokens = set(_subject_tokens(reading_text))
+    # The READING side needs the same hyphen splitting the query side gets.
+    # "in-demand" is one token under the tokenizer, so without the split a
+    # reading about the other word never matched the "demand" marker and the
+    # guard stayed silent — which is exactly how the labour-market reading kept
+    # winning for "most demanding skill".
+    reading_tokens = _query_tokens_with_splits(reading_text)
     if not query_tokens or not reading_tokens:
         return False
     for entry in boundaries:
@@ -432,6 +457,12 @@ def _reading_candidates(intent: Mapping[str, Any], query: str = "") -> List[Read
     for item in intent.get("interpretations") or ():
         if isinstance(item, Mapping):
             _add(item.get("label", ""), item.get("description", ""))
+    # Off-meaning readings sort LAST. They are still shown and still researched,
+    # but the first reading is the one a reader (and the synthesis prompt) treats
+    # as the leading interpretation, and an off-meaning one must never occupy
+    # that slot: "most demanding skill" was answered as "most in-demand skill"
+    # because the labour-market reading arrived first from the classifier.
+    out.sort(key=lambda c: c.off_meaning)
     return out[:MAX_INTERPRETATIONS]
 
 

@@ -191,6 +191,7 @@ async def synthesize(
             usable_facts,
             ctx.get("sub_questions") or [],
             intent=ctx.get("intent") or {},
+            ambiguity=ctx.get("ambiguity") if isinstance(ctx.get("ambiguity"), dict) else None,
         )
 
     mode = str(ctx.get("mode", "standard") or "standard")
@@ -214,7 +215,10 @@ async def synthesize(
     blueprint_block = render_blueprint(blueprint)
     ctx["blueprint"] = blueprint.to_dict()
 
-    ambiguity_block = _render_ambiguity_block(intent)
+    ambiguity_block = _render_ambiguity_block(
+        intent,
+        ctx.get("ambiguity") if isinstance(ctx.get("ambiguity"), dict) else None,
+    )
     if ambiguity_block:
         length_hint = f"{length_hint}\n\n{ambiguity_block}"
     interpretations_block = _render_interpretations_block(
