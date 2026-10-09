@@ -515,16 +515,30 @@ def test_the_report_announces_the_assumed_reading_not_the_classifier_order():
     from app.agents.synthesis.context_blocks import _render_ambiguity_block
     from app.agents.synthesis.postprocess import _deterministic_disambiguation
 
+    # The LIVE shape, captured by instrumenting synthesize(): the policy's
+    # assumption is an *interpretation* label and does not appear among the
+    # LLM's *sense* labels at all. Matching the assumption against sense labels
+    # therefore matched nothing, `sorted` was order-preserving, and four separate
+    # "fixes" were silent no-ops while the report kept the wrong reading.
     intent = {
         "ambiguity": True,
         "recommended_action": "research_dominant",
         "senses": [
-            {"label": "Most in-demand skill in 2027", "note": "what employers want"},
-            {"label": "Stressful or difficult (high strain)", "note": "burnout"},
-            {"label": "Requiring high skill (high complexity)", "note": "expertise"},
+            {"label": "Most in-demand skill in 2027 (future of work / labor market)",
+             "note": "what employers want"},
+            {"label": "Most demanding/hardest skill to master by 2027",
+             "note": "hardest to acquire"},
         ],
     }
-    policy = {"action": "assume", "assumption": "Stressful or difficult (high strain)"}
+    policy = {
+        "action": "assume",
+        "assumption": "Stressful or difficult (high strain)",
+        "interpretations": [
+            "Stressful or difficult (high strain)",
+            "Requiring high skill or responsibility (high complexity)",
+            "Most in-demand skill in 2027 (future of work / labor market)",
+        ],
+    }
 
     from app.agents.synthesis.context_blocks import _render_interpretations_block
 

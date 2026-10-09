@@ -63,3 +63,36 @@ _DISAMBIG_LINE_RE = re.compile(
 )
 
 _HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.*\S)\s*$")
+
+
+def order_by_assumed_reading(
+    items: list, policy: Dict[str, Any] | None, label_of=lambda x: str(x)
+) -> list:
+    """Order readings so the one the pipeline ASSUMED comes first.
+
+    Matching the assumption string against the reading labels is not enough, and
+    silently does nothing when they disagree — which is the live case: the
+    policy assumed "Stressful or difficult (high strain)" (an *interpretation*)
+    while the sense labels are "Most in-demand skill…" / "Most demanding/hardest
+    skill…". No label matched, `sorted` was order-preserving, and four separate
+    "fixes" were no-ops while the report kept announcing the wrong reading.
+
+    The policy's `interpretations` list is authoritative and always contains the
+    assumption, so ordering by its index works across both channels. Anything
+    not named there keeps its original relative position.
+    """
+    policy = policy if isinstance(policy, dict) else {}
+    order = [
+        str(x).strip() for x in (policy.get("interpretations") or []) if str(x).strip()
+    ]
+    if not order:
+        return list(items)
+
+    def rank(item) -> int:
+        label = label_of(item).strip()
+        try:
+            return order.index(label)
+        except ValueError:
+            return len(order)
+
+    return sorted(items, key=rank)
