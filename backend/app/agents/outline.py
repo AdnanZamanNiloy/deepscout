@@ -563,7 +563,7 @@ def build_blueprint(
         depth = "deep"
     elif key in ("definition", "status", "list"):
         depth = "concise"
-    elif str(mode or "standard").lower().startswith(("deep", "executive")) or outline.broad:
+    elif str(mode or "standard").lower().startswith("deep") or outline.broad:
         depth = "deep"
     else:
         depth = "standard"

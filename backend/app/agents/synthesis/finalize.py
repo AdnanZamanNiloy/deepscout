@@ -33,7 +33,6 @@ from app.agents.synthesis.citations import (
 )
 from app.agents.synthesis.context_blocks import (
     _measured_evidence_block,
-    _objection_blocks,
 )
 from app.agents.synthesis.postprocess import (
     _ensure_disambiguation,
@@ -56,7 +55,6 @@ from app.agents.synthesis.sections import (
     _count_words,
     _dedupe_canonical_sections,
     _dedupe_repeated_bullets,
-    _merge_into_section,
     _reorder_sections,
     _section_map,
     _split_long_paragraphs,
@@ -154,7 +152,7 @@ def _length_hint(mode: str, ctx: Dict[str, Any]) -> str:
     intent = ctx.get("intent") or {}
     level = str(intent.get("explanation_level", "") or "")
 
-    if mode.startswith(("deep", "executive")):
+    if mode.startswith("deep"):
         return (
             f"LENGTH: this is a deep-research brief — aim for {band_lo}-{band_hi} "
             "words in TOTAL. Go deeper per angle: mechanisms, numbers with "
@@ -317,14 +315,14 @@ def _finalize(
         answer = _reduce_redundant_audit_language(answer)
     answer = _ensure_disambiguation(answer, ctx)
 
-    # Only the audit profile is a fixed-format artifact. For every other
-    # profile the answer is the writer's prose: machine-owned accounting is NOT
-    # injected into it (it would read as process noise and re-impose the
-    # historical report shape). That content is returned separately as
-    # `machine_notes` for the audit layer.
-    adaptive_answer = profile.name != "audit"
-
-    if not adaptive_answer:
+    # Every remaining profile is adaptive: the answer is the writer's prose, and
+    # machine-owned accounting is NOT injected into it (it would read as process
+    # noise and re-impose the historical fixed report shape). That content is
+    # returned separately as `machine_notes` for the audit layer. A profile can
+    # still opt in with `enforce_sections` if a guaranteed skeleton is ever
+    # needed again.
+    machine_keys: set = set()
+    if profile.enforce_sections:
         answer, machine_keys = _add_required_sections(
             answer,
             ctx=ctx,
@@ -333,10 +331,11 @@ def _finalize(
             cited_facts=cited_facts,
             profile=profile,
         )
-    else:
-        machine_keys = set()
 
-    if profile.include_reasoning and not adaptive_answer:
+    # The deterministic argument structure is added on top of the writer's text
+    # whenever the profile asks for reasoning — it fills in what a bare listing
+    # of findings leaves implicit, and is additive rather than a rewrite.
+    if profile.include_reasoning:
         answer, added = _add_reasoning_structure(answer, ctx=ctx)
         machine_keys |= added
 
@@ -351,17 +350,12 @@ def _finalize(
     answer = _dedupe_repeated_bullets(answer)
 
     # Measured tail: evidence accounting merged into the single evidence
-    # section, plus the profile-gated objection blocks and the source legend.
+    # section, plus the source legend.
     evidence_block = _measured_evidence_block(
         ctx, usable_facts, contradictions, temporal=temporal, independence=independence
     )
-    tail_blocks: List[str] = []
-    if profile.full_appendix:
-        tail_blocks.extend(_objection_blocks(ctx))
     legend = _legend_block(numbered)
-    tail_words = _count_words(evidence_block) + sum(
-        _count_words(b) for b in tail_blocks
-    ) + _count_words(legend)
+    tail_words = _count_words(evidence_block) + _count_words(legend)
 
     # Invalid markers are dropped BEFORE the audit, so the density the report
     # prints describes the text that actually shipped.
@@ -486,30 +480,21 @@ def _finalize(
         independence=independence,
     )
 
+    # Measured provenance goes to the audit payload rather than the answer:
+    # auditable state is never lost, it is relocated out of the prose.
     machine_notes: List[str] = []
-    if adaptive_answer:
-        # Preserve the measured provenance in the audit payload instead of the
-        # answer. Auditable state is never lost — it is relocated.
-        if evidence_block.strip():
-            machine_notes.append(evidence_block.strip())
-        machine_notes.extend(b.strip() for b in tail_blocks if b.strip())
-    else:
-        answer = _merge_into_section(answer, "evidence", evidence_block)
-        for block in tail_blocks:
-            answer = answer.rstrip() + "\n\n" + block
+    if evidence_block.strip():
+        machine_notes.append(evidence_block.strip())
 
     integrity = _integrity_note(audit, quality)
     if integrity:
-        if adaptive_answer:
-            machine_notes.append(integrity.strip())
-        else:
-            answer = answer.rstrip() + "\n\n" + integrity
+        machine_notes.append(integrity.strip())
 
     answer = _strip_canonical_sections(answer, {"sources"})
     answer = answer.rstrip() + "\n\n" + legend
-    # Canonical reordering only applies to the fixed-format audit report; an
+    # A profile that opts into guaranteed sections keeps canonical ordering; an
     # adaptive answer keeps the order the writer chose for this question.
-    if not adaptive_answer:
+    if profile.enforce_sections:
         answer = _reorder_sections(answer)
 
     # Hand the machine-owned provenance back to the caller through the context

@@ -42,7 +42,6 @@ from app.agents.evidence_utils import (
 from app.agents.intent import classify_intent, heuristic_intent  # noqa: F401
 from app.agents.orchestrator import MODE_CONFIDENCE_TARGET, orchestrate  # noqa: F401
 from app.agents.planner import normalize_text, planner_agent  # noqa: F401
-from app.agents.redteam import redteam_agent  # noqa: F401
 from app.agents.router import conversation_kind, deterministic_route, route_query  # noqa: F401
 from app.agents.search import SearchClient
 from app.agents.summarizer import summarizer_agent
@@ -129,8 +128,18 @@ def build_initial_state(
 
     When `mode` is a valid preset (3.7), it overrides the raw parameters
     with its (max_agents, max_iterations, deep_research) tuple.
+
+    `mode` is resolved through `resolve_mode` first: a legacy name an old client
+    or a stored run still carries ("executive", "audit") is mapped onto the mode
+    that inherited its behaviour instead of falling through to the default, so a
+    saved executive run still gets deep research rather than silently becoming
+    shallow.
     """
     from app.agents.orchestrator import MODE_PRESETS, scaled_max_iterations
+    from app.agents.orchestrator import resolve_mode
+
+    requested = mode
+    mode = resolve_mode(mode)
 
     preset = MODE_PRESETS.get(mode)
     if preset is not None:
@@ -138,18 +147,18 @@ def build_initial_state(
         # max(3, ...) floor (GAP-8) or quick mode would be no quicker.
         max_iterations = preset["max_iterations"]
         deep_research = preset["deep_research"]
-        # The preset's agent cap REPLACES the setting default: deep and
-        # executive are the only modes allowed to exceed MAX_PARALLEL_AGENTS
-        # (vision §28: explicit opt-in via mode selection + governor check).
+        # The preset's agent cap REPLACES the setting default: only `deep`
+        # is allowed to exceed MAX_PARALLEL_AGENTS (vision §28: explicit opt-in
+        # via mode selection + governor check).
         max_parallel_agents = preset["max_agents"]
         effective_max_iterations = int(max_iterations)
     else:
         effective_max_iterations = max(3, int(max_iterations))
     plan = orchestrate(query, max_parallel_agents=max_parallel_agents,
                        deep_research=deep_research, mode=mode)
-    # Fix B.1 — scale the deep/executive iteration budget to the map size now
-    # that `orchestrate` has set target_agents. Bounded by scaled_max_iterations
-    # (one pass per ~2 contracts, floored at 5); quick/standard unchanged.
+    # Scale the deep iteration budget to the map size now that `orchestrate`
+    # has set target_agents. Bounded by scaled_max_iterations (one pass per
+    # ~2 contracts, floored); quick/standard unchanged.
     if preset is not None:
         effective_max_iterations = scaled_max_iterations(
             mode, plan.target_agents
@@ -185,7 +194,7 @@ def build_initial_state(
         },
         "deep_research": plan.deep_research,
         "confidence_history": [],
-        "mode": mode if preset is not None else "standard",
+        "mode": mode,
         "intent": {},
         "context_snippets": [],
     }
@@ -271,14 +280,13 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
         usable = _verified_facts(state.get("facts", []))
         all_facts = state.get("facts", [])
         intent = state.get("intent") or {}
-        base_context = {
+        base_context: Dict[str, Any] = {
             "contradictions": state.get("contradictions", []),
             "confidence": state.get("confidence", None),
             "degraded": take_fallbacks(),
             "total_facts": len(all_facts),
             "verified_count": sum(1 for f in all_facts if f.get("verified")),
             "mode": state.get("mode", "standard"),
-            "redteam_findings": (state.get("redteam", {}) or {}).get("findings", []),
             # Intent: the synthesis must answer the user's likely meaning
             # and disambiguate up front when the query was ambiguous.
             "intent": intent,

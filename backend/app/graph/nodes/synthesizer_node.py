@@ -61,11 +61,12 @@ def make_synthesizer_node(
             except Exception as exc:
                 logger.warning("outline_build_failed", error=str(exc), exc_info=exc)
                 answer_outline = None
+        # Every remaining mode is eligible: the gate is the outline's own
+        # breadth, not the mode name.
         section_wise = bool(
             section_wise_enabled
             and answer_outline is not None
             and answer_outline.broad
-            and str(state.get("mode", "standard") or "standard") in ("deep", "executive", "standard", "audit")
         )
 
         # Evidence Synthesis Planning (Feature: synthesis plan): reason over the
@@ -198,7 +199,6 @@ def make_synthesizer_node(
                 answer_support=support,
                 citation_health=health,
                 contradictions=state.get("contradictions", []),
-                redteam_findings=(state.get("redteam", {}) or {}).get("findings", []),
                 mode=str(state.get("mode", "standard") or "standard"),
                 threshold=threshold,
             )

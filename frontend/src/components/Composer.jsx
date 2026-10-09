@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { MODE_META } from "../lib";
 import { IconArrowUp, IconCheck, IconChevronDown, IconStop } from "./icons";
 
-const MODES = ["quick", "standard", "deep", "executive", "audit", "redteam"];
+const MODES = ["quick", "standard", "deep"];
 
 /* Gap between the selector and the dropdown, in px. */
 const MENU_GAP = 6;

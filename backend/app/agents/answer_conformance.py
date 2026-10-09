@@ -554,7 +554,7 @@ def _check_depth(
 ) -> None:
     """Reasoning depth proportional to the question.
 
-    A deep-research run (audit/deep/executive) must reason beyond the opening:
+    A deep-research run must reason beyond the opening:
     it needs at least a couple of distinct reasoning moves (mechanism,
     trade-off, comparison, qualification, implication). A simple question is
     never failed for brevity — undershoot is measured only for deep modes.
@@ -567,7 +567,7 @@ def _check_depth(
     )
     distinct = _count_distinct_markers(" ".join(sentences), reasoning_markers)
     report.depth_index = distinct
-    deep = str(mode or "").lower() in ("deep", "executive", "audit")
+    deep = str(mode or "").lower() == "deep"
     if deep and len(sentences) >= DEPTH_MIN_SENTENCES and distinct < DEPTH_MIN_MARKERS:
         report.depth_fit = False
         report.failures.append(

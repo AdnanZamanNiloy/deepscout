@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 # ---------------------------------------------------------------------------
 # Lexical signals
@@ -339,33 +339,59 @@ LEVEL_TARGETS: Dict[str, int] = {
     "very_high": 6,
 }
 
-# Confidence a mode is trying to reach before it stops. Quick answers are
-# allowed to be less certain — that is the trade the user chose by asking for
-# a quick answer — while audit exists precisely to be strict.
+# Confidence a mode is trying to reach before it stops. A quick answer is
+# allowed to be less certain — that is the trade the user chose by asking for a
+# quick answer — while deep exists precisely to be thorough.
 MODE_CONFIDENCE_TARGET: Dict[str, float] = {
     "quick": 0.60,
     "standard": 0.75,
     "deep": 0.80,
-    "executive": 0.78,
-    "audit": 0.85,
-    "redteam": 0.72,
 }
 
+# The three research modes. `max_agents` bounds the specialist contracts the
+# planner may emit, `max_iterations` the research passes, `deep_research`
+# whether expanded investigation is allowed at all.
+#
+# `standard` is the default and the mode most queries are served by; `quick`
+# trades depth for latency; `deep` trades both for thoroughness. Anything that
+# previously routed to a narrower or wider mode now lands on one of these, and
+# the decision/contested handling that `executive` used to own is folded into
+# `deep` (see `_select_mode`).
 MODE_PRESETS: Dict[str, Dict[str, Any]] = {
     "quick":     {"max_agents": 2, "max_iterations": 1, "deep_research": False},
-    "standard":  {"max_agents": 4, "max_iterations": 3, "deep_research": False},
+    "standard": {"max_agents": 3, "max_iterations": 3, "deep_research": False},
     "deep":      {"max_agents": 5, "max_iterations": 5, "deep_research": True},
-    "executive": {"max_agents": 5, "max_iterations": 4, "deep_research": True},
-    "audit":     {"max_agents": 3, "max_iterations": 4, "deep_research": False},
-    "redteam":   {"max_agents": 3, "max_iterations": 2, "deep_research": False},
 }
 VALID_MODES = tuple(MODE_PRESETS.keys())
+
+# Modes a caller may have used historically, mapped to what they became. Kept
+# so a stored run, a saved URL, or an older client that still sends one of
+# these names gets a working run instead of a validation error — the mapping
+# is applied wherever an incoming mode is first read.
+LEGACY_MODES: Mapping[str, str] = {
+    "executive": "deep",
+    "audit": "standard",
+}
+
+
+def resolve_mode(mode: Any) -> str:
+    """Normalise any incoming mode string to one of VALID_MODES.
+
+    Returns "standard" for anything unrecognised, including None. A legacy name
+    maps to the mode that inherited its behaviour rather than to the default,
+    so an old `executive` run still gets deep research instead of silently
+    becoming shallow.
+    """
+    key = str(mode or "").strip().lower()
+    if key in MODE_PRESETS:
+        return key
+    return LEGACY_MODES.get(key, "standard")
 
 # Fix B.1 — depth scales with the research map, but stays strictly bounded.
 # A live deep run hit the 5-iteration ceiling with a 12-contract map and
 # graded A=0: five passes cannot corroborate twelve angles. Deep and
-# executive therefore raise their iteration budget to at least one pass per
-# TWO contracts (ceil(target_agents / 2)); quick/standard/audit/redteam keep
+# deep therefore raise their iteration budget to at least one pass per
+# TWO contracts (ceil(target_agents / 2)); quick/standard keep
 # their modest ceilings. The cap is the anti-infinite-loop guarantee, not a
 # target — the evidence-first stopping rules still finalize as soon as the
 # gaps close.
@@ -377,12 +403,12 @@ def scaled_max_iterations(mode: str, target_agents: int) -> int:
     """Iteration ceiling for a mode given how many contracts the plan holds.
 
     Deterministic and total: unknown modes and non-positive targets return
-    the preset's own ceiling unchanged. Only deep/executive scale, and only
+    the preset's own ceiling unchanged. Only deep scales, and only
     upward — a large map gets more passes, never fewer than the preset.
     """
     preset = MODE_PRESETS.get(str(mode or "").lower())
     base = int(preset["max_iterations"]) if preset else 3
-    if str(mode or "").lower() not in ("deep", "executive"):
+    if str(mode or "").lower() != "deep":
         return base
     agents = max(1, int(target_agents or 1))
     per_pass = max(1, int(SCALED_MODE_MIN_CONTRACTS_PER_PASS))
@@ -398,14 +424,16 @@ def recommend_mode(complexity: ComplexityScore) -> str:
     show "Deep Research recommended" with a reason instead of making the user
     guess.
     """
+    # A decision query at high complexity wants the decision layer and the
+    # analytical report. That is `deep` now, which carries both.
     if complexity.is_decision and complexity.level in ("high", "very_high"):
-        return "executive"
+        return "deep"
     if complexity.level == "very_high":
         return "deep"
     if complexity.level == "low" and complexity.query_type == "factual":
         return "quick"
     if complexity.is_contested:
-        return "redteam" if complexity.level == "medium" else "deep"
+        return "deep"
     return "standard"
 
 
@@ -481,14 +509,14 @@ def plan_targets(
             specialists.append(role)
 
     min_sources = 2
-    if mode in ("deep", "executive", "audit"):
+    if mode == "deep":
         min_sources = 3
     if complexity.needs_quantitative:
         min_sources = max(min_sources, 3)
 
     max_iterations = scaled_max_iterations(mode, max(1, int(target_agents)))
     min_iterations = 1
-    if mode in ("deep", "audit"):
+    if mode == "deep":
         min_iterations = 2
 
     return PlanTargets(
@@ -551,8 +579,8 @@ def orchestrate(
     empty the orchestrator recommends one but still uses the default target
     mapping, so existing callers see identical `target_agents` behaviour.
 
-    very_high complexity with an explicit deep_research=true flag (or a deep /
-    executive mode, which IS the opt-in) may exceed the default cap; otherwise
+    very_high complexity with an explicit deep_research=true flag (or the
+    deep mode, which IS the opt-in) may exceed the default cap; otherwise
     the clamp holds.
     """
     complexity = score_complexity(query)
@@ -564,8 +592,8 @@ def orchestrate(
     if requested_mode and requested_mode not in MODE_PRESETS:
         notes.append(f"unknown mode {requested_mode!r}; falling back to standard")
 
-    # A deep/executive mode selection is itself the deep-research opt-in.
-    if effective_mode in ("deep", "executive"):
+    # A deep mode selection is itself the deep-research opt-in.
+    if effective_mode == "deep":
         deep_research = True
 
     raw_target = LEVEL_TARGETS[complexity.level]
@@ -584,7 +612,7 @@ def orchestrate(
     # dimension, up to the caps below — otherwise a 6-dimension decision
     # question gets researched along 4 axes and two dimensions never appear.
     dimension_floor = min(len(complexity.dimensions), 6)
-    if dimension_floor > raw_target and effective_mode in ("deep", "executive"):
+    if dimension_floor > raw_target and effective_mode == "deep":
         notes.append(
             f"raised target to {dimension_floor} to cover every detected dimension"
         )
@@ -593,7 +621,7 @@ def orchestrate(
     effective_cap = max_parallel_agents
     if complexity.level == "very_high" and deep_research:
         effective_cap = max(max_parallel_agents, raw_target)
-    elif effective_mode in ("deep", "executive"):
+    elif effective_mode == "deep":
         # The mode IS the depth opt-in: covering every detected dimension may
         # exceed the default hardware cap, or the dimension-coverage raise
         # above would be clamped straight back down — recreating exactly the

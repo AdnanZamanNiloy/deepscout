@@ -29,8 +29,12 @@ class ResearchRequest(BaseModel):
     # as conversation; an empty query is still rejected.
     query: str = Field(..., min_length=1, max_length=500)
     deep_research: bool = False
-    # Research Modes (3.7 + vision §28): quick | standard | deep | executive | audit | redteam
-    mode: str = Field(default="standard", pattern="^(quick|standard|deep|executive|audit|redteam)$")
+    # The three research modes. A legacy name still parses — see
+    # `resolve_mode`, which maps it onto the mode that inherited its behaviour.
+    # Deliberately NOT restricted to the three live modes: a stored run or an
+    # older client may still send "executive"/"audit", and rejecting those with a
+    # 422 would break resume instead of mapping them forward.
+    mode: str = Field(default="standard", max_length=20)
     # Chat identity: all questions in one chat share this id so the backend
     # appends them to one session instead of minting a session per question.
     # Optional for backward compatibility — absent means "generate one".

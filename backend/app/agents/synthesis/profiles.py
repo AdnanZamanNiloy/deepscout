@@ -31,7 +31,11 @@ class ReportProfile:
     conditional: Tuple[str, ...] = ()
     verbose_findings: bool = False
     include_reasoning: bool = True
-    full_appendix: bool = False
+    # Machine-owned section injection. Almost everything is adaptive: the answer
+    # is the writer's prose, and process-shaped accounting is emitted separately
+    # rather than pasted into it. A profile that needs guaranteed headings sets
+    # this; nothing does today, and the default keeps reports adaptive.
+    enforce_sections: bool = False
     max_findings: int = 6
     writer_sections: Tuple[str, ...] = ()
 
@@ -50,7 +54,6 @@ PROFILE_DIRECT = ReportProfile(
     ),
     verbose_findings=False,
     include_reasoning=False,
-    full_appendix=False,
     max_findings=5,
     writer_sections=_WRITER_OWNED_ALWAYS,
 )
@@ -67,7 +70,6 @@ PROFILE_BRIEF = ReportProfile(
     ),
     verbose_findings=False,
     include_reasoning=True,
-    full_appendix=False,
     max_findings=6,
     writer_sections=_WRITER_OWNED_ALWAYS,
 )
@@ -85,36 +87,14 @@ PROFILE_ANALYTICAL = ReportProfile(
     conditional=("Key Figures", "Open Questions & Missing Angles"),
     verbose_findings=False,
     include_reasoning=True,
-    full_appendix=True,
     max_findings=8,
     writer_sections=_WRITER_OWNED_ALWAYS
     + ("Limitations & Unknowns", "Counterarguments & Disputed Points"),
 )
 
 
-PROFILE_AUDIT = ReportProfile(
-    name="audit",
-    required=(
-        "Executive Summary",
-        "Key Findings",
-        "Evidence & Confidence",
-        "Limitations & Unknowns",
-        "Counterarguments & Disputed Points",
-        "Open Questions & Missing Angles",
-        "Auditable Source Ledger",
-    ),
-    conditional=("Key Figures",),
-    verbose_findings=True,
-    include_reasoning=True,
-    full_appendix=True,
-    max_findings=10,
-    writer_sections=_WRITER_OWNED_ALWAYS
-    + ("Limitations & Unknowns", "Counterarguments & Disputed Points"),
-)
-
-
 PROFILES: Dict[str, ReportProfile] = {
-    p.name: p for p in (PROFILE_DIRECT, PROFILE_BRIEF, PROFILE_ANALYTICAL, PROFILE_AUDIT)
+    p.name: p for p in (PROFILE_DIRECT, PROFILE_BRIEF, PROFILE_ANALYTICAL)
 }
 
 
@@ -136,28 +116,25 @@ def select_profile(
     """Pick the report shape from mode, query type and what the evidence holds.
 
     Explicit `ctx["report_profile"]` always wins — a caller that knows what it
-    needs is not overruled. Otherwise: deep/executive runs are analytical
-    (depth is the product); an audit flag forces the full ledger; a small
-    evidence pool answering a lightweight question is `direct`; everything else
-    is `brief`. A contested question is never demoted below `brief`, and
-    detected contradictions never get a profile that could hide them.
+    needs is not overruled. Otherwise: a deep run is analytical (depth is the
+    product); a small evidence pool answering a lightweight question is
+    `direct`; everything else is `brief`. A contested question is never demoted
+    below `brief`, and detected contradictions never get a profile that could
+    hide them.
     """
     ctx = ctx or {}
     explicit = str(ctx.get("report_profile", "") or "").strip().lower()
     if explicit in PROFILES:
         return PROFILES[explicit]
 
-    if ctx.get("audit_mode") or ctx.get("compliance_mode"):
-        return PROFILE_AUDIT
-
     mode = str(ctx.get("mode", "standard") or "standard").lower()
-    if mode.startswith(("deep", "executive")):
+    if mode.startswith("deep"):
         return PROFILE_ANALYTICAL
 
     intent = ctx.get("intent") if isinstance(ctx.get("intent"), dict) else {}
     query_type = str(intent.get("query_type", "") or ctx.get("query_type", "") or "").lower()
     level = str(intent.get("explanation_level", "") or "").lower()
-    contested = bool(ctx.get("contradictions")) or bool(ctx.get("redteam_findings"))
+    contested = bool(ctx.get("contradictions"))
 
     if query_type in _CONTESTED_QUERY_TYPES or contested:
         return PROFILE_BRIEF

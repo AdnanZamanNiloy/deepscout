@@ -303,16 +303,24 @@ def test_modes_do_not_change_the_adaptive_structure_contract():
         assert len(present) <= 1, f"{mode} forced a template: {present}"
 
 
-def test_audit_profile_keeps_the_fixed_format():
-    """Audit is the one profile whose contract IS a fixed structure."""
-    result = asyncio.run(
-        synthesize(_ThematicWriter(), "What are the current trends in AI?",
-                   _facts(), {"intent": {}, "sub_questions": _sub_questions(),
-                              "report_profile": "audit"},
-                   compress_context=False)
-    )
-    assert "## Executive Summary" in result.answer
-    assert "## Key Findings" in result.answer
+def test_deep_runs_select_the_analytical_profile():
+    """The old `executive`/`audit` modes are gone; the analytical shape now
+    comes from the `deep` mode, which is where that depth was folded into."""
+    from app.agents.synthesis.profiles import PROFILES, select_profile
+
+    assert "audit" not in PROFILES
+    assert select_profile({"mode": "deep"}).name == "analytical"
+    # An explicit report_profile still wins over the mode.
+    assert select_profile({"mode": "deep", "report_profile": "direct"}).name == "direct"
+
+
+def test_an_unknown_report_profile_falls_back_rather_than_failing():
+    """Removing a profile must not break a caller that still names it."""
+    from app.agents.synthesis.profiles import PROFILES, select_profile
+
+    profile = select_profile({"mode": "standard", "report_profile": "audit"})
+    assert profile in PROFILES.values()
+    assert profile.name != "audit"
 
 
 # ---------------------------------------------------------------------------

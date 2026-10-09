@@ -67,7 +67,6 @@ handling, and calibrated confidence. Measured results are in
 | **Answer quality gate** | Scores the finished draft 0–100 on accuracy/relevance/evidence/clarity/reasoning from measured state, then performs **exactly one** bounded rewrite and ships the better draft. Never a loop. | `app/agents/answer_quality.py` |
 | **Intelligent stopping** | Marginal-gain analysis, a no-re-novel-query memory, mode-aware targets, and hard walls (iterations, expansions, money, tokens, time). | `app/core/depth_controller.py` |
 | **Cost-aware reasoning** | Every LLM call records tokens/USD from provider usage fields; the budget governor refuses passes that cannot be paid for; the ledger streams live to the UI. | `app/core/usage.py`, `app/agents/budget.py` |
-| **Red team review** | Adversarial critic pass producing survival findings alongside the standard critique. | `app/agents/redteam.py` |
 | **LLM response cache** | Exact-prompt disk cache — repeated critic re-evals and re-runs are served from disk with zero provider spend. Bounded size and TTL. | `app/core/llm_cache.py` |
 | **Semantic engine** | CPU-light TF-IDF hybrid (stemming, synonym canonicalization, negation weighting) powering dedup, contradiction banding, and citation support. | `app/core/semantic.py` |
 
@@ -84,7 +83,7 @@ Query
   → Search            SearXNG / Wikipedia / arXiv / Crossref
   → Summarizer        wave-ordered specialists (wave N gets wave N-1 context)
   → Verifier          deterministic claim-vs-source checks
-  → Critic + Contradictions + Red Team + Confidence
+  → Critic + Contradictions + Confidence
         sufficient? → Synthesizer
         expand?     → Planner (novel queries, budget, no-stall)
         stop?       → Synthesizer (budget wall / stall / ceiling)
@@ -120,7 +119,7 @@ feature rationale are in [`DeepScout-vision-v2.md`](DeepScout-vision-v2.md).
 5. **Verify.** Each claim is scored against its source. Raw page content is
    released after verification to bound memory.
 6. **Critique.** The critic judges sufficiency; the contradiction engine,
-   red team, and confidence engine annotate the run. Insufficient runs expand
+   and confidence engine annotate the run. Insufficient runs expand
    with *novel* queries only, and only while budget, stall, and ceiling checks
    allow.
 7. **Synthesize.** An answer-first outline shapes the report. Broad questions
@@ -240,7 +239,7 @@ curl -N -X POST http://127.0.0.1:8000/api/research/stream \
 
 React 18 + Vite 5 single-page console (`frontend/src/App.jsx`) that consumes the
 NDJSON stream and renders the thread, per-run pipeline steps, the intelligence
-panel (plan, budget, confidence breakdown, red team, citation health), the
+panel (plan, budget, confidence breakdown, citation health), the
 claim drawer, and the research library (Evidence, Knowledge). It includes
 session management (stable ids, restore-on-reload, interrupt/edit), the
 provider management tab, and a docs view. Development proxies `/api` to

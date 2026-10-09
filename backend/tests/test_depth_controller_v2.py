@@ -84,20 +84,20 @@ def test_novel_followups_allow_expansion():
 
 
 def test_mode_confidence_target_respected():
-    # Confidence 0.62: quick target (0.60) met -> finalize; audit (0.85) not.
+    # Confidence 0.62: quick target (0.60) met -> finalize; deep (0.80) not.
     state = _state(confidence=0.62, confidence_history=[0.62],
                    critique={"is_sufficient": False, "improved_queries": ["compare transformer efficiency against recurrent models"], "reason": "g"})
     quick = depth_controller.evaluate(dict(state, mode="quick"), _settings())
-    audit = depth_controller.evaluate(dict(state, mode="audit"), _settings())
+    deep = depth_controller.evaluate(dict(state, mode="deep"), _settings())
     assert quick["confidence_target"] == 0.60
-    assert audit["confidence_target"] == 0.85
+    assert deep["confidence_target"] == 0.80
     assert quick["sufficiency_met"] is True
-    assert audit["sufficiency_met"] is False
+    assert deep["sufficiency_met"] is False
 
 
 def test_min_iterations_blocks_premature_stop():
-    # Audit demands >= 2 passes: a sufficient-but-shallow pass-1 must not stop.
-    state = _state(mode="audit", confidence=0.9, confidence_history=[0.9],
+    # Deep demands >= 2 passes: a sufficient-but-shallow pass-1 must not stop.
+    state = _state(mode="deep", confidence=0.9, confidence_history=[0.9],
                    critique={"is_sufficient": True, "improved_queries": [], "reason": "ok"})
     assert depth_controller.decide(state, _settings()) == "expand"
     state["iteration"] = 2
