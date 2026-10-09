@@ -78,8 +78,22 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 @router.get("/health")
-async def health() -> Dict[str, str]:
-    return {"status": "ok"}
+async def health(request: Request) -> Dict[str, Any]:
+    """Liveness, plus whether this process is the one running SearXNG.
+
+    `searxng` distinguishes the three states that look identical from outside:
+    managed (this backend started it and will stop it), external (something
+    else already served the endpoint, so we never touch it), and down (search
+    silently degraded to Wikipedia/arXiv/Crossref).
+    """
+    payload: Dict[str, Any] = {"status": "ok"}
+    supervisor = getattr(request.app.state, "searxng", None)
+    if supervisor is not None:
+        payload["searxng"] = {
+            "url": supervisor.base_url,
+            "managed": bool(getattr(supervisor, "managed", False)),
+        }
+    return payload
 
 
 

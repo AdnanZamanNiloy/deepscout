@@ -176,6 +176,26 @@ class Settings(BaseSettings):
     # re-probing an instance that is down or misconfigured every 15 seconds.
     search_searxng_cooldown_sec: float = 60.0
 
+    # --- SearXNG lifecycle (auto-start) ---------------------------------
+    # SearXNG is a separate application and can only be reached over HTTP, so
+    # "integration" here means lifecycle, not embedding: the backend spawns the
+    # service on startup, waits for /healthz, and stops it on shutdown, so one
+    # command runs the whole system instead of three terminals.
+    #
+    # An instance that is ALREADY reachable is never adopted or killed -- this
+    # only ever manages a process it started itself.
+    searxng_autostart: bool = True
+    # Generous: the webapp imports a large dependency set before it binds, and
+    # on a cold page cache the first boot is the slowest.
+    searxng_startup_timeout_sec: float = 45.0
+    # The searxng clone. Defaults to <repo_root>/searxng, resolved at runtime so
+    # a fresh clone needs no configuration.
+    searxng_home: str = ""
+    # Interpreter used to run it. MUST be SearXNG's own virtualenv (flask, lxml,
+    # curl_cffi, valkey are not backend dependencies, so the backend's python
+    # cannot run it). Defaults to <searxng_home>/.venv/bin/python.
+    searxng_python: str = ""
+
     # Research run operational limits. Wall-clock and call ceilings are liveness
     # guards (a stalled provider must not hold the run past the interactive
     # deadline; the fan-out needs a runaway guard). No cost/dollar budget.
