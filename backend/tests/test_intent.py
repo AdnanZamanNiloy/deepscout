@@ -193,8 +193,12 @@ def test_to_dict_round_trip_shape():
     d = report.to_dict()
     assert set(d) == {"query", "query_type", "domain", "explanation_level", "ambiguity",
                       "senses", "interpretations", "underspecified", "recommended_action",
-                      "reasoning", "origin"}
+                      "reasoning", "origin", "meaning_boundaries"}
     assert d["senses"][0]["probability"] == 0.75
+    # No under-specified term in this query, so no constraint is emitted. The
+    # field is always present so the policy layer never has to guess whether an
+    # absent key means "no constraint" or "older payload".
+    assert d["meaning_boundaries"] == []
 
 
 def test_planner_assigns_senses_and_fallback_uses_them():

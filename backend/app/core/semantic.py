@@ -89,6 +89,33 @@ def _token_weight(token: str) -> float:
     return _WEIGHT_DEFAULT
 
 
+# Tokens whose inflection is NOT a grammatical variant of another word.
+#
+# Stripping a suffix from these merges two different concepts. "demanding"
+# (difficult, heavy) and "demand" (sought-after) collapse to the same stem under
+# any -ing rule, which is not a cosmetic problem: two unrelated claims became
+# near-duplicates in the dedup, the contradiction band and the citation-support
+# score. Curated rather than derived, because no suffix rule can know that
+# "demand" is a noun and "demanding" an adjective.
+#
+# Living here, beside the stemmer that consumes it, rather than in an agent
+# module: this is morphology, it applies to every caller, and agent modules are
+# held to a no-subject-strings rule.
+_MEANING_BEARING_FORMS = frozenset({
+    "demanding", "undemanding",
+    "interested", "uninterested",
+    "exciting",
+    "rising",
+    "promising",
+    "dying", "lying", "owing",
+})
+
+
+def is_meaning_bearing_form(token: str) -> bool:
+    """True when stemming this token would merge it with a different word."""
+    return (token or "").lower() in _MEANING_BEARING_FORMS
+
+
 def _stem(tok: str) -> str:
     """Light suffix stemmer — consistency over linguistics.
 
@@ -96,7 +123,12 @@ def _stem(tok: str) -> str:
     "declines" and "decline" all collapse to "declin" and stopword-noise
     merges stop failing. Handles plurals, past tense, gerunds and the
     trailing-e/doubled-consonant patterns that dominate research prose.
+
+    Meaning is checked FIRST: some words are not inflections of another word,
+    and reducing them would make two different subjects look identical.
     """
+    if is_meaning_bearing_form(tok):
+        return tok
     if len(tok) >= 5:
         if tok.endswith("ies"):
             tok = tok[:-3] + "y"
