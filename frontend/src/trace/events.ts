@@ -15,8 +15,21 @@
 export type SearchHit = {
   title: string;
   url: string;
-  /** Provider that returned it: tavily, ddg_text, wikipedia, … */
+  /**
+   * Source label: the publisher's site (e.g. "weforum.org"), NOT the index that
+   * found it. Historically this carried the legacy composite provider string
+   * "searxng:google cse", which is why retrieval engines appeared as source
+   * names; `sourceLabelOf` refuses that shape.
+   */
   source?: string;
+  /** Canonical hostname of the page itself. Preferred over `source`. */
+  domain?: string;
+  /** Publication/organisation name, when the provider stated one. */
+  publisher?: string;
+  /** Retrieval provenance: the upstream index, e.g. "google cse". Never a source. */
+  via?: string;
+  /** The service queried: searxng, wikipedia, arxiv, crossref. */
+  retrievalProvider?: string;
   reliability?: number | null;
   /** True when the pipeline actually opened this page, not just listed it. */
   fetched?: boolean;
@@ -194,7 +207,10 @@ export type TraceChip = {
   id: string;
   label: string;
   url: string;
+  /** The source label: publisher or domain. */
   meta?: string;
+  /** Retrieval provenance, rendered as a muted "via <engine>". Never a source. */
+  via?: string;
   /** Page was actually opened during the run. */
   fetched?: boolean;
 };
@@ -360,6 +376,11 @@ export function buildTrace(
                 // The same URL can arrive twice — once bare, once with its
                 // content fetched. Keep the richer version.
                 if (!prev.label || prev.label === "source") prev.label = labelOf(h, url);
+                // Likewise for identity/provenance: a later frame that carries
+                // a real domain or engine should not be discarded in favour of
+                // an earlier, emptier one.
+                if (!prev.meta) prev.meta = sourceLabelOf(h, url);
+                if (!prev.via) prev.via = provenanceOf(h);
                 if (h.fetched) prev.fetched = true;
                 continue;
               }
@@ -367,7 +388,8 @@ export function buildTrace(
                 id: `${existing.id}-chip-${merged.size}`,
                 label: labelOf(h, url),
                 url,
-                meta: str(h.source),
+                meta: sourceLabelOf(h, url),
+                via: provenanceOf(h),
                 fetched: h.fetched === true,
               });
             }
@@ -382,7 +404,8 @@ export function buildTrace(
           id: `${id("chip")}-${i}`,
           label: labelOf(h, str(h.url)),
           url: str(h.url),
-          meta: str(h.source),
+          meta: sourceLabelOf(h, str(h.url)),
+          via: provenanceOf(h),
           fetched: h.fetched === true,
         }));
 
@@ -491,12 +514,44 @@ function num(v: unknown): number | null {
 }
 
 /**
+ * The source label for a hit: who PUBLISHED it, never which engine found it.
+ *
+ * The order matters. `domain` first, then `publisher`, then the hostname parsed
+ * from the URL, and only then the raw `source` field — and even then it is
+ * rejected if it has the legacy composite-provider shape ("searxng:google cse").
+ * That guard is what makes already-persisted runs render correctly: their
+ * recorded frames still carry the engine string in `source`, and without it a
+ * replayed run would show the old mislabelling forever.
+ *
+ * The URL is always present on a search hit, so in practice the hostname is the
+ * reliable floor and the engine can never surface as a publisher.
+ */
+const LEGACY_COMPOSITE_PROVIDER_RE = /^[a-z0-9_-]+:\s*\S/i;
+
+export function sourceLabelOf(h: SearchHit, url: string): string {
+  const domain = str(h.domain).trim().toLowerCase();
+  if (domain) return domain;
+  const publisher = str(h.publisher).trim();
+  if (publisher && !LEGACY_COMPOSITE_PROVIDER_RE.test(publisher)) return publisher;
+  const host = hostOf(url);
+  if (host) return host;
+  const source = str(h.source).trim();
+  if (source && !LEGACY_COMPOSITE_PROVIDER_RE.test(source)) return source;
+  return "";
+}
+
+/** Retrieval provenance: the engine that returned this hit, for "via …". */
+export function provenanceOf(h: SearchHit): string {
+  return str(h.via).trim();
+}
+
+/**
  * Chip label: the page's own title, which is what a reader scans for. The
  * hostname is a fallback for the rare result with no title — a bare domain is
- * far less informative than "Global Energy Review 2026".
+ * far more informative than "Global Energy Review 2026".
  */
 function labelOf(h: SearchHit, url: string): string {
-  return str(h.title) || hostOf(url) || str(h.source) || "source";
+  return str(h.title) || sourceLabelOf(h, url) || "source";
 }
 
 /**
@@ -537,7 +592,13 @@ function syncFetchedChild(step: TraceStep): void {
 export function hostOf(url: string): string {
   const m = /^[a-z]+:\/\/([^/?#]+)/i.exec(url || "");
   if (!m) return "";
-  return m[1].replace(/^www\./i, "");
+  // Authority is `[userinfo@]host[:port]`. Everything but the host has to come
+  // off: `user:pw@example.com:8443` and `example.com` are the same source, and
+  // rendering the raw authority as a source label shows credentials and ports
+  // to the reader. Lowercased too, so Example.COM and example.com are one source.
+  const authority = m[1];
+  const hostOnly = authority.slice(authority.lastIndexOf("@") + 1).split(":")[0];
+  return hostOnly.replace(/^www\./i, "").toLowerCase();
 }
 
 /** The agent stage a run is in, derived from the frames themselves. */

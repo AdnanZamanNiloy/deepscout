@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from app.agents.sources import extract_domain as _host
 from app.agents.sources import partition_site_targets
+from app.agents.searchkit.identity import source_identity
 from app.core.config import Settings
 from app.agents.searchkit.types import (
     SearchResult,
@@ -141,6 +142,14 @@ def _searxng_to_results(
         upstream index actually produced a hit (DuckDuckGo, Mojeek, arXiv...).
       * `-site:` exclusions are applied here, because SearXNG has no equivalent
         request parameter for them.
+
+    IDENTITY IS NOT PROVENANCE. `provider` keeps its historical
+    "searxng:<engine>" value purely for backward compatibility, but the fields
+    that mean anything are separate: `source_domain` is the page's own hostname
+    and is what a reader must see, while `retrieval_engine` records which index
+    answered. SearXNG's `engines` array is preferred over the singular `engine`
+    because a metasearch routinely returns one page that several engines found —
+    reading only `engine` silently credited one index and hid the overlap.
     """
     results: List[SearchResult] = []
     items = payload.get("results", []) if isinstance(payload, dict) else []
@@ -176,6 +185,19 @@ def _searxng_to_results(
         snippet = content or str(row.get("title") or "")
         if extras:
             snippet = f"{snippet} [{'; '.join(extras)}]" if snippet else "; ".join(extras)
+
+        # Every engine that returned this hit. Falls back to the singular
+        # `engine`, and then to "" — never to the aggregator's own name, which
+        # would make "searxng" look like a publisher.
+        engines = [
+            e.split(":", 1)[1] if str(e).startswith("plugin:") else str(e)
+            for e in (row.get("engines") or [])
+        ]
+        engines = [e.strip() for e in engines if str(e).strip()]
+        if not engines and engine:
+            engines = [engine]
+        source_domain, publisher_name = source_identity(url, row.get("publisher"))
+
         results.append(SearchResult(
             title=re.sub(r"<[^>]+>", "", str(row.get("title") or "")),
             url=url,
@@ -184,5 +206,10 @@ def _searxng_to_results(
             provider=provider,
             published_at=_searxng_published(row),
             matched_query=query,
+            source_domain=source_domain,
+            publisher=publisher_name,
+            retrieval_provider="searxng",
+            retrieval_engine=engine,
+            retrieval_engines=engines,
         ))
     return results

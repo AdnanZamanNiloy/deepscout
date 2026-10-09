@@ -37,7 +37,9 @@ async def load_state_for_resume(database_path: str, run_id: str) -> dict | None:
             (run_id,),
         )
         sources = await _all(
-            "SELECT url, reliability_score FROM sources WHERE run_id = ? ORDER BY id",
+            "SELECT url, reliability_score, source_domain, publisher, "
+            "retrieval_provider, retrieval_engine "
+            "FROM sources WHERE run_id = ? ORDER BY id",
             (run_id,),
         )
         claims = await _all(
@@ -73,8 +75,19 @@ async def load_state_for_resume(database_path: str, run_id: str) -> dict | None:
         for i, t in enumerate(tasks)
     ]
 
+    # Identity/provenance are carried through a resumed run so a replay labels
+    # its sources exactly like the original run did. Rows written before these
+    # columns existed read back as "" and the UI falls back to the URL's domain.
     search_results = [
-        {"url": s["url"], "reliability_score": s["reliability_score"] or 0.0, "snippet": ""}
+        {
+            "url": s["url"],
+            "reliability_score": s["reliability_score"] or 0.0,
+            "snippet": "",
+            "source_domain": s.get("source_domain") or "",
+            "publisher": s.get("publisher") or "",
+            "retrieval_provider": s.get("retrieval_provider") or "",
+            "retrieval_engine": s.get("retrieval_engine") or "",
+        }
         for s in sources
     ]
     facts = [
@@ -168,7 +181,8 @@ async def get_run_trace(database_path: str, run_id: str) -> dict | None:
             (run_id,),
         )
         sources = await _all(
-            "SELECT id, url, reliability_score, fetched_at "
+            "SELECT id, url, reliability_score, fetched_at, source_domain, "
+            "publisher, retrieval_provider, retrieval_engine "
             "FROM sources WHERE run_id = ? ORDER BY id",
             (run_id,),
         )

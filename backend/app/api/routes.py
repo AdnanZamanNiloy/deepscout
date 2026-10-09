@@ -173,6 +173,40 @@ async def session_detail(session_id: str, request: Request) -> Dict[str, Any]:
     return session
 
 
+def _source_label(result: dict) -> str:
+    """The human-facing source label for one search result.
+
+    Order matters, and the retrieval engine is deliberately never in it:
+
+      1. an explicit `source` (a claim's cited URL, already a site reference)
+      2. the canonical `source_domain` -- what the page's site actually is
+      3. the publisher name when the provider stated one
+      4. the domain re-derived from the URL, for rows persisted before
+         `source_domain` existed
+      5. "" -- never the retrieval engine.
+
+    Step 5 is the whole point. Falling back to `provider` here is exactly what
+    made "searxng:google cse" appear as the source of an arXiv paper; with no
+    domain to show, an empty label is strictly better than a wrong one, and the
+    UI already falls back to the hostname it parses from the URL.
+    """
+    explicit = str(result.get("source") or "").strip()
+    if explicit:
+        return explicit
+    domain = str(result.get("source_domain") or "").strip().lower()
+    if domain:
+        return domain
+    publisher = str(result.get("publisher") or "").strip()
+    if publisher:
+        return publisher
+    try:
+        from app.agents.searchkit.identity import canonical_source_domain
+
+        return canonical_source_domain(str(result.get("url") or ""))
+    except Exception:
+        return ""
+
+
 @router.post("/research/stream")
 @limiter.limit(get_settings().rate_limit)
 async def stream_research(request: Request, payload: ResearchRequest) -> StreamingResponse:
@@ -500,8 +534,20 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                                 seen_sub.setdefault(_sq, []).append({
                                     "title": str(_r.get("title", "") or "")[:160],
                                     "url": _url,
-                                    "source": str(
-                                        _r.get("source") or _r.get("provider") or ""
+                                    # `source` is the SOURCE label a reader sees,
+                                    # so it must name the publisher's site -- not
+                                    # the index that found it. It used to fall
+                                    # through to `provider`, which for a metasearch
+                                    # is "searxng:google cse" and therefore
+                                    # labelled every Google-CSE hit with the name
+                                    # of its own engine.
+                                    "source": _source_label(_r),
+                                    "domain": str(_r.get("source_domain", "") or ""),
+                                    "publisher": str(_r.get("publisher", "") or ""),
+                                    # Provenance stays available, one level down.
+                                    "via": str(_r.get("retrieval_engine", "") or ""),
+                                    "retrieval_provider": str(
+                                        _r.get("retrieval_provider", "") or ""
                                     ),
                                     "reliability": _r.get("reliability_score"),
                                     # Which pages were actually opened, not just
@@ -561,7 +607,6 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                             reason = critique.get("reason", "No reason provided")
                             yield event_line("critic", iteration=iteration, reason=reason,
                                              breakdown=snapshot.get("confidence_breakdown") or {},
-                                             redteam=snapshot.get("redteam") or {},
                                              budget=usage.snapshot())
                             last_iteration = iteration
                             await _persist(record_event(
@@ -894,7 +939,7 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
                             critique = snapshot.get("critique", {})
                             yield event_line("critic", iteration=iteration, reason=critique.get("reason", ""),
                                              breakdown=snapshot.get("confidence_breakdown") or {},
-                                             redteam=snapshot.get("redteam") or {})
+                                             )
                             last_iteration = iteration
                             await _persist_record(settings.database_url, request_id, iteration, critique,
                                                   breakdown=snapshot.get("confidence_breakdown") or {})

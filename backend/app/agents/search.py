@@ -28,6 +28,7 @@ from app.core.config import Settings
 from app.core.logging import get_logger
 from app.agents.planner import SubQuestion
 from app.agents.searchkit.cache_mixin import CacheMixin
+from app.agents.searchkit.diversity import aggregate_reports as _aggregate_diversity
 from app.agents.searchkit.providers_mixin import ProviderSearchMixin
 from app.agents.searchkit.content_mixin import ContentMixin
 from app.agents.reliability import (
@@ -232,6 +233,13 @@ class SearchClient(CacheMixin, ProviderSearchMixin, ContentMixin):
             timeout=self._timeout,
         )
         self.provider_stats: Dict[str, Dict[str, int]] = {}
+        # Per-query retrieval-diversity audits (engine counts vs publisher
+        # counts, plus SearXNG's own unresponsive-engine list). Bounded: this is
+        # telemetry, and an unbounded per-query log inside a long run is the
+        # same shape of leak as the old module-level RUNTIME_STATE. Once it is
+        # full the newest reading replaces the oldest, so the snapshot always
+        # reflects recent retrieval rather than growing without limit.
+        self.diversity_stats: List[Dict[str, Any]] = []
 
         # Retrieval access hardening (run-scoped, LRU-bounded). The domain
         # registry cools hard-blocked/rate-limited hosts; the failed-fetch log
@@ -435,4 +443,8 @@ class SearchClient(CacheMixin, ProviderSearchMixin, ContentMixin):
         }
         snapshot["cooling_domains"] = self.domain_registry.cooling_domains()
         snapshot["failed_urls_remembered"] = len(self.failed_fetches)
+        snapshot["diversity"] = {
+            "per_query": list(self.diversity_stats),
+            "aggregate": _aggregate_diversity(self.diversity_stats),
+        }
         return snapshot

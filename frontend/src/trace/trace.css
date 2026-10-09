@@ -367,6 +367,16 @@
   color: color-mix(in srgb, var(--apt-fg) 32%, transparent);
   font-size: 9px;
 }
+
+/* Retrieval provenance — which index returned the page. Deliberately fainter
+   than the source label and bracketed, so "via google cse" can never be
+   mistaken for the publisher of the document next to it. */
+.apt-chip-via {
+  flex: none;
+  color: color-mix(in srgb, var(--apt-fg) 24%, transparent);
+  font-size: 9px;
+  font-style: italic;
+}
 a.apt-code:hover {
   background: color-mix(in srgb, var(--apt-fg) 11%, transparent);
   border-color: color-mix(in srgb, var(--apt-fg) 16%, transparent);
