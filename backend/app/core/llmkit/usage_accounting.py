@@ -13,6 +13,7 @@ from app.core.degradation import record_provider_failure
 from app.core.logging import get_logger
 from app.core.llmkit.breaker import CircuitBreaker
 from app.core.llmkit.failures import _is_rate_limit, classify_provider_failure
+from app.core.llmkit.jsonparse import text_says_nothing as _text_says_nothing
 from app.core.llmkit.types import CompletionResult, PromptTooLargeError
 from app.core.usage import get_run_usage
 
@@ -64,16 +65,29 @@ class UsageAccountingMixin:
     def _cache_and_record(
         self, result: "CompletionResult", system_prompt: str, user_prompt: str
     ) -> None:
-        """Persist a successful completion and feed the run ledger."""
-        llm_cache.put(
-            result.endpoint,
-            result.model,
-            system_prompt,
-            user_prompt,
-            result.text,
-            input_tokens=result.input_tokens or None,
-            output_tokens=result.output_tokens or None,
-        )
+        """Persist a successful completion and feed the run ledger.
+
+        An empty response is deliberately NOT cached. A model can return HTTP 200
+        with "{}" — a reasoning model that spent its whole token budget on hidden
+        reasoning does exactly this — and caching it poisons the key for the full
+        TTL, so every later retry of that prompt is served the same nothing and
+        the agent degrades again. This is the same failure the summarizer's cache
+        guard fixed, one layer up; fixing it here means no agent can reintroduce
+        it.
+        """
+        text = result.text or ""
+        if _text_says_nothing(text):
+            logger.debug("[LLM] not caching an empty response")
+        else:
+            llm_cache.put(
+                result.endpoint,
+                result.model,
+                system_prompt,
+                user_prompt,
+                text,
+                input_tokens=result.input_tokens or None,
+                output_tokens=result.output_tokens or None,
+            )
         tin, tout = result.input_tokens, result.output_tokens
         if not tin:
             tin = _estimate_tokens(f"{system_prompt}\n{user_prompt}")

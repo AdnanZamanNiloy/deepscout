@@ -56,7 +56,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
 from app.core.degradation import record_fallback
-from app.core.llm import LLMClient
+from app.core.llm import LLMClient, _payload_says_nothing
 from app.core.logging import get_logger
 from app.core.schemas import AnalyticalBriefModel
 
@@ -140,6 +140,10 @@ MAX_COUNTER = 4
 MAX_IMPLICATIONS = 5
 MAX_CROSS_SOURCE = 5
 MAX_UNCERTAINTIES = 5
+# Attempts before the analyst gives up on the model. A provider that answers with
+# no usable content twice in a row is not likely to produce one on a third try,
+# but one empty answer is common enough to be worth a second chance.
+ANALYST_ATTEMPTS = 3
 
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 _NUMBER_RE = re.compile(r"\d[\d,]*\.?\d*")
@@ -508,21 +512,36 @@ async def analytical_synthesis(
         + "\n\nProduce the analytical brief. Return JSON only."
     )
 
-    try:
-        payload = await llm.generate_json(
-            ANALYST_SYSTEM_PROMPT,
-            user_prompt,
-            response_model=AnalyticalBriefModel,
-        )
-    except Exception as exc:
-        logger.warning("[Analyst] LLM call failed, using plan fallback", exc_info=exc)
-        record_fallback("analyst")
-        return _fallback_brief(plan)
+    # A model can answer with 200 and no usable content: it spent its budget on
+    # hidden reasoning, or it returned fields this builder has to discard
+    # (a relationship with no statement). Judging emptiness only AFTER the brief
+    # is built is what catches both, and it is why this retries: a second attempt
+    # on the same prompt usually produces real content, whereas falling back
+    # immediately is what put "analyst ran on deterministic extraction" in the
+    # UI. Bounded by ANALYST_ATTEMPTS so a genuinely silent model still degrades
+    # instead of looping.
+    payload: Dict[str, Any] = {}
+    for attempt in range(ANALYST_ATTEMPTS):
+        try:
+            payload = await llm.generate_json(
+                ANALYST_SYSTEM_PROMPT,
+                user_prompt,
+                response_model=AnalyticalBriefModel,
+            )
+        except Exception as exc:
+            logger.warning("[Analyst] LLM call failed, using plan fallback", exc_info=exc)
+            record_fallback("analyst")
+            return _fallback_brief(plan)
 
-    if not isinstance(payload, dict) or not payload:
-        logger.warning("[Analyst] empty/invalid LLM output, using plan fallback")
-        record_fallback("analyst")
-        return _fallback_brief(plan)
+        if isinstance(payload, dict) and payload and not _payload_says_nothing(payload):
+            break
+        logger.warning(
+            "[Analyst] model returned nothing usable (attempt %d/%d)",
+            attempt + 1, ANALYST_ATTEMPTS,
+        )
+        if attempt == ANALYST_ATTEMPTS - 1:
+            record_fallback("analyst")
+            return _fallback_brief(plan)
 
     relationships: List[Dict[str, str]] = []
     for item in payload.get("relationships") or []:
@@ -550,7 +569,7 @@ async def analytical_synthesis(
     )
 
     if brief.is_empty:
-        logger.warning("[Analyst] LLM returned an empty brief, using plan fallback")
+        logger.warning("[Analyst] every attempt was discarded during build; using plan fallback")
         record_fallback("analyst")
         return _fallback_brief(plan)
 
