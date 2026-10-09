@@ -8,6 +8,7 @@ from xml.etree import ElementTree
 
 from app.core.logging import get_logger
 
+from app.agents.searchkit.identity import source_identity
 from app.agents.searchkit.types import (
     SearchResult,
 )
@@ -38,6 +39,10 @@ def _arxiv_to_results(xml_text: str, query: str) -> List[SearchResult]:
         if not link or not title:
             continue
         clean_summary = re.sub(r"\s+", " ", summary)
+        # arXiv is both the retrieval provider and the publisher here: the PDF
+        # is hosted by arxiv.org even when the preprint was later published
+        # elsewhere, so the journal name is NOT invented from the entry.
+        domain, _ = source_identity(link)
         out.append(SearchResult(
             title=re.sub(r"\s+", " ", title),
             url=link,
@@ -47,6 +52,11 @@ def _arxiv_to_results(xml_text: str, query: str) -> List[SearchResult]:
             search_type="academic",
             published_at=published,
             matched_query=query,
+            source_domain=domain,
+            publisher="arXiv",
+            retrieval_provider="arxiv",
+            retrieval_engine="arxiv",
+            retrieval_engines=["arxiv"],
         ))
     return out
 
@@ -76,6 +86,10 @@ def _crossref_to_results(payload: Any, query: str) -> List[SearchResult]:
         parts = ((row.get("issued") or {}).get("date-parts") or [[]])[0]
         published = "-".join(f"{p:02d}" if i else str(p) for i, p in enumerate(parts[:3])) if parts else ""
         summary = abstract or f"{title}. {venue}".strip()
+        # Crossref indexes the DOI record, so `publisher` is a real registered
+        # value and the best publisher name available for a paper. The URL is
+        # almost always doi.org, so the domain alone would say nothing useful.
+        domain, publisher_name = source_identity(url, row.get("publisher"))
         out.append(SearchResult(
             title=re.sub(r"\s+", " ", title),
             url=url,
@@ -85,6 +99,11 @@ def _crossref_to_results(payload: Any, query: str) -> List[SearchResult]:
             search_type="academic",
             published_at=published,
             matched_query=query,
+            source_domain=domain,
+            publisher=publisher_name,
+            retrieval_provider="crossref",
+            retrieval_engine="crossref",
+            retrieval_engines=["crossref"],
         ))
     return out
 
@@ -97,13 +116,20 @@ def _wiki_search_to_results(data: Any, query: str) -> List[SearchResult]:
         title = str(item.get("title", "") or "")
         if not title:
             continue
+        url = f"https://en.wikipedia.org/wiki/{quote(title.replace(' ', '_'))}"
+        domain, _ = source_identity(url)
         results.append(SearchResult(
             title=title,
-            url=f"https://en.wikipedia.org/wiki/{quote(title.replace(' ', '_'))}",
+            url=url,
             snippet=html.unescape(re.sub(r"<.*?>", "", str(item.get("snippet", "") or ""))),
             provider="wikipedia",
             search_type="encyclopedia",
             published_at=str(item.get("timestamp", "") or ""),
             matched_query=query,
+            source_domain=domain,
+            publisher="Wikipedia",
+            retrieval_provider="wikipedia",
+            retrieval_engine="wikipedia",
+            retrieval_engines=["wikipedia"],
         ))
     return results

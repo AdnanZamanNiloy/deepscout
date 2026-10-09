@@ -322,6 +322,22 @@ async def init_db(database_path: str) -> None:
         provider_names = {r[1] for r in await provider_cols.fetchall()}
         if "model_name" not in provider_names:
             await db.execute("ALTER TABLE llm_providers ADD COLUMN model_name TEXT DEFAULT ''")
+        # Source identity vs retrieval provenance on persisted sources
+        # (additive, idempotent). A source row used to carry only a URL, so the
+        # only way to name the publisher of a hit was to re-derive it later --
+        # and nothing at all recorded WHICH index returned it. These four
+        # columns are the durable form of that split. DEFAULT '' keeps every
+        # pre-existing row valid and every existing reader working.
+        source_cols = await db.execute("PRAGMA table_info(sources)")
+        source_names = {r[1] for r in await source_cols.fetchall()}
+        for column, ddl in (
+            ("source_domain", "TEXT NOT NULL DEFAULT ''"),
+            ("publisher", "TEXT NOT NULL DEFAULT ''"),
+            ("retrieval_provider", "TEXT NOT NULL DEFAULT ''"),
+            ("retrieval_engine", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            if column not in source_names:
+                await db.execute(f"ALTER TABLE sources ADD COLUMN {column} {ddl}")
         # Per-provider sampling temperature (additive, idempotent). Deliberately
         # NULLABLE with no default: NULL means "unset, use the global default",
         # which must stay distinguishable from an explicit 0.0 — 0 is a VALID

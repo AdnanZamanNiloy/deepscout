@@ -189,9 +189,21 @@ function CodeChip({ chip }: { chip: TraceChip }) {
     <>
       <span className="apt-code-label">{chip.label}</span>
       {chip.meta ? <span className="apt-chip-meta">{chip.meta}</span> : null}
+      {/* Retrieval provenance, visually subordinate to the source. It answers
+          "which index found this", which is a different question from "who
+          published it" — the reason it is never allowed to be the label. */}
+      {chip.via ? <span className="apt-chip-via">via {chip.via}</span> : null}
     </>
   );
-  const full = chip.meta ? `${chip.label} — ${chip.meta}` : chip.label;
+  // Tooltip carries everything for the truncated case: title, source, and how
+  // the page was retrieved.
+  const full = [
+    chip.label,
+    chip.meta,
+    chip.via ? `retrieved via ${chip.via}` : "",
+  ]
+    .filter(Boolean)
+    .join(" — ");
   if (!safe) {
     return (
       <div className="apt-code" title={full}>

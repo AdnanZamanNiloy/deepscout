@@ -12,6 +12,20 @@ from app.db.store.sessions import (
 )
 
 
+def _domain_for(url: str) -> str:
+    """Canonical hostname for a persisted source row.
+
+    Imported lazily so the DB layer does not grow an import-time dependency on
+    the search stack, and guarded because a save must never fail over a label.
+    """
+    try:
+        from app.agents.searchkit.identity import canonical_source_domain
+
+        return canonical_source_domain(url)
+    except Exception:
+        return ""
+
+
 async def save_agent_tasks(database_path: str, run_id: str, sub_questions: list) -> None:
     rows = [
         (
@@ -44,12 +58,30 @@ async def save_sources(database_path: str, run_id: str, search_results: list) ->
         if not url or url in seen:
             continue
         seen.add(url)
-        rows.append((run_id, url, float(item.get("reliability_score", 0.0) or 0.0), _now()))
+        # Identity and provenance are persisted separately so a replayed run can
+        # say "mdpi.com, retrieved via Google CSE" instead of collapsing both
+        # into one string. `source_domain` falls back to the URL so a row from
+        # an older caller (which never sent the field) is still labelled.
+        domain = str(item.get("source_domain", "") or "").strip()
+        if not domain:
+            domain = _domain_for(url)
+        rows.append((
+            run_id,
+            url,
+            float(item.get("reliability_score", 0.0) or 0.0),
+            _now(),
+            domain,
+            str(item.get("publisher", "") or ""),
+            str(item.get("retrieval_provider", "") or ""),
+            str(item.get("retrieval_engine", "") or ""),
+        ))
     if not rows:
         return
     async with _connect(database_path) as db:
         await db.executemany(
-            "INSERT INTO sources (run_id, url, reliability_score, fetched_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO sources (run_id, url, reliability_score, fetched_at, "
+            "source_domain, publisher, retrieval_provider, retrieval_engine) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
         await db.commit()

@@ -7,7 +7,7 @@ behaviour and the class surface are unchanged."""
 
 import asyncio
 import re
-from typing import Any, List
+from typing import Any, Dict, List
 
 import httpx
 
@@ -20,6 +20,13 @@ from app.agents.searchkit.fetch import _WIKI_USER_AGENT
 from app.agents.searchkit.providers import _arxiv_to_results, _crossref_to_results, _wiki_search_to_results
 
 logger = get_logger(__name__)
+
+# Per-query diversity audits retained per run. Generous for an interactive run
+# (a long pass issues tens of queries, not thousands) and small enough that the
+# snapshot cannot grow into the kind of unbounded per-run state AGENTS.md 4.3
+# forbids.
+_DIVERSITY_LOG_LIMIT = 200
+
 
 class ProviderSearchMixin:
         async def _providers_for(self, query: str, search_type: str) -> List[SearchResult]:
@@ -102,6 +109,11 @@ class ProviderSearchMixin:
                     logger.info(
                         "[Search] searxng: %d unresponsive upstream engine(s)", len(unresponsive)
                     )
+                # Audit the aggregate rather than trusting its own silence: one
+                # engine answering everything reads as plenty of results and is
+                # actually a single source. Recorded per query so a run's trace
+                # can show whether its retrieval was genuinely diversified.
+                self._record_diversity(mapped, unresponsive)
                 self._count("searxng", "ok")
                 return mapped
 
@@ -237,6 +249,60 @@ class ProviderSearchMixin:
                 breaker=get_breaker("crossref", failure_threshold=3, cooldown=90.0),
                 fallback=_empty,
             )
+
+        def _record_diversity(
+            self, results: List[SearchResult], unresponsive: Any = None
+        ) -> None:
+            """Store one per-query retrieval-diversity audit.
+
+            Deliberately NOT merged with the provider ok/fail table: that table
+            answers "did the call work", this answers "did many independent
+            things answer". A query served entirely by one index succeeds
+            (`ok`) and is still single-sourced, and only the second view shows
+            that.
+            """
+            from app.agents.searchkit.diversity import diversity_report
+
+            try:
+                report = diversity_report(results, unresponsive)
+            except Exception as exc:  # telemetry must never break retrieval
+                logger.warning(
+                    "[Search] diversity audit failed", exc_info=exc
+                )
+                return
+            # Keep the log small and focused on a regression: the top engines
+            # and domains, not every counter, or the line becomes unreadable.
+            logger.info(
+                "[Search] diversity engines=%s domains=%s concentrated=%s cause=%s "
+                "upstream_ok=%s/%s dedup_overwritten=%s",
+                report["engines"]["unique_engines"],
+                report["publishers"]["unique_source_domains"],
+                report["engines"]["concentrated"],
+                report["concentration_cause"],
+                report["searxng"]["responsive_count"],
+                report["searxng"]["responsive_count"] + report["searxng"]["unresponsive_count"],
+                report["dedup"]["overwritten_across_engines"],
+            )
+            existing = getattr(self, "diversity_stats", None)
+            reports: List[Dict[str, Any]] = existing if isinstance(existing, list) else []
+            if reports is not existing:
+                self.diversity_stats = reports
+            reports.append({
+                "results": report["results"],
+                "counts_by_engine": report["engines"]["counts_by_engine"],
+                "unique_engines": report["engines"]["unique_engines"],
+                "top_engine": report["engines"]["top_engine"],
+                "top_engine_share": report["engines"]["top_engine_share"],
+                "unique_source_domains": report["publishers"]["unique_source_domains"],
+                "unique_publishers": report["publishers"]["unique_publishers"],
+                "concentrated": report["engines"]["concentrated"],
+                "concentration_cause": report["concentration_cause"],
+                "unresponsive_engines": report["unresponsive_engines"],
+                "searxng": report["searxng"],
+                "dedup": report["dedup"],
+            })
+            if len(reports) > _DIVERSITY_LOG_LIMIT:
+                del reports[: len(reports) - _DIVERSITY_LOG_LIMIT]
 
         def _count(self, provider: str, outcome: str) -> None:
             bucket = self.provider_stats.setdefault(provider, {"ok": 0, "fail": 0, "results": 0})
