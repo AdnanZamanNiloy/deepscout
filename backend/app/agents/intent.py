@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from app.core.degradation import record_fallback
 from app.core.llm import LLMClient
@@ -314,16 +314,91 @@ _UNDERSPECIFIED_TERMS: Dict[str, List[Dict[str, str]]] = {
 MIN_INTERPRETATIONS = 2
 
 
+# Meaning boundaries, keyed by the same terms as `_UNDERSPECIFIED_TERMS`.
+#
+# Some words are routinely confused with a DIFFERENT word, and the confusion is
+# invisible to any stemmer: "demanding" and "demand" reduce to the same string
+# under an -ing rule. So a query about demanding jobs scored a perfect semantic
+# fit against readings about labour shortage, and the system confidently
+# answered "which jobs are hardest to staff" — a question nobody asked.
+#
+# A reading whose vocabulary belongs to the confused word is not a WEAK
+# candidate, it is a different question, and it must never be adopted as the
+# reading of what the user typed. Declared here beside the terms it guards
+# because this module owns the subject taxonomy; the policy layer
+# (ambiguity.py) consumes it as DATA and stays domain-agnostic — a property its
+# own test suite enforces by scanning for subject strings.
+#
+# The readings are still SHOWN, and still researched separately: the user gets
+# told which word they wrote and which one they might have meant. What is
+# forbidden is silently adopting the other meaning.
+_TERM_MEANING_BOUNDARIES: Dict[str, Tuple[str, ...]] = {
+    "demanding": (
+        "demand", "demands", "demanded", "staff", "staffing", "hire", "hiring",
+        "hired", "vacancy", "vacancies", "recruit", "recruitment", "sought",
+        "sought-after", "shortage", "fill",
+    ),
+}
+
+
+def _matched_underspecified_term(query: str) -> str:
+    """The under-specified term this query actually uses, or "".
+
+    Hyphens normalise to spaces so "in-demand" and "in demand" are one term,
+    and the match is never stemmed (see `_detect_interpretations`).
+    """
+    matchable = re.sub(r"\s+", " ", re.sub(r"[-‐-―]", " ", f" {(query or '').lower()} "))
+    for term in _UNDERSPECIFIED_TERMS:
+        pattern = r"\b" + r"\s+".join(rf"{re.escape(w)}\b" for w in term.split()) + r"\b"
+        if re.search(pattern, matchable):
+            return term
+    return ""
+
+
+def meaning_boundaries(query: str) -> List[Dict[str, Any]]:
+    """Meaning constraints for this query, for the policy layer to enforce.
+
+    Emitted for the query's own term whether or not any readings were derived
+    from it: the hazard is present from the moment the word appears, including
+    when the readings came from the LLM rather than from the table below.
+    """
+    term = _matched_underspecified_term(query)
+    if not term:
+        return []
+    excludes = _TERM_MEANING_BOUNDARIES.get(term)
+    if not excludes:
+        return []
+    return [{"word": term, "excludes": list(excludes)}]
+
+
 def _detect_interpretations(query: str) -> List[Interpretation]:
     """Deterministic under-specification detector (LLM-free fallback).
 
     Fires only on a curated set of genuinely two-reading terms, so it never
     fabricates ambiguity. Returns [] for a query with one clear reading.
+
+    Hyphens are normalised to spaces first, because the alternative spellings
+    are the same word: "in-demand" and "in demand" are one term, and matching
+    only the spaced form meant the hyphenated spelling — which is the common way
+    to write it — silently produced no readings at all.
+
+    The match is deliberately NOT stemmed. "demanding" and "in demand" reduce to
+    the same string under any -ing rule, and folding them together is how a
+    question about demanding jobs ends up answered as a question about labour
+    shortage. Both words stay exactly as written, and each matches only its own
+    entry.
     """
     lowered = f" {(query or '').lower()} "
+    # Normalise hyphens to spaces for MATCHING only; the keys are curated as
+    # spaced phrases.
+    matchable = re.sub(r"[-‐-―]", " ", lowered)
+    matchable = re.sub(r"\s+", " ", matchable)
     out: List[Interpretation] = []
     for term, readings in _UNDERSPECIFIED_TERMS.items():
-        if not re.search(rf"\b{re.escape(term)}\b", lowered):
+        # A phrase matches when its words appear in order with gaps allowed
+        # ("in demand" / "in high demand"), but each word must be whole.
+        pattern = r"\b" + r"\s+".join(rf"{re.escape(w)}\b" for w in term.split()) + r"\b"
+        if not re.search(pattern, matchable):
             continue
         out = [
             Interpretation(label=r["label"], description=r["description"])
@@ -352,6 +427,10 @@ class IntentReport:
     # interpretations. The answer addresses the useful ones briefly rather than
     # spending the answer explaining that the term is ambiguous.
     interpretations: List[Interpretation] = field(default_factory=list)
+    # Meaning constraints for this query's own vocabulary, handed to the policy
+    # layer so it can refuse to adopt a reading that belongs to a DIFFERENT word
+    # the user did not type. See `_TERM_MEANING_BOUNDARIES`.
+    meaning_boundaries: List[Dict[str, Any]] = field(default_factory=list)
 
     @property
     def underspecified(self) -> bool:
@@ -390,6 +469,7 @@ class IntentReport:
             "senses": [s.to_dict() for s in self.senses],
             "interpretations": [i.to_dict() for i in self.interpretations],
             "underspecified": self.underspecified,
+            "meaning_boundaries": list(self.meaning_boundaries),
             "recommended_action": self.recommended_action,
             "reasoning": self.reasoning,
             "origin": self.origin,
@@ -470,6 +550,7 @@ def heuristic_intent(query: str) -> IntentReport:
         forced_both=bool(ambiguity and len(senses) >= 2
                          and _DEFINITIONAL_QUERY_RE.match((query or "").strip())),
         interpretations=_detect_interpretations(query),
+        meaning_boundaries=meaning_boundaries(query),
     )
 
 
@@ -541,6 +622,11 @@ def _finalize(
         # homonym-shaped, and forcing extra readings from it would invent
         # ambiguity. `fallback` already ran the detector.
         interpretations=fallback.interpretations,
+        # Also deterministic, and deliberately NOT taken from the LLM: the
+        # hazard exists because of the word the USER typed, so an LLM that has
+        # already merged it with another word cannot be the thing that reports
+        # the boundary. `fallback` computed it from the query alone.
+        meaning_boundaries=fallback.meaning_boundaries,
     )
 
 

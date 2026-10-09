@@ -39,6 +39,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Sequence, Tuple
 
+from app.core.semantic import is_meaning_bearing_form
+
 # Actions.
 PROCEED = "proceed"
 ASSUME = "assume"
@@ -61,10 +63,24 @@ ASSUME_GAP = 0.10
 # Top-two gap BELOW this, with both readings plausible: they diverge enough that
 # answering one would miss the question.
 DIVERGENT_GAP = 0.25
-# How many readings a single answer can cover before covering all of them stops
-# being responsive and starts being needlessly broad. At or above this, a genuine
-# tie is worth one question instead of a padded answer.
-MAX_READINGS_FOR_COVERAGE = 2
+# How many readings a single report can cover before covering all of them stops
+# being responsive and starts being needlessly broad.
+#
+# Deliberately generous, and the reason ASK is so rare. Researching several
+# readings IS the job: "most demanding jobs" can be answered across strain,
+# skill and hours in one report that ranks jobs on all three, which is more
+# useful than any single answer and more useful still than a question. Blocking
+# research on "there are several plausible readings" is the failure this guard
+# exists to prevent, so the bar is set at the point where covering the readings
+# would actually produce a worse document — not at the point where there are
+# simply more than two.
+#
+# 3 rather than the cap of 4 on purpose: with these two numbers equal, the ASK
+# branch below could never be reached and the whole clarification path would be
+# dead code. At 3, two or three readings are researched and answered side by
+# side, and only the maximum — four genuinely divergent readings of one
+# question — earns a question instead of a report.
+MAX_READINGS_FOR_COVERAGE = 3
 
 # How many readings to show the user. More than a few is a questionnaire, not a
 # clarification; the intent layer caps senses at a small number anyway.
@@ -189,6 +205,11 @@ def _reading_labels(intent: Mapping[str, Any], query: str = "") -> List[str]:
         # A restatement of the query adds no choice.
         if _is_restatement(label, query_tokens):
             return
+        # NOTE: no meaning-preservation filter here. An off-meaning reading is
+        # still SHOWN and still researched separately — the user is told which
+        # word they wrote and which one they might have meant. What must never
+        # happen is adopting it as the interpretation, which `select_reading`
+        # prevents. Dropping it would hide the distinction instead of making it.
         labels.append(label)
 
     for item in intent.get("senses") or ():
@@ -274,15 +295,72 @@ def _is_restatement(label: str, query_tokens: frozenset) -> bool:
 
 def _stem(token: str) -> str:
     """Very light stemming: enough for plural/tense, no dictionary needed."""
+    # Meaning first. Some words are NOT inflected forms of another word, and
+    # stripping their suffix merges two different concepts — which is how a
+    # question about demanding jobs came to be answered as a question about
+    # labour shortage.
+    if is_meaning_bearing_form(token):
+        return token
     for suffix in ("ies", "es", "s", "ing", "ed"):
         if len(token) > len(suffix) + 2 and token.endswith(suffix):
             return token[: -len(suffix)]
     return token
 
 
+def _query_tokens_with_splits(query: str) -> set:
+    """Subject tokens, plus the pieces of hyphenated ones.
+
+    A hyphenated compound is a single token under `_TOKEN_RE`, so without the
+    split the system cannot see which of two similar words the user actually
+    wrote — and would treat their query as if it had named neither.
+    """
+    tokens = set(_subject_tokens(query))
+    for token in list(tokens):
+        if "-" in token:
+            tokens.update(p for p in token.split("-") if p)
+    return tokens
+
+
+def _violates_meaning_preservation(
+    query: str, reading_text: str, boundaries: Sequence[Mapping[str, Any]]
+) -> bool:
+    """True when a reading answers a DIFFERENT question than the one asked.
+
+    `boundaries` arrives from the intent layer as DATA — this module names no
+    subject, and its tests enforce that by scanning the file. Each entry is
+    ``{"word": <term the user typed>, "excludes": <vocabulary belonging to a
+    different word>}``.
+
+    The rule is deliberately narrow, and both halves are required: the reading
+    carries excluded vocabulary AND the user's own query carries none of it. So
+    the guard fires on a reading about a word the user did not use, and stays
+    silent when they did use it.
+    """
+    if not boundaries:
+        return False
+    query_tokens = _query_tokens_with_splits(query)
+    reading_tokens = set(_subject_tokens(reading_text))
+    if not query_tokens or not reading_tokens:
+        return False
+    for entry in boundaries:
+        if not isinstance(entry, Mapping):
+            continue
+        word = str(entry.get("word", "") or "").strip()
+        excludes = {
+            str(token).strip().lower()
+            for token in (entry.get("excludes") or ())
+            if str(token).strip()
+        }
+        if not word or not excludes:
+            continue
+        if word in query_tokens and not (excludes & query_tokens):
+            if excludes & reading_tokens:
+                return True
+    return False
+
+
 @dataclass
 class ReadingCandidate:
-    """One plausible reading of the query, with the three scored dimensions."""
 
     label: str = ""
     description: str = ""
@@ -290,6 +368,10 @@ class ReadingCandidate:
     contextual_fit: float = 0.0    # how well it fits the surrounding intent
     evidence: float = 0.0          # how much evidence the run could find (0-1)
     score: float = 0.0             # semantic+contextual dominate; evidence is a tiebreak
+    # This reading belongs to a DIFFERENT word the user did not write, so it can
+    # be reported and researched but must never be adopted as the reading of
+    # their query. Set by the intent layer's meaning boundaries.
+    off_meaning: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -323,6 +405,7 @@ def _reading_candidates(intent: Mapping[str, Any], query: str = "") -> List[Read
     just a short name.
     """
     query_tokens = _subject_tokens(query)
+    boundaries = intent.get("meaning_boundaries") or ()
     out: List[ReadingCandidate] = []
     seen: set[str] = set()
 
@@ -334,7 +417,13 @@ def _reading_candidates(intent: Mapping[str, Any], query: str = "") -> List[Read
             return
         seen.add(text)
         out.append(
-            ReadingCandidate(label=text, description=str(description or "").strip())
+            ReadingCandidate(
+                label=text,
+                description=str(description or "").strip(),
+                off_meaning=_violates_meaning_preservation(
+                    query, f"{text} {description or ''}", boundaries
+                ),
+            )
         )
 
     for item in intent.get("senses") or ():
@@ -413,7 +502,9 @@ def _meaning_fit(
     #
     # Deliberately NOT stemmed. Stemming conflates "demanding" with "demand",
     # and those are precisely the two different words this must keep apart:
-    # "demanding" means difficult/heavy, "in demand" means sought-after.
+    # "demanding" means difficult/heavy, "in demand" means sought-after. The
+    # readings that would exploit that collapse are removed upstream by
+    # `_violates_meaning_preservation`, before any of them is scored.
     literal = 0.0
     for token in query_tokens:
         if token in reading_tokens:
@@ -453,6 +544,16 @@ def select_reading(
     priors = priors or {}
     if not candidates:
         return None, []
+
+    # A reading that belongs to a word the user did not write is reported and
+    # researched, but it is never ADOPTED as the reading of their query. Ranking
+    # is the wrong frame for it: a perfect score only means the two words reduce
+    # to the same stem, which is precisely the confusion being prevented.
+    choosable = [c for c in candidates if not c.off_meaning]
+    if not choosable:
+        return None, []
+    if len(choosable) != len(candidates):
+        candidates = choosable
 
     max_evidence = max((int(evidence_counts.get(c.label, 0) or 0) for c in candidates), default=0)
     scored: List[ReadingCandidate] = []
@@ -526,6 +627,33 @@ def readings_would_diverge(labels: Sequence[str]) -> bool:
         return True
     overlap = sum(scores) / len(scores)
     return overlap < 0.20
+
+
+def _reading_is_on_subject(query: str, label: str) -> bool:
+    """Does this reading share any content word with what the user actually asked?
+
+    The shared word must not be the ambiguous term itself — "demanding" appears
+    in a reading precisely BECAUSE the reading is about that word, so counting
+    it would mark every reading of a homonym as on-subject and make the check
+    vacuous.
+    """
+    query_tokens = _query_tokens_with_splits(query)
+    if not query_tokens:
+        return False
+    return bool(_subject_tokens(label) & query_tokens)
+
+
+def _any_reading_on_subject(query: str, labels: Sequence[str]) -> bool:
+    """True when at least one plausible reading is actually about the question.
+
+    This is the honest test for "ambiguity prevents a useful answer". If a
+    reading is recognisably about what was asked, the system can research it and
+    state its assumption — asking instead would be refusing to do work it can
+    obviously do. Only when NOT ONE reading is recognisably on-subject is the
+    question genuinely undetermined, and a clarifying question is the honest
+    response.
+    """
+    return any(_reading_is_on_subject(query, label) for label in labels or ())
 
 
 def clarification_question(query: str, labels: Sequence[str]) -> str:
@@ -677,20 +805,31 @@ def decide_ambiguity(
         )
 
     # The readings diverge and nothing in the question asks for them together.
-    # Even here the default is to RESEARCH the most reasonable reading: asking is
-    # reserved for the case where the readings would need substantially different
-    # plans AND covering several of them would be unnecessarily broad (more than
-    # a couple of readings).
-    if len(labels) <= MAX_READINGS_FOR_COVERAGE:
+    # Even here the default is to RESEARCH the most reasonable reading. Asking
+    # requires THREE independent things to hold, not one:
+    #
+    #   1. the readings genuinely diverge (no single answer covers them), AND
+    #   2. there are more of them than one report should carry, AND
+    #   3. not ONE of them is recognisably about what was asked.
+    #
+    # (3) is the condition that was missing, and it is the one that matters. The
+    # count alone is not a reason to stop: a model routinely returns four senses
+    # for one word, so a threshold tuned on "two or three" is crossed by ordinary
+    # queries, and the system refused to answer questions whose readings plainly
+    # named the same subject the user asked about. Condition (3) is what makes
+    # asking honest rather than lazy — if a reading is on-subject, the work is
+    # doable, so the system must do it and state its assumption.
+    if len(labels) <= MAX_READINGS_FOR_COVERAGE or _any_reading_on_subject(query, labels):
         return AmbiguityPolicy(
             action=SEPARATE,
             query=query,
             interpretations=labels,
             assumption=str(labels[0]),
             reason=(
-                f"{len(labels)} divergent readings can both be answered in one "
-                "report, so each is researched and stated separately instead of "
-                "asking the user to choose"
+                f"{len(labels)} readings include ones recognisably about what was "
+                "asked, so the answerable reading is researched with its "
+                "assumption stated, and the others are kept distinct, rather "
+                "than handing the choice back to the user"
             ),
         )
 
