@@ -49,9 +49,7 @@ def _section_has_substance(
     if key == "key figures":
         return _has_numeric_facts(cited_facts or usable_facts, minimum=3)
     if key == "counterarguments":
-        return bool(contradictions) or bool(ctx.get("redteam_findings")) or bool(
-            _missing_skeptical_angles(ctx)
-        )
+        return bool(contradictions) or bool(_missing_skeptical_angles(ctx))
     if key == "limitations":
         if ctx.get("coverage_gaps") or ctx.get("degraded"):
             return True
@@ -81,7 +79,7 @@ def _render_required_section(
 
     Never invents facts: each section is assembled from signals the pipeline
     already measured (grade distribution, verified/corroborated counts,
-    contradictions, red-team findings, source mix). A genuinely empty signal
+    contradictions, source mix). A genuinely empty signal
     produces an honest "none detected" statement, not a fabricated one.
     """
     total = len(usable_facts)
@@ -165,13 +163,6 @@ def _render_required_section(
                     f" RESOLVED: {item.get('resolution', '')}" if item.get("resolved") else ""
                 )
                 lines.append(f"- \"{a_text}\" conflicts with \"{b_text}\".{suffix}")
-        findings = ctx.get("redteam_findings") or []
-        if isinstance(findings, list):
-            for item in findings[:5]:
-                if isinstance(item, dict):
-                    statement = str(item.get("statement", "") or "").strip()
-                    if statement:
-                        lines.append(f"- {statement}")
         if len(lines) == 2:
             # Guard: never claim the absence of counterarguments unless a
             # dedicated counter-evidence search actually ran AND returned

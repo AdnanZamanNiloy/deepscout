@@ -3,7 +3,7 @@
 Detection lives in `app.core.contradictions.find_contradictions` — the live
 engine the host workflow runs (numeric, polarity and temporal conflicts).
 This module keeps the deterministic helpers the critic, synthesizer and
-red-team consume: aggregate summaries, reportable numeric ranges, and
+critic consume: aggregate summaries, reportable numeric ranges, and
 follow-up search queries for the biggest unresolved conflicts.
 """
 from __future__ import annotations
@@ -42,7 +42,7 @@ def summarize_contradictions(contradictions: Sequence[Dict[str, Any]]) -> Dict[s
 
     Fix C: a contradiction whose `resolved` flag is set (different
     period/scope/metric explains the spread) is recorded but never counted as
-    a cross-source or severe conflict — it must not make the red-team or the
+    a cross-source or severe conflict — it must not make the critic or the
     confidence engine treat an explained spread as a live disagreement.
     """
     items = [c for c in (contradictions or []) if isinstance(c, dict)]

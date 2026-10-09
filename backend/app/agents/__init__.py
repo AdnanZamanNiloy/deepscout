@@ -14,7 +14,7 @@ guarded by `tests/test_agents_facade.py::test_every_lazy_export_resolves`.
     planner_agent, execution_waves, ...          — planning contracts
     SearchClient, contract_queries, ...          — multi-provider search
     summarizer_agent, verifier helpers           — extraction + verification
-    critic_agent, redteam_agent                  — judgement + adversarial
+    critic_agent                                — judgement
     summarize_contradictions, compute_confidence — conflicts + scoring
     coverage_gaps                                — dynamic depth
     ResearchBudget, retry/breaker helpers        — operational limits + reliability
@@ -53,8 +53,6 @@ _LAZY: dict[str, str] = {
     "verify_facts": "app.agents.verifier",
     # judgement / adversarial
     "critic_agent": "app.agents.critic",
-    "redteam_agent": "app.agents.redteam",
-    "RedTeamReport": "app.agents.redteam",
     # analytical synthesis (thesis between plan and writer)
     "analytical_synthesis": "app.agents.analyst",
     "AnalyticalBrief": "app.agents.analyst",

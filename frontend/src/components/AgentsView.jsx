@@ -37,7 +37,7 @@ const AGENTS = [
   },
   {
     name: "Critic", icon: IconShield,
-    objective: "Judges sufficiency, red-teams assumptions, and forces expansion within the depth ceiling.",
+    objective: "Judges sufficiency, challenges assumptions, and forces expansion within the depth ceiling.",
     tools: ["LLM critique", "synthesis gate"],
     outputs: ["confidence breakdown", "gap queries"],
   },

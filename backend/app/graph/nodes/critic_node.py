@@ -7,7 +7,6 @@ passes its own module globals, preserving the monkeypatch test seam.
 """
 from typing import Any, Dict, List
 from app.agents.orchestrator import MODE_CONFIDENCE_TARGET
-from app.agents.redteam import redteam_agent
 from app.core.confidence import compute_confidence
 from app.core.contradictions import find_contradictions
 from app.core.degradation import has_provider_degradation, take_fallbacks
@@ -46,26 +45,6 @@ def make_critic_node(llm, critic_agent):
                 unresolved=sum(1 for c in contradictions if not c.get("resolved")),
             )
 
-        # Red-team review (v3, heuristics only: deterministic, zero LLM
-        # cost). Attacks the evidence base every pass; the survival score
-        # feeds the critic gate and the findings render in the report.
-        # Never fatal: heuristics must not break a run.
-        try:
-            redteam_state = (
-                await redteam_agent(
-                    None,
-                    state["query"],
-                    state.get("facts", []),
-                    contradictions=contradictions,
-                    use_llm=False,
-                )
-            ).to_dict()
-        except Exception as exc:
-            logger.warning("redteam_heuristics_failed", error=str(exc), exc_info=exc)
-            redteam_state = {
-                "findings": [], "survival_score": 0.6, "survives": True,
-                "blocking": [], "targeted_queries": [], "summary": "",
-            }
 
         # The critic's optional gate inputs, wired (they were built and tested
         # but never passed, so the coverage-gap gate could never fire, the
@@ -96,7 +75,6 @@ def make_critic_node(llm, critic_agent):
             max_iterations=int(state.get("max_iterations", 3)),
             contradictions=contradictions,
             query_type=str(state.get("orchestration", {}).get("query_type", "")),
-            redteam_survival=float(redteam_state.get("survival_score", 0.6) or 0.6),
             plan=state.get("sub_questions", []),
             searched_queries=searched,
             confidence_target=mode_target,
@@ -349,7 +327,6 @@ def make_critic_node(llm, critic_agent):
             "confidence_breakdown": breakdown,
             "confidence_history": [*state.get("confidence_history", []), overall_conf],
             "contradictions": contradictions,
-            "redteam": redteam_state,
             "facts": enriched_facts,
             "corroboration_queries": corroboration_queries,
             "corroboration_registry": corroboration_registry,

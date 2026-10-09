@@ -275,23 +275,6 @@ def _render_context_block(ctx: Dict[str, Any]) -> str:
     # prompt via `_render_analytical_guidance` so the evidence dump cannot
     # overshadow them (Phase 8 context prioritization).
 
-    # Surviving red-team objections belong in the brief, not only in the
-    # appendix: a writer that knows the strongest counter-argument writes a
-    # report that addresses it instead of one a reader can dismantle.
-    findings = ctx.get("redteam_findings") or []
-    if isinstance(findings, list) and findings:
-        lines = []
-        for item in findings[:4]:
-            if not isinstance(item, dict):
-                continue
-            statement = str(item.get("statement", "") or "").strip()
-            if statement:
-                lines.append(f"- {statement}")
-        if lines:
-            parts.append(
-                "Standing objections to this evidence (acknowledge, do not ignore):\n"
-                + "\n".join(lines)
-            )
     feedback = ctx.get("quality_feedback") or []
     if isinstance(feedback, list) and feedback:
         parts.append(
@@ -396,27 +379,3 @@ def _measured_evidence_block(
     return block
 
 
-def _objection_blocks(ctx: Dict[str, Any]) -> List[str]:
-    """Standing objections and falsifiers — analytical and audit profiles only."""
-    blocks: List[str] = []
-    findings = ctx.get("redteam_findings") or []
-    if isinstance(findings, list) and findings:
-        lines = ["## Standing Objections", ""]
-        for item in findings[:5]:
-            if not isinstance(item, dict):
-                continue
-            statement = str(item.get("statement", "") or "").strip()
-            if not statement:
-                continue
-            test = str(item.get("test", "") or "").strip()
-            lines.append(f"- {statement}" + (f" Resolve by: {test}" if test else ""))
-        if len(lines) > 2:
-            blocks.append("\n".join(lines))
-
-    changers = ctx.get("what_would_change_our_mind") or []
-    if isinstance(changers, list) and changers:
-        lines = ["## What Would Change This Conclusion", ""]
-        lines += [f"- {str(c).strip()}" for c in changers[:5] if str(c).strip()]
-        if len(lines) > 2:
-            blocks.append("\n".join(lines))
-    return blocks

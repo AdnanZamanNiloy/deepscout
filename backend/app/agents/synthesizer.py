@@ -92,7 +92,6 @@ from app.agents.synthesis.primitives import (  # noqa: F401
 )
 from app.agents.synthesis.profiles import (  # noqa: F401
     PROFILE_ANALYTICAL,
-    PROFILE_AUDIT,
     PROFILE_BRIEF,
     PROFILE_DIRECT,
     PROFILES,
@@ -110,7 +109,6 @@ from app.agents.synthesis.prompts import (  # noqa: F401
     SYNTHESIZER_SYSTEM_PROMPT,
     _REASONING_DEPTH_BLOCK,
     _REASONING_DEPTH_INSTRUCTION,
-    _render_audit_contract,
     _render_structure_contract,
 )
 from app.agents.synthesis.sections import (  # noqa: F401
@@ -129,7 +127,6 @@ from app.agents.synthesis.sections import (  # noqa: F401
     _dedupe_canonical_sections,
     _dedupe_heading,
     _dedupe_repeated_bullets,
-    _merge_into_section,
     _normalize_heading,
     _normalized_aliases,
     _present_section_keys,
@@ -193,7 +190,6 @@ from app.agents.synthesis.required_sections import (  # noqa: F401
 )
 from app.agents.synthesis.context_blocks import (  # noqa: F401
     _measured_evidence_block,
-    _objection_blocks,
     _render_ambiguity_block,
     _render_analytical_guidance,
     _render_context_block,
@@ -245,7 +241,6 @@ __all__ = [
     "PROFILE_DIRECT",
     "PROFILE_BRIEF",
     "PROFILE_ANALYTICAL",
-    "PROFILE_AUDIT",
     "PROFILES",
     "REQUIRED_SECTIONS",
     "SYNTHESIZER_SYSTEM_PROMPT",

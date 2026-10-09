@@ -104,7 +104,6 @@ export default function IntelligencePanel({
           </section>
 
           <ConfidenceBreakdown breakdown={run.breakdown} />
-          <RedTeamPanel redteam={run.redteam} />
           <EvidenceGrades distribution={run.evidenceDistribution} />
           <RunUsageMeter usage={run.budget} />
 
@@ -266,36 +265,6 @@ function EvidenceGrades({ distribution }) {
         <span className="k">A/B/C/D</span>
         <span className="v">{counts.map((c) => `${c.grade}${c.count}`).join(" · ")}</span>
       </div>
-    </section>
-  );
-}
-
-function RedTeamPanel({ redteam }) {
-  /* Adversarial review: only rendered when the critic actually reported
-   * attacks. The survival score is computed from the findings, never taken
-   * from the model. */
-  const findings = Array.isArray(redteam?.findings) ? redteam.findings : [];
-  const score = typeof redteam?.survival_score === "number"
-    ? Math.round(redteam.survival_score * 100) : null;
-  if (score === null && !findings.length) return null;
-  const top = [...findings].sort((a, b) => (b.severity || 0) - (a.severity || 0)).slice(0, 4);
-  const weak = score !== null && score < 60;
-  return (
-    <section className="intel-section">
-        <h3>Adversarial review</h3>
-      <div className="health-row">
-        <IconShield size={15} className={weak ? "tone-warn" : "tone-good"} />
-        <span className="k">Evidence survival</span>
-        <span className="v" style={weak ? { color: "var(--deepscout-soft)" } : undefined}>
-          {score !== null ? `${score}%` : "—"}
-        </span>
-      </div>
-      {top.map((f, i) => (
-        <div key={`${f.kind}-${i}`} className="budget-sub note">
-          <strong>{f.kind || "weakness"}</strong>
-          {typeof f.severity === "number" ? ` (${Math.round(f.severity * 100)}%)` : ""} — {f.statement}
-        </div>
-      ))}
     </section>
   );
 }

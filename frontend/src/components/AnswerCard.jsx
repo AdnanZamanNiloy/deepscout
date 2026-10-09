@@ -182,7 +182,6 @@ const AGENT_LABELS = {
   verifier: "verification",
   critic: "critique",
   synthesizer: "synthesis",
-  redteam: "red-team review",
 };
 // Backend reason codes (app/core/degradation.py + agent-local codes): WHY a
 // stage degraded. Provider causes and evidence causes must read differently —

@@ -83,7 +83,7 @@ You must be demanding but fair:
 4) REDUNDANCY / FRAGMENTATION
    Is the evidence mostly duplicated or too fragmented to synthesize?
 
-━━━ RED TEAM QUESTIONS (adversarial) ━━━
+━━━ ADVERSARIAL SELF-CHECK ━━━
 
 Before deciding, attack the evidence yourself:
 
@@ -151,7 +151,6 @@ async def critic_agent(
     plan: Optional[Sequence[Dict[str, Any]]] = None,
     searched_queries: Sequence[str] = (),
     confidence_target: Optional[float] = None,
-    redteam_survival: Optional[float] = None,
     use_llm: bool = True,
     focus_report: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -407,9 +406,6 @@ async def critic_agent(
         confidence = model_confidence
         if stats["avg_confidence"] < 0.60:
             gate_failures.append(f"avg_fact_conf={stats['avg_confidence']:.2f}<0.60")
-
-    if redteam_survival is not None and redteam_survival < 0.45:
-        gate_failures.append(f"redteam_survival={redteam_survival:.2f}<0.45")
 
     if gate_failures:
         is_sufficient = False

@@ -538,7 +538,15 @@ Contradictory evidence?
 
 ---
 
-# 11. Feature 08 — Critic + Red Team
+# 11. Feature 08 — Critic
+
+> **Removed 2026-10.** The standalone *Red Team* agent described in this
+> section (a deterministic adversarial pass producing a "survival score" that
+> gated the critic and fed the confidence engine) has been deleted from the
+> codebase, together with the `redteam` research mode. The adversarial
+> self-check it performed is retained inside the Critic itself, which is where
+> the text below actually says it belongs. This section is kept for historical
+> context; it no longer describes the system.
 
 The Critic should do more than ask:
 

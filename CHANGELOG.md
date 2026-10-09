@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased — Red team removed
+
+The standalone **Red Team** agent (`app/agents/redteam.py`) has been deleted, along
+with the `redteam` research mode and every trace of the concept in the API, graph
+state, synthesis layer, and UI. Historical runs keep whatever they already
+persisted; nothing was rewritten or purged.
+
+**Behaviour changes to be aware of:**
+
+- **Confidence no longer prefers a "survival" score.** `compute_confidence` took
+  `redteam_survival` in preference to `critic_confidence`. It now uses
+  `critic_confidence` — the fallback that was already implemented and, in
+  production, was never reached.
+- **The critic gate lost a blocking condition.** A survival score below 0.45
+  previously forced `is_sufficient=False`, which guaranteed another research pass
+  and more LLM spend. That loop is gone; sufficiency is now gated on evidence and
+  critic signals alone.
+- **`synthesis._objection_blocks` was deleted as dead code.** It read
+  `redteam_findings` and `what_would_change_our_mind`, and the second was never
+  populated by anything, so it always returned an empty list.
+- **The `redteam` mode is gone from the composer.** Contested medium-complexity
+  queries now route to `deep`, which is where they already routed above medium.
+
+**What was deliberately kept:** the adversarial self-check inside the critic
+prompt (weakest assumption / invalidating alternative / absent counter-evidence).
+It was reframed from "RED TEAM QUESTIONS" to "ADVERSARIAL SELF-CHECK" rather than
+deleted — removing working critique would have made reports weaker, which is the
+opposite of the intent. `answer_quality` now scores objections on the report's own
+wording rather than on the presence of red-team findings.
+
 ## v2.4 — Question-Driven Coverage & Research (Phase 10)
 
 Measured finding: DeepScout could rank evidence by relevance (v2.3 §1), but a broad
