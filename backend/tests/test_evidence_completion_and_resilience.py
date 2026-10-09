@@ -502,3 +502,67 @@ def test_primary_requirement_is_domain_agnostic():
         {"claim": "history", "axis": "history", "source": "https://arxiv.org/abs/2401.1"},
     ]
     assert _missing_required_primary_sources(facts, plan) == []
+
+
+class _EmptyThenOkLLM:
+    """Returns an empty object (the reasoning-model failure) until the prompt is
+    small enough, then real facts — the shape a live degraded run showed."""
+
+    def __init__(self, tmp_path=None):
+        db = str((tmp_path or "/tmp") / "empty_then_ok.db")
+        self.settings = Settings(groq_api_key="k", database_url=db, _env_file=None)
+        self.calls = 0
+        self.sizes: list = []
+
+    async def generate_json(self, system_prompt, user_prompt, response_model=None, **kwargs):
+        self.calls += 1
+        self.sizes.append(len(user_prompt))
+        # Emulate `generate_json` raising on an all-default payload once the
+        # material is large; small prompts extract fine.
+        # Deterministic: the FIRST attempt returns nothing (what a live run
+        # showed at the full ledger), and the SHRUNK prompt succeeds. Keying on
+        # prompt size instead would depend on excerpt allocation, which is not
+        # what this test is about.
+        if self.calls == 1:
+            raise ValueError("model returned an empty object; every field is default")
+        return {"facts": [{"claim": "Nuclear capacity reached 2,400 MW by 2026",
+                           "source": "https://iaea.org/report", "confidence": 0.9}]}
+
+
+def test_summarizer_shrinks_the_prompt_when_the_model_returns_nothing(tmp_path):
+    """THE live regression: the model returned an empty object on the full
+    prompt, which broke out of the excerpt ladder instead of advancing it, so
+    the stage fell to heuristic extraction and shipped raw source text.
+
+    An empty object is a budget problem — a smaller prompt is the remedy — so it
+    must advance the ladder like a size rejection does.
+    """
+    from app.agents.summarizer import summarizer_agent
+
+    # The summarizer keeps its OWN disk cache (keyed on query + source urls),
+    # separate from the LLM response cache the autouse fixture disables. A warm
+    # entry would short-circuit the extraction entirely.
+    from app.core.cache import get_cache
+    _cache = get_cache(Settings(groq_api_key="k", database_url=str(tmp_path / "c.db"), _env_file=None))
+    if _cache is not None:
+        try:
+            _cache.clear()
+        except Exception:
+            pass
+
+    llm = _EmptyThenOkLLM(tmp_path)
+    results = [{
+        "title": "reactor safety review 2026",
+        "url": "https://iaea.org/report",
+        "snippet": "",
+        "content": "Nuclear capacity reached 2,400 MW by 2026, per the IAEA annual report. " * 120,
+        "sub_question": "nuclear capacity",
+    }]
+    facts = asyncio.run(summarizer_agent(llm, "nuclear capacity 2026", results))
+
+    assert facts, "the smaller retry must recover real facts"
+    assert facts[0]["extraction"] == "llm"
+    # The ladder advanced rather than breaking out — that is the fix. (The
+    # prompts are equal-sized here only because this fixture's source is smaller
+    # than even the reduced budget; with a full ledger they shrink.)
+    assert llm.calls >= 2, "the empty-object failure must advance the excerpt ladder"

@@ -557,6 +557,24 @@ async def summarizer_agent(
                 budget_index += 1
                 continue
             except Exception as exc:
+                # An EMPTY OBJECT is a budget problem, not a transport failure.
+                # `generate_json` raises this when the model returned HTTP 200
+                # with no fields filled — a reasoning model that spent its whole
+                # output budget on hidden reasoning does exactly that, and it
+                # does it more often the more material the prompt carries.
+                # Treating it like any other error broke out of the ladder
+                # immediately, so the one remedy that helps (a smaller prompt)
+                # was never tried and the stage went straight to heuristic
+                # extraction — the run whose claims were raw source text.
+                if "empty object" in str(exc).lower() and budget_index < len(_EXCERPT_BUDGET_LADDER) - 1:
+                    logger.warning(
+                        "[Summarizer] model returned nothing usable at %d excerpt chars; "
+                        "retrying smaller",
+                        excerpt_budget,
+                    )
+                    fallback_reason = "llm_returned_nothing"
+                    budget_index += 1
+                    continue
                 logger.warning("[Summarizer] LLM call failed, using heuristic fallback", exc_info=exc)
                 fallback_reason = "llm_error"
                 break

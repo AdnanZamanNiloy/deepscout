@@ -54,6 +54,18 @@ def _render_interpretations_block(intent: Dict[str, Any], ambiguity: Dict[str, A
     if len(readings) < 2:
         return ""
 
+    # The ASSUMED reading must head the numbered list the writer is told to
+    # mirror. Leaving the classifier's order here is what produced a report that
+    # stated the right assumption in one sentence and then listed the other
+    # reading as "1)" and defined the term by it — the writer correctly followed
+    # the list and contradicted the decision.
+    assumption_label = str(policy.get("assumption", "") or "").strip()
+    if action == "assume" and assumption_label:
+        readings = sorted(
+            readings,
+            key=lambda r: str(r.get("label", "")).strip() != assumption_label,
+        )
+
     listed = "\n".join(
         f"  {i + 1}) **{str(r.get('label')).strip()}**"
         + (f" — {str(r.get('description', '')).strip()}" if str(r.get("description", "")).strip() else "")
@@ -101,8 +113,17 @@ def _render_interpretations_block(intent: Dict[str, Any], ambiguity: Dict[str, A
     )
 
 
-def _render_ambiguity_block(intent: Dict[str, Any]) -> str:
-    """Mandatory disambiguation contract for an ambiguous query."""
+def _render_ambiguity_block(intent: Dict[str, Any], policy: Dict[str, Any] | None = None) -> str:
+    """Mandatory disambiguation contract for an ambiguous query.
+
+    `policy` is the ambiguity DECISION (app/agents/ambiguity.py). It is
+    authoritative when present: the report must announce the reading the system
+    actually assumed, not a reading re-derived here. Measured live, the two
+    disagreed — the pipeline assumed "Stressful or difficult (high strain)" and
+    the report still opened with "focuses on meaning 1 ... taken to mean the
+    skills carrying the heaviest employer demand" — so the prose, which is all
+    the user sees, contradicted the decision that produced it.
+    """
     if not isinstance(intent, dict) or not intent.get("ambiguity"):
         return ""
     senses = [
@@ -111,6 +132,13 @@ def _render_ambiguity_block(intent: Dict[str, Any]) -> str:
     ]
     if not senses:
         return ""
+
+    # The assumed reading leads the list whenever the policy states one, so
+    # "meaning 1" is the meaning the pipeline chose.
+    assumed = str((policy or {}).get("assumption", "") or "").strip()
+    if assumed:
+        senses = sorted(senses, key=lambda s: str(s.get("label", "")).strip() != assumed)
+
     listed = "\n".join(
         f"  {i + 1}) **{str(s.get('label')).strip()}**"
         + (f" — {str(s.get('note', '')).strip()}" if str(s.get("note", "")).strip() else "")

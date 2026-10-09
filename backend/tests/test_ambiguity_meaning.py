@@ -499,3 +499,56 @@ def test_ask_remains_reachable_when_nothing_is_on_subject():
     assert policy.action == ASK, policy.reason
     assert policy.should_stop is True
     assert policy.question.strip()
+
+
+# ---------------------------------------------------------------------------
+# 6. The report must report the reading the pipeline actually assumed
+# ---------------------------------------------------------------------------
+
+def test_the_report_announces_the_assumed_reading_not_the_classifier_order():
+    """Both disambiguation renderers must lead with the DECISION, not the raw
+    sense order. Measured live, they disagreed: the pipeline assumed "Stressful
+    or difficult" while the report announced "meaning 1 ... taken to mean the
+    skills carrying the heaviest employer demand" — the prose, which is all the
+    user reads, contradicted the decision that produced it.
+    """
+    from app.agents.synthesis.context_blocks import _render_ambiguity_block
+    from app.agents.synthesis.postprocess import _deterministic_disambiguation
+
+    intent = {
+        "ambiguity": True,
+        "recommended_action": "research_dominant",
+        "senses": [
+            {"label": "Most in-demand skill in 2027", "note": "what employers want"},
+            {"label": "Stressful or difficult (high strain)", "note": "burnout"},
+            {"label": "Requiring high skill (high complexity)", "note": "expertise"},
+        ],
+    }
+    policy = {"action": "assume", "assumption": "Stressful or difficult (high strain)"}
+
+    from app.agents.synthesis.context_blocks import _render_interpretations_block
+
+    # The two renderers that consume `senses`.
+    for render in (_deterministic_disambiguation, _render_ambiguity_block):
+        text = render(intent, policy)
+        # Indentation differs per renderer; match on the stripped line.
+        first = next(
+            l.strip() for l in text.splitlines() if l.strip().startswith("1)")
+        )
+        assert "Stressful or difficult" in first, f"{render.__name__}: {first!r}"
+
+    # The interpretations block is the one the WRITER mirrors: it must list the
+    # assumed reading first too, or the prose follows the wrong reading while the
+    # prompt states the right one.
+    interp_intent = {
+        "interpretations": [
+            {"label": "Most in-demand skill in 2027", "description": "what employers want"},
+            {"label": "Stressful or difficult (high strain)", "description": "burnout"},
+        ]
+    }
+    text = _render_interpretations_block(interp_intent, policy)
+    assert text.index("Stressful or difficult") < text.index("Most in-demand skill")
+
+    # Without a policy (older payload / no decision) the raw order is still used
+    # rather than crashing.
+    assert _deterministic_disambiguation(intent)
