@@ -61,7 +61,7 @@ contracts add arXiv + Crossref; encyclopedia/statistical add Wikipedia.
 |---|---|---|
 | `MAX_PARALLEL_SEARCH` | `2` | Concurrent whole-contract searches. |
 | `MAX_PARALLEL_FETCH` | `4` | Concurrent page downloads (separate bulkhead). |
-| `MAX_PARALLEL_AGENTS` | `3` | Hardware cap on planned agents (deep/executive may exceed via mode presets). |
+| `MAX_PARALLEL_AGENTS` | `3` | Hardware cap on planned agents (`deep` may exceed via mode preset). |
 | `MAX_PARALLEL_LLM` | `2` | Concurrent LLM calls pipeline-wide. Deliberately low: concurrent large prompts are what burns free-tier TPM/TPD quotas. |
 | `MAX_ITERATIONS` | `3` | Planner→search→summarize→critic loop ceiling (mode presets override). |
 | `SEARCH_FETCH_TOP_N` | `8` | Top-ranked results per sub-question whose full page is fetched. |
@@ -97,13 +97,13 @@ Cache hits refund their dollar cost while keeping token accounting visible.
 
 | Variable | Default | Description |
 |---|---|---|
-| `SUFFICIENCY_THRESHOLD` | `0.75` | Base confidence target (mode targets override: quick 0.60 … audit 0.85). |
+| `SUFFICIENCY_THRESHOLD` | `0.75` | Base confidence target (mode targets override: quick 0.60, deep 0.80). |
 | `MIN_MARGINAL_GAIN` | `0.03` | Per-iteration confidence gain below which a pass counts as stalled (two stalls stop). |
 | `MAX_RESEARCH_DEPTH` | `0` | Hard expansion-depth ceiling; `0` means use `MAX_ITERATIONS`. |
 
 Additional stopping rules need no configuration: the no-novel-query memory
 compares the critic's follow-ups against every already-run search; budget
-walls apply from the ledger; `min_iterations` per mode (audit ≥ 2) prevents
+walls apply from the ledger; `min_iterations` per mode (deep ≥ 2) prevents
 premature stops.
 
 ## Caching

@@ -309,9 +309,6 @@ export const MODE_META = {
   quick: { label: "Quick scan", hint: "2 agents · 1 pass · fastest" },
   standard: { label: "Standard", hint: "3 agents · up to 3 passes" },
   deep: { label: "Deep research", hint: "5 agents · up to 5 passes" },
-  executive: { label: "Executive brief", hint: "5 agents · up to 4 passes · decision-focused" },
-  audit: { label: "Evidence audit", hint: "3 agents · up to 4 passes · verification-heavy" },
-  redteam: { label: "Adversarial review", hint: "3 agents · up to 2 passes · challenges conclusions" },
 };
 
 /* True when a stream error means "no usable model", not "the run broke".

@@ -225,20 +225,19 @@
         '<tr><td><strong>quick</strong></td><td class="num">2</td><td class="num">1</td><td>—</td><td class="num">0.60</td><td class="num">0.35×</td></tr>',
         '<tr><td><strong>standard</strong></td><td class="num">4</td><td class="num">3</td><td>—</td><td class="num">0.75</td><td class="num">1.0×</td></tr>',
         '<tr><td><strong>deep</strong></td><td class="num">5</td><td class="num">5</td><td><span class="pill mint">On</span></td><td class="num">0.80</td><td class="num">2.5×</td></tr>',
-        '<tr><td><strong>executive</strong></td><td class="num">5</td><td class="num">4</td><td><span class="pill mint">On</span></td><td class="num">0.78</td><td class="num">2.0×</td></tr>',
-        '<tr><td><strong>audit</strong></td><td class="num">3</td><td class="num">4</td><td>—</td><td class="num">0.85</td><td class="num">1.2×</td></tr>',
-        '<tr><td><strong>redteam</strong></td><td class="num">3</td><td class="num">2</td><td>—</td><td class="num">0.72</td><td class="num">1.2×</td></tr>',
+
+
       "</tbody>",
     "</table></div>",
-    '<p class="small muted">Mode presets live in <code>MODE_PRESETS</code> (app/agents/orchestrator.py). <code>deep</code> and <code>executive</code> are the only modes allowed to exceed <code>MAX_PARALLEL_AGENTS</code> — an explicit opt-in, then a budget-governor check. Budget multipliers are applied to all four ceilings in <code>MODE_BUDGET_MULTIPLIER</code>.</p>',
+    '<p class="small muted">Mode presets live in <code>MODE_PRESETS</code> (app/agents/orchestrator.py). <code>deep</code> is the only mode allowed to exceed <code>MAX_PARALLEL_AGENTS</code> — an explicit opt-in, then a budget-governor check. Retired names (<code>executive</code>, <code>audit</code>) are mapped forward by <code>resolve_mode</code> rather than rejected, so saved runs keep working.</p>',
 
     '<h3 id="modes-recommend">Mode recommendation</h3>',
     "<p><code>recommend_mode()</code> suggests a mode from the query shape, in priority order:</p>",
     "<ul>",
-      "<li>Decision framing + high/very-high complexity → <code>executive</code></li>",
+      "<li>Decision framing + high/very-high complexity → <code>deep</code></li>",
       "<li>Very-high complexity → <code>deep</code></li>",
       "<li>Low complexity + factual → <code>quick</code></li>",
-      "<li>Contested claim → <code>redteam</code> (medium) or <code>deep</code></li>",
+      "<li>Contested claim → <code>deep</code></li>",
       "<li>Otherwise → <code>standard</code></li>",
     "</ul>",
 
@@ -273,7 +272,7 @@
       '<div class="pipe-node"><div class="pn-ico">04</div><div class="pn-body"><div class="pn-title">Search <code>app/agents/search.py</code></div><div class="pn-desc">Five providers, circuit breakers, canonical-url dedup, domain diversity caps, disk cache.</div></div></div>', ARROW,
       '<div class="pipe-node"><div class="pn-ico">05</div><div class="pn-body"><div class="pn-title">Summarizer <code>app/agents/summarizer.py</code></div><div class="pn-desc">Wave-ordered specialist extraction; wave N receives wave N−1 findings as grounding.</div></div></div>', ARROW,
       '<div class="pipe-node"><div class="pn-ico">06</div><div class="pn-body"><div class="pn-title">Verifier <code>app/agents/verifier.py</code></div><div class="pn-desc">Deterministic per-claim checks; blanks raw content after each pass.</div></div></div>', ARROW,
-      '<div class="pipe-node"><div class="pn-ico">07</div><div class="pn-body"><div class="pn-title">Critic · Contradictions · Red Team · Confidence</div><div class="pn-desc">Sufficiency gate, adversarial review, conflict detection, evidence-derived score.</div></div></div>', ARROW,
+      '<div class="pipe-node"><div class="pn-ico">07</div><div class="pn-body"><div class="pn-title">Critic · Contradictions · Confidence</div><div class="pn-desc">Sufficiency gate, conflict detection, evidence-derived score.</div></div></div>', ARROW,
       '<div class="pipe-node"><div class="pn-ico">08</div><div class="pn-body"><div class="pn-title">Synthesizer <code>app/agents/synthesizer.py</code></div><div class="pn-desc">Sense-separated, cited answer with mandatory disambiguation.</div></div></div>', ARROW,
       '<div class="pipe-node"><div class="pn-ico">09</div><div class="pn-body"><div class="pn-title">Quality gate → Citation health → Finalize</div><div class="pn-desc">Five-axis answer score, one bounded re-synthesis, live URL validation, persisted report.</div></div></div>',
     "</div>",
@@ -296,7 +295,6 @@
         "<tr><td><code>core/confidence.py</code></td><td>Nine signals plus a pool-size-scaled contradiction penalty; degraded-run cap.</td></tr>",
         "<tr><td><code>agents/citation_check.py</code></td><td>Live URL re-validation fused with sentence support into per-source verdicts.</td></tr>",
         "<tr><td><code>core/semantic.py</code></td><td>CPU-light TF-IDF hybrid: stemming, synonym canonicalization, negation weighting.</td></tr>",
-        "<tr><td><code>agents/redteam.py</code></td><td>Heuristic adversarial review; survival score gates the critic.</td></tr>",
         "<tr><td><code>core/depth_controller.py</code></td><td>Intelligent stopping: sufficiency, marginal-gain stalls, ceilings, budget walls.</td></tr>",
         "<tr><td><code>core/decision.py</code></td><td>Decision layer (options → recommendation → rationale → risk) for strategic queries.</td></tr>",
       "</tbody>",
@@ -326,7 +324,7 @@
         '<tr><td class="num">06</td><td><strong>Summarize</strong></td><td>Specialist agents extract claims per contract, wave by wave, with prerequisite grounding.</td></tr>',
         '<tr><td class="num">07</td><td><strong>Collect</strong></td><td>Claims enter the evidence pool; raw content is released after verification.</td></tr>',
         '<tr><td class="num">08</td><td><strong>Verify</strong></td><td>Deterministic checks annotate every claim with a score and reasons.</td></tr>',
-        '<tr><td class="num">09</td><td><strong>Challenge</strong></td><td>Red team attacks the evidence base; critic rules on sufficiency.</td></tr>',
+        '<tr><td class="num">09</td><td><strong>Challenge</strong></td><td>Critic attacks the evidence base and rules on sufficiency.</td></tr>',
         '<tr><td class="num">10</td><td><strong>Resolve</strong></td><td>Contradiction detectors surface and rank conflicting evidence.</td></tr>',
         '<tr><td class="num">11</td><td><strong>Decide depth</strong></td><td>Depth controller chooses expand or finalize.</td></tr>',
         '<tr><td class="num">12</td><td><strong>Expand</strong></td><td>Corroboration and counter-evidence queries target the weakest claims, then loop back to search.</td></tr>',
@@ -378,7 +376,7 @@
     '<div class="callout info">',
       '<span class="c-ico">', I.control, "</span>",
       '<div class="c-body"><div class="c-title">Hardware cap</div>',
-      "<p><code>MAX_PARALLEL_AGENTS</code> defaults to 3 on the 8&nbsp;GB host and is enforced at dispatch, not merely documented. <code>deep</code> and <code>executive</code> are the only modes permitted to lift the cap, and only with the budget governor armed.</p></div>",
+      "<p><code>MAX_PARALLEL_AGENTS</code> defaults to 3 on the 8&nbsp;GB host and is enforced at dispatch, not merely documented. <code>deep</code> is the only mode permitted to lift the cap, and only with the budget governor armed.</p></div>",
     "</div>"
   ];
 
@@ -395,7 +393,7 @@
       '<div class="event-row"><div class="e-name">intent</div><div class="e-desc"><code>query_type</code>, <code>domain</code>, <code>explanation_level</code>, <code>ambiguity</code>, <code>senses</code>, <code>recommended_action</code>.</div></div>',
       '<div class="event-row"><div class="e-name">plan</div><div class="e-desc"><code>items</code> (sub-questions), <code>orchestration</code> (complexity, targets, clamping), <code>waves</code>.</div></div>',
       '<div class="event-row"><div class="e-name">search_progress</div><div class="e-desc"><code>snippets</code> — cumulative source count.</div></div>',
-      '<div class="event-row"><div class="e-name">critic</div><div class="e-desc"><code>iteration</code>, <code>reason</code>, <code>breakdown</code> (confidence signals), <code>redteam</code>, <code>budget</code> (live ledger).</div></div>',
+      '<div class="event-row"><div class="e-name">critic</div><div class="e-desc"><code>iteration</code>, <code>reason</code>, <code>breakdown</code> (confidence signals), <code>budget</code> (live ledger).</div></div>',
       '<div class="event-row"><div class="e-name">findings</div><div class="e-desc"><code>items</code> — claims with verification flags, scores and reasons. Re-emitted once with <code>verified_update: true</code> after verification.</div></div>',
       '<div class="event-row"><div class="e-name">final_report</div><div class="e-desc"><code>report</code>, <code>confidence</code>, <code>degraded</code>, <code>answer_support</code>, <code>budget</code>, <code>wave_report</code>, <code>citation_health</code>.</div></div>',
       '<div class="event-row"><div class="e-name">decisions</div><div class="e-desc"><code>items</code> — decision-layer options for strategic queries.</div></div>',
@@ -416,7 +414,7 @@
       '<div class="feature"><div class="f-ico">', I.search, "</div><h4>Scout / retrieval</h4><p><code>agents/search.py</code> — five providers under circuit breakers, dedup, domain diversity caps, page fetch and PDF extraction.</p></div>",
       '<div class="feature"><div class="f-ico">', I.book, "</div><h4>Specialists</h4><p><code>agents/summarizer.py</code> — eight role overlays (financial, technical, market, legal, scientific, policy, academic, general) extracting structured claims.</p></div>",
       '<div class="feature"><div class="f-ico">', I.shield, "</div><h4>Verifier</h4><p><code>agents/verifier.py</code> — deterministic per-claim checks: overlap, authority, numeric grounding, polarity, quote location, freshness.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.warn, "</div><h4>Critic &amp; Red Team</h4><p><code>agents/critic.py</code>, <code>agents/redteam.py</code> — sufficiency gate plus adversarial attack; survival score feeds confidence.</p></div>",
+      '<div class="feature"><div class="f-ico">', I.warn, "</div><h4>Critic</h4><p><code>agents/critic.py</code> — sufficiency gate plus an adversarial self-check of the evidence base.</p></div>",
       '<div class="feature"><div class="f-ico">', I.scale, "</div><h4>Contradiction engine</h4><p><code>core/contradictions.py</code> — polarity, temporal and unit-aware numeric detectors with severity ranking.</p></div>",
       '<div class="feature"><div class="f-ico">', I.gauge, "</div><h4>Synthesizer</h4><p><code>agents/synthesizer.py</code> — cites claims, separates senses, mandates disambiguation, builds an answer-first outline.</p></div>",
       '<div class="feature"><div class="f-ico">', I.check, "</div><h4>Quality gate</h4><p><code>agents/answer_quality.py</code> — five-axis score, one bounded re-synthesis, disclosure of sub-threshold drafts.</p></div>",
@@ -656,8 +654,7 @@
     '<div class="table-wrap"><table>',
       '<thead><tr><th>Mode</th><th class="num">Minimum iterations</th></tr></thead><tbody>',
         "<tr><td><code>quick</code></td><td class=\"num\">1</td></tr>",
-        "<tr><td><code>redteam</code></td><td class=\"num\">1</td></tr>",
-        "<tr><td><code>audit</code></td><td class=\"num\">2</td></tr>",
+
       "</tbody>",
     "</table></div>",
     "<p class=\"small muted\">When a stop is driven by a wall rather than sufficiency, the reason is written into the report’s Limitations section — an early stop is disclosed, never hidden.</p>"
@@ -764,7 +761,7 @@
     "</div>",
 
     '<h3 id="api-request">Stream request body</h3>',
-    '<div class="code-block" data-lang="json"><div class="code-head"><span class="lang">json</span><button class="copy-btn" type="button">', I.copy, " Copy</button></div><pre><code>{\n  \"query\": \"Should Bangladesh expand nuclear energy?\",   <span class=\"tok-c\">// 5-500 chars</span>\n  \"mode\": \"standard\",                                     <span class=\"tok-c\">// quick|standard|deep|executive|audit|redteam</span>\n  \"deep_research\": false                                  <span class=\"tok-c\">// opt-in fan-out</span>\n}</code></pre></div>"
+    '<div class="code-block" data-lang="json"><div class="code-head"><span class="lang">json</span><button class="copy-btn" type="button">', I.copy, " Copy</button></div><pre><code>{\n  \"query\": \"Should Bangladesh expand nuclear energy?\",   <span class=\"tok-c\">// 5-500 chars</span>\n  \"mode\": \"standard\",                                     <span class=\"tok-c\">// quick|standard|deep</span>\n  \"deep_research\": false                                  <span class=\"tok-c\">// opt-in fan-out</span>\n}</code></pre></div>"
   ];
 
   /* ============================ Benchmarks ============================ */

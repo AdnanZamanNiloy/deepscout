@@ -16,7 +16,7 @@ AXIS_DOMINANCE_THRESHOLD = 0.60
 MIN_AXES_COVERED = 2
 
 
-MODE_MIN_ITERATIONS = {"quick": 1, "audit": 2, "redteam": 1}
+MODE_MIN_ITERATIONS = {"quick": 1, "deep": 2}
 
 
 SEVERE_SEVERITY = 0.60

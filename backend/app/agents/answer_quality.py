@@ -129,10 +129,7 @@ def _word_count(text: str) -> int:
 _LENGTH_BANDS = {
     "quick": (120, 650),
     "standard": (200, 950),
-    "audit": (200, 950),
-    "redteam": (200, 950),
     "deep": (350, 1500),
-    "executive": (350, 1500),
 }
 
 
@@ -258,7 +255,6 @@ def evaluate_answer(
     answer_support: Optional[Dict[str, Any]] = None,
     citation_health: Optional[Dict[str, Any]] = None,
     contradictions: Sequence[Dict[str, Any]] = (),
-    redteam_findings: Sequence[Dict[str, Any]] = (),
     mode: str = "standard",
     threshold: float = 70.0,
 ) -> QualityReport:
@@ -499,11 +495,11 @@ def evaluate_answer(
     limitations = 1.0 if ("limitations" in lowered or "could not verify" in lowered) else 0.0
     if not limitations:
         failures.append("Reasoning: the report states no limitations — add what could not be verified.")
-    objections = 1.0
-    if redteam_findings:
-        objections = 1.0 if any(
-            t in lowered for t in ("objection", "adversarial review", "weakness", "would invalidate")
-        ) else 0.4
+    # Scored on the report's own wording: a report that names objections, weak
+    # assumptions or falsifiers has done the adversarial work inline.
+    objections = 1.0 if any(
+        t in lowered for t in ("objection", "weakness", "would invalidate", "counterargument")
+    ) else 0.4
 
     # Explicit conclusion: a claim of what the evidence collectively supports,
     # either as an explicit phrasing or a dedicated Reasoning/Conclusions

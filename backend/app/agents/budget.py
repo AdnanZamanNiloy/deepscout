@@ -27,9 +27,6 @@ from typing import Any, Dict, List
 MODE_LIMIT_MULTIPLIER: Dict[str, float] = {
     "quick": 0.35,
     "standard": 1.0,
-    "audit": 1.2,
-    "redteam": 1.2,
-    "executive": 2.0,
     "deep": 2.5,
 }
 

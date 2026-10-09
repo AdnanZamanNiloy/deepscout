@@ -27,7 +27,7 @@ const PIPELINE = [
   { name: "Search", desc: "Retrieves, ranks and fetches sources per sub-question" },
   { name: "Summarizer", desc: "Extracts standalone factual claims with domain overlays" },
   { name: "Verifier", desc: "Checks each claim against its own cited source" },
-  { name: "Critic", desc: "Red-teams assumptions and forces expansion on gaps" },
+  { name: "Critic", desc: "Challenges assumptions and forces expansion on gaps" },
   { name: "Synthesizer", desc: "Writes the cited report with a numbered source legend" },
 ];
 
@@ -74,7 +74,7 @@ const CAPABILITIES = [
   {
     icon: IconTarget,
     title: "Adaptive depth",
-    desc: "The depth controller decides when the evidence is sufficient and stops. Quick, standard, deep, executive, audit and red-team modes set research breadth and iteration budgets to the stakes.",
+    desc: "The depth controller decides when the evidence is sufficient and stops. Quick, standard and deep modes set research breadth and iteration budgets to the stakes.",
   },
   {
     icon: IconChart,
@@ -89,8 +89,6 @@ const MODES = [
   { name: "Standard", desc: "Balanced breadth and verification for everyday research questions.", tone: "std" },
   { name: "Deep", desc: "Wider decomposition, more iterations and stricter evidence requirements.", tone: "deep" },
   { name: "Executive", desc: "Decision-grade briefs: prioritised findings, trade-offs and a clear bottom line.", tone: "exec" },
-  { name: "Audit", desc: "Full provenance: source ledger, evidence grades and every measured score.", tone: "audit" },
-  { name: "Red team", desc: "Adversarial pass that attacks the conclusion and hunts missing counter-evidence.", tone: "red" },
 ];
 
 /* Guarantees — the non-negotiable behaviours the pipeline enforces. */
@@ -152,7 +150,7 @@ export default function Landing({ onStart, onDocs }) {
           <p className="landing-desc">
             DeepScout decomposes a hard question, dispatches it across a coordinated team of
             specialist agents, verifies every claim against the source that produced it, and
-            red-teams its own conclusions before writing a cited report — live, to your console.
+            challenges its own conclusions before writing a cited report — live, to your console.
           </p>
 
           <button type="button" className="landing-cta" onClick={onStart}>

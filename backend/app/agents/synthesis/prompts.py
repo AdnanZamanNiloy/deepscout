@@ -143,10 +143,6 @@ def _render_structure_contract(
     the writer from the question and the evidence, guided by the query-shape
     advice and the researched dimensions below.
     """
-    # Audit is the one profile whose contract IS a fixed structure.
-    if profile.name == "audit":
-        return _render_audit_contract(profile=profile, ambiguous=ambiguous, has_figures=has_figures)
-
     lines: List[str] = [
         "SHAPE YOUR ANSWER TO THE QUESTION — there is no required heading list.",
         "",
@@ -203,52 +199,3 @@ def _render_structure_contract(
     return "\n".join(lines)
 
 
-def _render_audit_contract(
-    profile: ReportProfile,
-    *,
-    ambiguous: bool,
-    has_figures: bool,
-) -> str:
-    """Explicit structure for the audit profile only — an audit is a format."""
-    lines: List[str] = ["REQUIRED STRUCTURE (audit format, exact order):", ""]
-    step = 1
-    lines.append(
-        f"{step}. `## Executive Summary` — 4-6 sentences. First sentence answers "
-        "the question directly."
-        + (
-            " The query term is ambiguous: the numbered disambiguation block comes "
-            "first, then the answer for the researched meaning."
-            if ambiguous else ""
-        )
-    )
-    step += 1
-    lines.append(
-        f"{step}. `## Key Findings` — bullets only, one self-contained fact each "
-        f"with its [n], highest-confidence first, maximum {profile.max_findings}."
-    )
-    step += 1
-    lines.append(
-        f"{step}. Deep-dive sections — `## ` sections on the dimensions the "
-        "evidence supports, each titled with a short label."
-    )
-    step += 1
-    if has_figures:
-        lines.append(
-            f"{step}. `## Key Figures` — the quantitative claims, each with its "
-            "number, unit, period and scope, each cited."
-        )
-        step += 1
-    lines.extend(
-        [
-            f"{step}. `## Limitations & Unknowns` — what the evidence does not "
-            "settle, in your own words. Be specific; 'more research is needed' is "
-            "not a limitation.",
-            "",
-            "DO NOT WRITE these sections — they are appended automatically from "
-            "measured state and a second, estimated copy is a defect: Evidence & "
-            "Confidence, Open Questions & Missing Angles, Source ledger, "
-            "Auditable Source Ledger, Sources/References, Evidence integrity, "
-            "Reasoning.",
-        ]
-    )
-    return "\n".join(lines)

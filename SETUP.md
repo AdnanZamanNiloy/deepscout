@@ -151,12 +151,16 @@ Select the research mode in the composer:
 
 | Mode | Agents | Max passes | Confidence target | Use for |
 |---|---|---|---|---|
+| Mode | Agents | Max passes | Confidence target | Use for |
+|---|---|---|---|---|
 | quick | 2 | 1 | 0.60 | fast lookups |
-| standard | 4 | 3 | 0.75 | default research |
+| standard | 3 | 3 | 0.75 | default research |
 | deep | 5 | 5 | 0.80 | multi-angle investigations |
-| executive | 5 | 4 | 0.78 | decision-ready briefs |
-| audit | 3 | 4 | 0.85 | strict verification passes |
-| redteam | 3 | 2 | 0.72 | adversarial review |
+
+`standard` is the default. The retired `executive` and `audit` modes are still
+accepted: an old run, saved URL, or older client sending one of them is mapped to
+the mode that inherited its behaviour (`executive` -> `deep`, `audit` ->
+`standard`) rather than rejected.
 
 ---
 

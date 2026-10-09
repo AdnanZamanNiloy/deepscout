@@ -256,7 +256,7 @@ def test_reasoning_structure_reaches_writer_prompt():
     assert any("EVIDENCE-GROUNDED REASONING STRUCTURE" in p for p in captured)
 
 
-def test_audit_report_contains_required_sections_and_fallback_reasoning():
+def test_reasoning_fallback_enriches_a_sparse_writer_draft():
     from app.agents.synthesizer import synthesize
     from app.agents.outline import build_outline
 
@@ -269,21 +269,22 @@ def test_audit_report_contains_required_sections_and_fallback_reasoning():
             return {"answer": "## Executive Summary\n\nGlobal spending reached 200 billion [1]."}
 
     outline = build_outline("What is AI spending?", facts, [])
-    # The fixed-format audit profile is where deterministic section guarantees
-    # still apply; adaptive profiles leave structure to the writer.
+    # Every remaining profile still enforces its required sections; the
+    # `audit` profile that used to own the strictest fixed skeleton was removed.
     result = asyncio.run(
         synthesize(
             _NoReasoningLLM(), "What is AI spending?", facts,
-            {"intent": {}, "sub_questions": [], "reasoning": reasoning, "report_profile": "audit"},
+            {"intent": {}, "sub_questions": [], "reasoning": reasoning},
             outline=outline, section_wise=False, compress_context=False,
         )
     )
     # The deterministic fallback carries the argument structure even though the
     # writer omitted it...
     assert "## Reasoning" in result.answer
-    # ...and the audit profile's mandatory sections are still enforced.
-    for heading in ("## Executive Summary", "## Key Findings", "## Limitations & Unknowns"):
-        assert heading in result.answer
+    assert "What the evidence supports" in result.answer
+    # ...while the writer's own headings are the writer's to choose: the report
+    # is adaptive, so a missing "Key Findings" is not enforced into existence.
+    assert "## Executive Summary" in result.answer
 
 
 # --- 7. quality signal: concluding answer beats summing-only -----------------

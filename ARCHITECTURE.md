@@ -16,7 +16,7 @@ flowchart TD
     SE[Search<br/>SearXNG / Wikipedia / arXiv / Crossref<br/>circuit breakers, canonical-URL dedup,<br/>domain diversity caps, disk cache]
     SE --> SU[Summarizer<br/>wave-ordered specialists:<br/>wave N receives wave N-1 findings<br/>as bounded grounding context]
     SU --> VE[Verifier<br/>lexical overlap, source authority,<br/>numeric grounding, polarity,<br/>quote location, freshness]
-    VE --> CR[Critic + Contradiction Engine + Red Team + Confidence v2]
+    VE --> CR[Critic + Contradiction Engine + Confidence v2]
     CR -->|sufficient| SY[Synthesizer<br/>sense-separated cited answer<br/>with mandatory disambiguation]
     CR -->|expand: novel queries + budget + no stall| PL
     CR -->|stop: budget wall / stall / no novel queries / ceiling| SY
@@ -60,14 +60,10 @@ evidence state ──> ADAPTIVE ANSWER BLUEPRINT ──> synthesis ──> prima
   quality score, the supporting-evidence ledger, source conflicts, the decision
   layer, and measured evidence accounting. None of it is mixed into the answer.
 
-**Modes scale effort, not format.** Quick/standard/deep/audit differ in research
-breadth, triangulation and synthesis depth (and the `audit` profile additionally
-uses a fixed, traceable format). They do not switch between unrelated fixed
-report templates.
-
-**Audit is the one fixed format.** Because an audit is a format, the `audit`
-profile keeps the explicit section contract; every other profile lets structure
-emerge from the question and the evidence.
+**Modes scale effort, not format.** Quick/standard/deep differ in research
+breadth, triangulation and synthesis depth. They do not switch between unrelated
+fixed report templates: every profile is adaptive, and report structure emerges
+from the question and the evidence.
 
 ---
 
@@ -88,7 +84,6 @@ emerge from the question and the evidence.
 | `app/core/confidence.py` | 7 base signals + citation support + axis coverage + pool-size-scaled contradiction penalty; degraded-run cap 0.55. |
 | `app/agents/citation_check.py` | Live URL re-validation (HEAD → 2KB ranged GET, bounded, never fatal) fused with sentence support into per-source verdicts (ok/warn/broken/bad). |
 | `app/core/semantic.py` | TF-IDF hybrid engine: stemming, synonym canonicalization, negation weighting, vectorized batch scoring, stopword-stripped dup floor. |
-| `app/agents/redteam.py` | Heuristic adversarial review; survival score gates the critic. |
 | `app/core/decision.py` | Decision layer (options → recommendation → rationale → risk) for strategic queries. |
 
 ### Control & efficiency
@@ -119,7 +114,7 @@ emerge from the question and the evidence.
 | `progress` | `request_id`, `message` |
 | `plan` | `items` (sub-questions), `orchestration`, `waves` (dependency-wave shape) |
 | `search_progress` | `snippets` |
-| `critic` | `iteration`, `reason`, `breakdown` (confidence signals + weights + notes), `redteam`, `budget` (live ledger snapshot) |
+| `critic` | `iteration`, `reason`, `breakdown` (confidence signals + weights + notes), `budget` (live ledger snapshot) |
 | `findings` | `items` (claims with verification flags/scores/reasons); re-emitted once with `verified_update` after the verifier pass |
 | `final_report` | `report` (the primary answer), `audit` (separate audit/trace markdown), `confidence`, `degraded`, `answer_support`, `budget`, `wave_report`, `citation_health`, `quality`, `outline` |
 | `decisions` | `items` (decision layer options) |
@@ -174,7 +169,7 @@ describe the research system, not the subject. They are scrubbed from the
 answer and rendered in the audit layer. Uncertainty is expressed in prose
 ("the evidence is thin on X"), not as a score.
 
-**Why deep mode is depth, not length.** Deep/executive runs raise research
+**Why deep mode is depth, not length.** Deep runs raise research
 breadth, triangulation and the synthesis depth guidance; they do not select a
 longer fixed report structure. A deep answer is stronger, not merely longer.
 
