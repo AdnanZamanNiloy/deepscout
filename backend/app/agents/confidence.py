@@ -112,7 +112,6 @@ def compute_confidence(
     critic_confidence: Optional[float] = None,
     citation_support: Optional[Dict[str, Any]] = None,
     planned_axes: int = 0,
-    redteam_survival: Optional[float] = None,
     degraded_stages: Sequence[str] = (),
     target_domains: int = 5,
     covered_axes: int = 0,
@@ -121,8 +120,8 @@ def compute_confidence(
 ) -> ConfidenceReport:
     """Score an evidence pool through the live engine (app.core.confidence).
 
-    v3 keyword mapping: `redteam_survival` (preferred) or `critic_confidence`
-    becomes the engine's critic-survival signal — sufficient at or above
+    `critic_confidence` becomes the engine's critic-survival signal —
+    sufficient at or above
     SUFFICIENCY_THRESHOLD, else the engine's stopped-early value;
     `degraded_stages` maps to the engine's `degraded` cap.
 
@@ -149,9 +148,7 @@ def compute_confidence(
 
     from app.core.confidence import compute_confidence as _live_engine
 
-    survival = (
-        redteam_survival if redteam_survival is not None else critic_confidence
-    )
+    survival = critic_confidence
     critique: Dict[str, Any] = {}
     if survival is not None:
         critique["is_sufficient"] = float(survival) >= SUFFICIENCY_THRESHOLD

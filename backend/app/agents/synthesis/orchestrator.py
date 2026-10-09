@@ -97,7 +97,7 @@ async def synthesizer_agent(
 
     Kept as the public entry point with its original signature and return type.
     `context` carries the decision-grade inputs the workflow already computed:
-    contradictions to flag, overall confidence, degraded stages, red-team
+    contradictions to flag, overall confidence, degraded stages,
     findings, and evidence counts. Extra keyword arguments (outline,
     section_wise, compress_context, profile) pass through to `synthesize` —
     callers that pass none keep the old behaviour.

@@ -48,7 +48,6 @@ class ResearchState(TypedDict, total=False):
     contradictions: List[Dict[str, Any]]
     mode: str
     decision_options: List[Dict[str, Any]]
-    redteam: Dict[str, Any]
     # Wave execution (Feature 03): plan shape + per-pass wave results.
     execution_waves: List[List[str]]
     wave_report: List[Dict[str, Any]]
@@ -176,7 +175,6 @@ class CriticUpdate(TypedDict):
     critique_feedback: str
     confidence_breakdown: Dict[str, Any]
     contradictions: List[Dict[str, Any]]
-    redteam: Dict[str, Any]
     facts: List[Dict[str, Any]]
     counter_evidence_attempted: bool
     corroboration_registry: Dict[str, Dict[str, Any]]

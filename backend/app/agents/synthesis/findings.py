@@ -96,7 +96,7 @@ def _render_finding_line(fact: Dict[str, Any], *, verbose: bool = False) -> str:
 def _missing_skeptical_angles(ctx: Dict[str, Any]) -> List[str]:
     """Skeptical/counter-evidence angles the report itself admits are missing.
 
-    Scans the coverage gaps and red-team findings for vocabulary indicating an
+    Scans the coverage gaps for vocabulary indicating an
     absent counter-evidence angle. When any exists, the report cannot also claim
     it found no credible opposing views: that would be a self-contradiction.
     """
@@ -109,13 +109,6 @@ def _missing_skeptical_angles(ctx: Dict[str, Any]) -> List[str]:
     gaps = ctx.get("coverage_gaps")
     if isinstance(gaps, (list, tuple)):
         sources.extend(str(g).strip() for g in gaps if str(g).strip())
-    findings = ctx.get("redteam_findings")
-    if isinstance(findings, list):
-        for item in findings:
-            if isinstance(item, dict):
-                text = str(item.get("statement", "") or "").strip()
-                if text:
-                    sources.append(text)
     return [text for text in sources if any(cue in text.lower() for cue in cues)]
 
 
