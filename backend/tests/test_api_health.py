@@ -9,7 +9,13 @@ async def test_health_endpoint():
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/api/health")
         assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+        body = response.json()
+        assert body["status"] == "ok"
+        # `searxng` is only present once the lifespan has run; ASGITransport
+        # does not run it, so this asserts the optional field never breaks the
+        # documented contract rather than that it is populated.
+        if "searxng" in body:
+            assert set(body["searxng"]) == {"url", "managed"}
 
 
 async def test_root_endpoint():

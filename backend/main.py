@@ -9,6 +9,7 @@ from app.agents.search import SearchClient
 from app.api.routes import limiter, router as api_router
 from app.core.config import get_settings
 from app.core.llm import LLMClient
+from app.core.searxng_service import SearxngSupervisor
 from app.db.sqlite import init_db
 from app.graph.workflow import create_workflow
 
@@ -20,12 +21,22 @@ async def lifespan(app: FastAPI):
     search_client = SearchClient(settings)
     workflow = create_workflow(llm, search_client)
 
+    # SearXNG is a separate application reached over HTTP. Start it here so one
+    # command runs the whole system; it degrades to Wikipedia/arXiv/Crossref on
+    # failure and never blocks startup. The child is stopped on shutdown.
+    searxng = SearxngSupervisor(settings)
+    await searxng.start()
+
     await init_db(settings.database_url)
 
     app.state.settings = settings
     app.state.llm = llm
     app.state.workflow = workflow
-    yield
+    app.state.searxng = searxng
+    try:
+        yield
+    finally:
+        await searxng.stop()
 
 
 app = FastAPI(
