@@ -1,3 +1,4 @@
+import asyncio
 """Retry and circuit-breaker behavior of LLMClient (Phase 1.1)."""
 import json
 
@@ -378,19 +379,70 @@ async def test_all_providers_failed_raises_fail_fast():
 
 
 async def test_open_breakers_skip_all_providers():
-    """With every breaker open, the chain reports the skip condition instead
-    of pretending no keys exist."""
-    from app.core.llm import AllProvidersFailedError
+    """With every breaker open no provider is called on the FIRST pass — and
+    because a breaker is transient state rather than a verdict, the call now
+    waits out the cooldown once and retries instead of degrading the run."""
 
     client = LLMClient(_custom_settings(huggingface_api_key=""))
     client.custom_breaker.record_timeout()
     client.groq_breaker.record_timeout()
-    with respx.mock(assert_all_called=False) as mock:
-        custom_route = mock.post(CUSTOM_URL).mock(return_value=_groq_response({"x": 1}))
-        groq_route = mock.post(GROQ_URL).mock(return_value=_groq_response({"x": 1}))
-        with pytest.raises(AllProvidersFailedError, match="circuit breakers open"):
-            await client.generate_json("sp", "up")
-        assert custom_route.call_count == 0 and groq_route.call_count == 0
+
+    waited = []
+    real_sleep = asyncio.sleep
+
+    async def _fake_sleep(delay, *a, **k):
+        waited.append(delay)
+        # Wind both cooldowns forward so the retry finds them closed.
+        for breaker in (client.custom_breaker, client.groq_breaker):
+            if breaker._opened_at is not None:
+                breaker._opened_at -= delay
+        return await real_sleep(0)
+
+    asyncio.sleep = _fake_sleep
+    try:
+        with respx.mock(assert_all_called=False) as mock:
+            custom_route = mock.post(CUSTOM_URL).mock(return_value=_groq_response({"x": 1}))
+            groq_route = mock.post(GROQ_URL).mock(return_value=_groq_response({"x": 1}))
+            # Recovered rather than degraded: the cooldown wait is paid once.
+            assert await client.generate_json("sp", "up") == {"x": 1}
+            assert custom_route.call_count == 1
+            assert len(waited) == 1 and 0 < waited[0] <= client.settings.llm_breaker_wait_cap_sec
+    finally:
+        asyncio.sleep = real_sleep
+
+
+async def test_a_permanently_open_breaker_still_fails_fast():
+    """The wait is bounded: one attempt, and a provider that never recovers
+    still degrades rather than looping or stalling the run."""
+    from app.core.llm import AllProvidersFailedError
+
+    client = LLMClient(
+        _custom_settings(groq_api_key="", huggingface_api_key="")
+    )
+    client.custom_breaker.record_timeout()
+
+    waited = []
+    real_sleep = asyncio.sleep
+
+    async def _counting_sleep(delay, *a, **k):
+        waited.append(delay)
+        return await real_sleep(0)
+
+    asyncio.sleep = _counting_sleep
+    try:
+        with respx.mock(assert_all_called=False) as mock:
+            custom_route = mock.post(CUSTOM_URL).mock(
+                side_effect=httpx.ReadTimeout("still down")
+            )
+            with pytest.raises(AllProvidersFailedError):
+                await client.generate_json("sp", "up")
+            # It waited once, tried once more, was still blocked, and gave up.
+            # The breaker was never wound forward here, so the provider is never
+            # reached — what matters is that the run ended instead of looping.
+            assert custom_route.call_count == 0
+            assert len(waited) == 1, "one wait, then fail — never a loop"
+    finally:
+        asyncio.sleep = real_sleep
 
 
 async def test_llm_semaphore_bounds_concurrency():

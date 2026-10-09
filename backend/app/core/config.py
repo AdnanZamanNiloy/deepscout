@@ -220,6 +220,19 @@ class Settings(BaseSettings):
     llm_breaker_cooldown_sec: float = 15.0
     # Consecutive failures before a provider's breaker opens.
     llm_breaker_threshold: int = 3
+    # How long a single call may wait for an open breaker to close before it
+    # gives up and the run degrades. Only one wait ever happens per call.
+    #
+    # This matters because the breaker was designed for a provider CHAIN, where
+    # "skip this one, try the next" is the recovery. With a single provider — a
+    # UI-selected one is exclusive and runs no fallbacks — there is no next, so
+    # one slow call opened the breaker and every later call in the run failed
+    # instantly: measured live, one analyst timeout degraded the analyst AND all
+    # four synthesizer sections in the same second. Waiting out the cooldown
+    # once turns that into a slightly slower, fully executed run. The cap keeps
+    # the added latency well inside the research budget; set 0 to disable the
+    # wait and restore fail-fast-everywhere.
+    llm_breaker_wait_cap_sec: float = 25.0
     # Slower OpenAI-compatible providers take 15-30s on planner-sized
     # prompts (measured live). 60s gives 2-3x headroom while halving the
     # cost of a stalled provider: a free proxy that will not answer at all

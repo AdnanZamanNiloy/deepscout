@@ -97,3 +97,68 @@ class JSONParseMixin:
                     if depth == 0:
                         return text[start : i + 1]
             return None
+
+
+def payload_says_nothing(payload: Any) -> bool:
+    """True when a model's JSON carries no information.
+
+    An empty object, or one where every value is empty (None, "", [], {}).
+    This is the shape a model that emitted nothing but still returned 200
+    produces, and it is distinct from a wrong-shaped answer, which contains
+    information and is handled by validation.
+    """
+    if not isinstance(payload, dict) or not payload:
+        return True
+    for value in payload.values():
+        if value is None:
+            continue
+        if isinstance(value, str):
+            if value.strip():
+                return False
+        elif isinstance(value, (list, tuple, set)):
+            # A list of empty strings is an empty list in meaning: the model
+            # produced slots, not content.
+            if any(
+                (item.strip() if isinstance(item, str) else bool(item))
+                for item in value
+            ):
+                return False
+        elif isinstance(value, dict):
+            if len(value) > 0:
+                return False
+        elif isinstance(value, bool):
+            # An explicit False is a real answer (e.g. "no contradiction").
+            return False
+        elif isinstance(value, (int, float)):
+            # Any number, including 0, is a real answer.
+            return False
+        else:
+            return False
+    return True
+
+
+def text_says_nothing(text: str) -> bool:
+    """True when a model response carries no JSON content worth caching.
+
+    Checks the RAW text rather than a parsed payload so it can be used at the
+    cache-write site, which has not parsed anything yet. A parse failure is NOT
+    "nothing" — a truncated body is a malformed response, not an empty one, and
+    the parsed check in `generate_json` handles that case by retrying.
+    """
+    stripped = (text or "").strip()
+    if not stripped:
+        return True
+    if stripped in ("{}", "[]", "null", "None"):
+        return True
+    # Unwrap code fences before judging, so a fence-wrapped empty object is
+    # still recognised as empty.
+    fenced = stripped
+    if fenced.startswith("```"):
+        fenced = fenced.split("\n", 1)[-1] if "\n" in fenced else fenced
+        fenced = re.sub(r"```\s*$", "", fenced).strip()
+    try:
+        inner = json.loads(fenced)
+    except Exception:
+        return False
+    return inner is None or inner == {} or inner == []
+

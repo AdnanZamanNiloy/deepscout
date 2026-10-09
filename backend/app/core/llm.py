@@ -15,7 +15,9 @@ import json  # noqa: F401
 import re  # noqa: F401
 import time  # noqa: F401
 from dataclasses import dataclass  # noqa: F401
-from typing import Any, Awaitable, Callable, Dict, List, Mapping, Tuple, Type  # noqa: F401
+from typing import (  # noqa: F401
+    Any, Awaitable, Callable, Dict, List, Mapping, Optional, Tuple, Type,
+)
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -23,6 +25,9 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 
 from app.core.config import Settings
 from app.core import llm_cache
+from app.core.llmkit.jsonparse import (
+    payload_says_nothing as _payload_says_nothing,
+)
 from app.core.degradation import PROVIDER_HARD, PROVIDER_TRANSIENT, record_provider_failure  # noqa: F401
 from app.core.logging import get_logger
 from app.core.usage import get_run_usage  # noqa: F401
@@ -139,6 +144,20 @@ class LLMClient(ProviderInvocationMixin, JSONParseMixin, UsageAccountingMixin, P
                 text = await self._generate_with_fallback(system_prompt, user_prompt)
                 payload = self._extract_json(text)
                 if response_model is not None:
+                    # A schema whose fields all have defaults validates an
+                    # EMPTY response successfully — which is how a reasoning
+                    # model that spent its whole budget on hidden reasoning
+                    # (measured live: 2703 of 3000 completion tokens) returned
+                    # HTTP 200, validated cleanly, and then degraded the run.
+                    #
+                    # Judging emptiness on the RAW payload rather than the
+                    # filled dump is what makes this correct: defaults are
+                    # exactly what the model failed to supply, so comparing
+                    # against them would call every real answer empty.
+                    if _payload_says_nothing(payload):
+                        raise ValueError(
+                            "model returned an empty object; every field is default"
+                        )
                     validated = response_model.model_validate(payload)
                     return validated.model_dump()
                 return payload
@@ -164,6 +183,38 @@ class LLMClient(ProviderInvocationMixin, JSONParseMixin, UsageAccountingMixin, P
                 )
                 await asyncio.sleep(0.7 * (attempt + 1))
         return {}
+
+    def _breaker_wait_seconds(
+        self, custom: Optional[Dict[str, Any]], groq_key: str, hf_key: str
+    ) -> Optional[float]:
+        """Seconds to wait before one retry, or None when waiting cannot help.
+
+        Returns the SHORTEST remaining cooldown among the providers that are
+        configured but breaker-blocked — the one that recovers first, so the
+        retry has the best chance and the wait is as short as possible.
+
+        None means "do not wait": nothing is configured (the no-provider path
+        must keep its own error), or the smallest remaining cooldown already
+        exceeds the cap, which would spend more research budget than the wait is
+        worth.
+        """
+        breakers = []
+        if custom:
+            breakers.append(self.custom_breaker)
+        if groq_key:
+            breakers.append(self.groq_breaker)
+        # HuggingFace is attempted unconditionally (it has no breaker), so if it
+        # is the only thing configured there is nothing transient to wait for.
+        if not breakers:
+            return None
+        waits = [_breaker_seconds_left(b) for b in breakers if b.is_open()]
+        if not waits:
+            return None
+        wait = min(waits)
+        cap = float(getattr(self.settings, "llm_breaker_wait_cap_sec", 25.0) or 0.0)
+        if cap <= 0 or wait <= 0 or wait > cap:
+            return None
+        return wait
 
     async def _generate_with_chain(self, system_prompt: str, user_prompt: str) -> str | None:
         """Execute the enabled provider chain in configured order.
@@ -276,7 +327,9 @@ class LLMClient(ProviderInvocationMixin, JSONParseMixin, UsageAccountingMixin, P
             f"{detail or 'unknown errors'}. The run will continue on deterministic fallbacks."
         )
 
-    async def _generate_with_fallback(self, system_prompt: str, user_prompt: str) -> str:
+    async def _generate_with_fallback(
+        self, system_prompt: str, user_prompt: str, *, breaker_wait_ok: bool = True
+    ) -> str:
         # ---- Enabled provider CHAIN takes over the whole call ----
         # A chain is an explicit, ordered user choice: try member #1, fall
         # over in order, stop at the first success. It replaces (does not
@@ -342,6 +395,13 @@ class LLMClient(ProviderInvocationMixin, JSONParseMixin, UsageAccountingMixin, P
                         exc,
                         exc_info=exc,
                     )
+                    # A size rejection is not a provider failure: the provider is
+                    # healthy and the payload is too big, so the caller's
+                    # shrink-and-retry ladder must receive the size signal.
+                    # Wrapping it here instead turned a fixable oversized prompt
+                    # into terminal degradation.
+                    if isinstance(exc, PromptTooLargeError):
+                        raise
                     if exclusive and not fallback_ok:
                         raise AllProvidersFailedError(
                             f"Active provider '{custom.get('name', 'custom')}' failed: "
@@ -387,6 +447,33 @@ class LLMClient(ProviderInvocationMixin, JSONParseMixin, UsageAccountingMixin, P
                 f"all {attempted} provider(s) rejected the request size as too large"
             )
 
+        if attempted == 0 and breaker_wait_ok:
+            # EVERY provider was skipped because its breaker is open. That is
+            # transient state, not a verdict — but with a single provider (the
+            # common case: a UI-selected one is exclusive and runs no
+            # fallbacks) it is catastrophic for the whole run. Measured live:
+            # one 90s analyst timeout opened the breaker, and the analyst plus
+            # ALL FOUR synthesizer section calls then failed instantly in the
+            # same second, degrading a run that would otherwise have succeeded.
+            #
+            # The breaker exists so a broken provider is not hammered, and it
+            # still does that: we wait for its own cooldown exactly once rather
+            # than retrying in a loop, and the cap keeps the extra wait well
+            # inside the research budget. Hard failures are NOT retried — no
+            # keys, a rejected authorization, an oversized prompt all fall
+            # through to the existing error paths unchanged.
+            wait = self._breaker_wait_seconds(custom, groq_key, hf_key)
+            if wait is not None:
+                logger.info(
+                    "[LLM] all providers breaker-blocked; waiting %.1fs for "
+                    "cooldown, then one retry",
+                    wait,
+                )
+                await asyncio.sleep(wait)
+                return await self._generate_with_fallback(
+                    system_prompt, user_prompt, breaker_wait_ok=False
+                )
+
         if attempted == 0:
             # Keys existed but every provider's breaker was open — or nothing
             # was configured at all. The nothing-configured case keeps the
@@ -420,6 +507,31 @@ class LLMClient(ProviderInvocationMixin, JSONParseMixin, UsageAccountingMixin, P
             f"All {attempted} configured LLM provider(s) failed — {detail or 'unknown errors'}. "
             "The run will continue on deterministic fallbacks."
         )
+
+
+def _breaker_seconds_left(breaker: Any) -> float:
+    """Seconds until an open breaker closes on its own.
+
+    `app.core.llmkit.breaker.CircuitBreaker` (the one the LLM client uses)
+    exposes only `_opened_at` + `cooldown_sec` and no `retry_in()`, while
+    `app.agents.reliability.CircuitBreaker` has the opposite surface. Rather
+    than duplicating that knowledge in two places, prefer a public accessor and
+    fall back to the timestamp — a breaker shape this cannot read returns 0.0,
+    which disables the wait rather than guessing a wrong one.
+    """
+    accessor = getattr(breaker, "retry_in", None)
+    if callable(accessor):
+        try:
+            return max(0.0, float(accessor()))
+        except (TypeError, ValueError):
+            return 0.0
+    opened_at = getattr(breaker, "_opened_at", None)
+    cooldown = float(getattr(breaker, "cooldown_sec", 0.0) or 0.0)
+    if opened_at is None or cooldown <= 0:
+        return 0.0
+    return max(0.0, cooldown - (time.monotonic() - float(opened_at)))
+
+
 
 
 def clamp_confidence(value: Any) -> float:
