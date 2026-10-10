@@ -25,8 +25,9 @@ from app.agents.sources import clean_writer_prose
 # --- 1. decision layer hidden from the answer surface ------------------------
 
 def test_decisions_ndjson_event_is_not_emitted():
-    """The route must persist decision options for the audit/trace but NOT send
-    a user-facing `decisions` event (the internal Option A/B/C/D machinery)."""
+    """The route must never send a user-facing `decisions` event (the internal
+    Option A/B/C/D machinery). The engine-based route has no decision layer, so
+    the invariant holds by construction; this pins it against regressions."""
     import app.api.routes as routes
     import inspect
 
@@ -34,8 +35,6 @@ def test_decisions_ndjson_event_is_not_emitted():
     assert 'event_line("decisions"' not in src, (
         "the internal decision layer must not be emitted on the user-facing stream"
     )
-    # Persistence/audit for decisions must remain intact.
-    assert "save_decisions" in src
 
 
 def test_decision_options_are_not_rendered_into_the_primary_answer():
