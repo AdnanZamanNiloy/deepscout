@@ -14,34 +14,46 @@ This file exists because the codebase already shipped real, silent bugs that a b
 ```text
 Stack:      FastAPI + LangGraph (async Python 3.10+), SQLite (aiosqlite),
             React 18 + Vite 5 frontend, httpx for outbound calls.
-Generation: remote LLM APIs only (Groq primary, HuggingFace fallback) —
-            no local model inference.
+Generation: remote LLM APIs only — no local model inference. The provider or
+            fallback chain selected in the Model Control Center governs every
+            engine and helper call through app.core.llm.LLMClient.
 Hardware:   target host has 8GB RAM. Concurrency and memory footprint
             are real constraints, not theoretical ones — see Section 5.
 
-Entrypoint:      main.py (FastAPI app, lifespan init)
-Agents:          app/agents/*.py (planner, search, summarizer, critic,
-                 synthesizer, outline, verifier, evidence_utils, contradiction
-                 helpers, citation_check, budget — one file per
-                 pipeline stage or shared utility)
-Orchestration:   app/graph/workflow.py (LangGraph StateGraph; wave-ordered
-                 summarization with prerequisite context)
-Answer/audit:    the primary answer (state["synthesized_answer"] →
-                 state["final_report"]) NEVER carries process metadata; the
-                 audit/trace (state["final_audit"], build_answer_audit) carries
-                 confidence, quality, evidence ledger, conflicts, decisions.
-                 Adaptive structure comes from outline.py's AnswerBlueprint.
-API:             app/api/routes.py (stream, resume, trace, providers)
-Core utilities:  app/core/*.py (config, llm client + response cache, usage
-                 ledger, semantic engine, confidence, contradictions, depth
-                 controller, isolation, degradation, providers)
+Entrypoint:      main.py (FastAPI app, lifespan init; installs the engine bridges)
+Engine:          backend/engine/ — vendored multi-agent engine (gptr/ research
+                 core + multi_agents/ LangGraph agent team). Imported via the
+                 `engine` package's sys.path bootstrap.
+Engine adapters: app/engine/ — orchestrator.py (drives the team, streams node
+                 updates), llm_bridge.py + retriever_bridge.py (route engine
+                 LLM/retrieval through the backend clients), event_adapter.py
+                 (engine events → NDJSON). Engine generation goes through
+                 app.core.llm.LLMClient and retrieval through
+                 app.agents.search.SearchClient.
+Answer/audit:    the primary answer (state["final_report"]) NEVER carries
+                 process metadata; the audit/trace carries confidence, quality,
+                 evidence ledger, conflicts, decisions.
+API:             app/api/routes.py (stream, resume, trace, export, sessions);
+                 app/api/providers_routes.py (providers + chains).
+Retained core:   app/core/*.py (config, llm client + response cache, usage
+                 ledger, semantic engine, confidence, contradictions,
+                 evidence grading, isolation, degradation, providers).
+Shared helpers:  app/agents/ retains search + evidence/source helpers used by
+                 app/core and the retriever bridge; app/graph/{evidence,state}.py
+                 are shared helpers (the old orchestration was removed).
 Persistence:     app/db/sqlite.py (auto-initializing schema)
-Benchmarks:      bench/ (run_offline.py deterministic suite, run_live.py
-                 live-provider suite, datasets.py labeled fixtures,
-                 eval_answer_quality.py adaptive-synthesis benchmark)
+Benchmarks:      bench/ (run_offline.py deterministic component suite,
+                 datasets.py labeled fixtures, eval_depth/eval_router/
+                 eval_contradictions/eval_retrieval/eval_provider/eval_report_quality).
 Frontend:        frontend/src/App.jsx consumes the NDJSON stream; components
                  in frontend/src/components/
 ```
+
+> Migration note: the built-in LangGraph pipeline (`app/graph/workflow.py`,
+> `app/graph/nodes/`) was replaced by the vendored engine team. `app/graph/`
+> now holds only shared helpers. Do not reintroduce a second orchestration
+> path; new pipeline behavior belongs in the engine adapters (`app/engine/`) or
+> the retained helpers.
 
 Commands:
 

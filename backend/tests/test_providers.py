@@ -157,6 +157,36 @@ async def test_provider_routes_crud_and_test(tmp_path, _secret):
         assert (await client.get("/api/providers")).json() == {"providers": [], "active_id": None}
 
 
+async def test_provider_routes_accept_sqlite_url_form(tmp_path, _secret):
+    """Regression: a sqlite:// DATABASE_URL must resolve provider routes.
+
+    `init_db` normalizes the URL form to a filesystem path, but the provider
+    routes read `settings.database_url` directly. An unnormalized value opened
+    a literal `sqlite:/...` filename with no tables, so every provider route
+    500'd while the rest of the app worked — a deployment-only failure that
+    unit tests using a raw path never hit.
+    """
+    import httpx
+    from fastapi import FastAPI
+
+    from app.api.routes import limiter, router as api_router
+    from app.db.sqlite import init_db
+
+    file_path = str(tmp_path / "urlform.db")
+    await init_db(file_path)
+    url_form = f"sqlite:///{file_path}"
+    app = FastAPI()
+    app.state.settings = _settings(database_url=url_form)
+    app.state.limiter = limiter
+    app.include_router(api_router, prefix="/api")
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        listed = await client.get("/api/providers")
+        assert listed.status_code == 200, listed.text
+        assert listed.json() == {"providers": [], "active_id": None}
+        assert (await client.get("/api/provider-chains")).status_code == 200
+
+
 async def test_probe_timeout_clamped_and_optional(tmp_path, _secret):
     """timeout_sec is optional (default 15s) and clamped to 5..120s."""
     import httpx

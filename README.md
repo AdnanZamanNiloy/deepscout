@@ -56,15 +56,14 @@ handling, and calibrated confidence. Measured results are in
 
 | Capability | What it does | Where |
 |---|---|---|
-| **Intent classification** | Resolves the question *before* searching: ambiguity into ranked senses, domain, explanation level. Ambiguous queries are disambiguated in the report instead of silently guessed. | `app/agents/intent.py` |
-| **Query router** | Decides direct answer vs. full research. Deterministic freshness/verification gates always apply; direct answers are confidence-capped strictly below the research threshold so they can never look sourced. | `app/agents/router.py`, `app/agents/direct_answer.py` |
-| **Delegation planning** | Produces delegation contracts (axis, search type, minimum sources, priority) and dependency **waves** so dependent investigations run after their prerequisites. | `app/agents/planner.py`, `app/agents/orchestrator.py` |
+| **Multi-agent research team** | A LangGraph team (browser → editor/planner → researcher → writer → fact checker → visualizer → publisher) conducts the research and assembles the report. | `backend/engine/multi_agents/`, `app/engine/orchestrator.py` |
+| **Parallel section research** | Report sections are researched concurrently, each running a research → review → revise loop; siblings are named so writers do not overlap. | `backend/engine/multi_agents/agents/` |
 | **Multi-provider search** | Self-hosted SearXNG metasearch plus Wikipedia, arXiv and Crossref — no search API key — with canonical-URL dedup, domain diversity, circuit breakers, and a bounded disk cache. | `app/agents/search.py` |
-| **Verification** | Every claim is checked against its source text: weighted lexical overlap, source authority, unit-aware numeric grounding, polarity consistency, and quote location. | `app/agents/verifier.py` |
-| **Contradiction detection** | Numeric (unit-aware divergence), polarity (affirms vs. negates), and temporal (same measure, different periods) detectors with severity ranking; resolution follow-ups feed back into research. | `app/core/contradictions.py` |
-| **Citation validation** | Checks sentences against the evidence of the source they cite and **re-fetches cited URLs live** (HEAD → ranged GET); dead or moved links become a report warning, never an error. | `app/agents/citation_check.py` |
+| **Provider control** | The Model Control Center selects a single OpenAI-compatible provider or an ordered fallback chain; engine generation is routed through it, with breakers, response cache and usage ledger. | `app/core/providers.py`, `app/engine/llm_bridge.py` |
+| **Contradiction detection** | Numeric (unit-aware divergence), polarity (affirms vs. negates), and temporal (same measure, different periods) detectors with severity ranking. | `app/core/contradictions.py` |
 | **Confidence engine** | Multi-signal score (citation support, axis coverage, source quality, contradiction penalty, …). Degraded runs are capped below the sufficiency threshold with an explanatory breakdown. | `app/core/confidence.py` |
-| **Answer quality gate** | Scores the finished draft 0–100 on accuracy/relevance/evidence/clarity/reasoning from measured state, then performs **exactly one** bounded rewrite and ships the better draft. Never a loop. | `app/agents/answer_quality.py` |
+| **Evidence grading** | Claim→source→verification→independence→corroboration→contradiction records; per-claim investigation memory tracks corroboration attempts. | `app/core/evidence_grade.py`, `app/core/investigation_state.py` |
+| **Replay, trace & export** | Every run persists its events, sources, final report and verbatim NDJSON frames; replay reconstructs the timeline and reports export to MD/DOCX/PDF. | `app/api/routes.py`, `app/db/sqlite.py` |
 | **Intelligent stopping** | Marginal-gain analysis, a no-re-novel-query memory, mode-aware targets, and hard walls (iterations, expansions, money, tokens, time). | `app/core/depth_controller.py` |
 | **Cost-aware reasoning** | Every LLM call records tokens/USD from provider usage fields; the budget governor refuses passes that cannot be paid for; the ledger streams live to the UI. | `app/core/usage.py`, `app/agents/budget.py` |
 | **LLM response cache** | Exact-prompt disk cache — repeated critic re-evals and re-runs are served from disk with zero provider spend. Bounded size and TTL. | `app/core/llm_cache.py` |
@@ -76,27 +75,23 @@ handling, and calibrated confidence. Measured results are in
 
 ```
 Query
-  → Intent            ambiguity → senses, domain, explanation level
-  → Router            direct answer  |  full research
-  → Orchestrator      complexity + agent targets
-  → Planner           delegation contracts + dependency waves
-  → Search            SearXNG / Wikipedia / arXiv / Crossref
-  → Summarizer        wave-ordered specialists (wave N gets wave N-1 context)
-  → Verifier          deterministic claim-vs-source checks
-  → Critic + Contradictions + Confidence
-        sufficient? → Synthesizer
-        expand?     → Planner (novel queries, budget, no-stall)
-        stop?       → Synthesizer (budget wall / stall / ceiling)
-  → Synthesizer       answer-first outline → section-wise or single-pass
-  → Quality gate      scored 0–100, one bounded rewrite
-  → Citation check    live URL re-validation + sentence-support fusion
-  → Finalize          report: answer, evidence, contradictions,
-                      decision layer, limitations, confidence
+  → Multi-agent engine team (LangGraph StateGraph, one graph per request)
+      Browser      initial research on the query
+      Editor       plan the section outline
+      Human        plan review gate (auto-accepted in the API)
+      Researcher   parallel per-section research: research → review → revise
+      Writer       introduction, table of contents, conclusion, sources
+      Fact checker review the draft; send back to the writer or accept
+      Visualizer   optional diagram
+      Publisher    assemble the report
+  → final_report frame + persisted report
 ```
 
-A single LangGraph state machine drives the loop (`app/graph/workflow.py`).
-Every stage exposes a **deterministic fallback**, so a provider outage degrades
-quality rather than crashing the run. Persistent state lives in SQLite
+The engine team is vendored under `backend/engine/` and driven by
+`app/engine/orchestrator.py`. Its two external seams are bridged to the rest of
+the product: generation goes through `app.core.llm.LLMClient` (so the **Model
+Control Center** decides what runs), and retrieval goes through
+`app.agents.search.SearchClient`. Persistent state lives in SQLite
 (`aiosqlite`); streaming is NDJSON over a single HTTP response.
 
 A full component map, data model, and the reasoning behind each design
@@ -107,28 +102,24 @@ feature rationale are in [`DeepScout-vision-v2.md`](DeepScout-vision-v2.md).
 
 ## The research pipeline
 
-1. **Understand.** Intent classification resolves ambiguity and domain. The
-   router decides whether the query is answerable directly or needs research.
-2. **Plan.** The orchestrator sizes the effort; the planner emits delegation
-   contracts grouped into dependency waves.
-3. **Retrieve.** Parallel searches fan out across providers. Results are
-   deduplicated by canonical URL, diversified by domain, cached to disk, and
-   protected by per-domain circuit breakers and a run-scoped cooldown.
-4. **Summarize.** Specialists write per-contract findings. Dependent waves
-   receive earlier-wave findings as bounded grounding context.
-5. **Verify.** Each claim is scored against its source. Raw page content is
-   released after verification to bound memory.
-6. **Critique.** The critic judges sufficiency; the contradiction engine,
-   and confidence engine annotate the run. Insufficient runs expand
-   with *novel* queries only, and only while budget, stall, and ceiling checks
-   allow.
-7. **Synthesize.** An answer-first outline shapes the report. Broad questions
-   are written section-by-section to avoid collapsing into one narrow thesis.
-8. **Gate and check.** The quality gate scores and (once) revises; the citation
-   checker re-validates cited URLs and fuses sentence-support.
-9. **Persist.** Every stage writes durable rows (tasks, sources, claims, events,
-   reviews, decisions, contradictions, citations, final report) joinable by
-   `run_id` for replay.
+1. **Scope.** The engine team's browser stage performs initial research on the
+   query.
+2. **Plan.** The editor plans an outline of report sections (max sections
+   scales with the quick/standard/deep mode). In the API context the plan is
+   auto-accepted at the human-review gate.
+3. **Research.** Sections are researched in parallel; each section runs a
+   research → review → revise loop, and every section knows its siblings so
+   writers do not overlap. Retrieval fans out through `SearchClient` (SearXNG
+   with Wikipedia / arXiv / Crossref fallbacks), with the same dedup, domain
+   diversification, caching and circuit breakers as the rest of the product.
+4. **Write.** The writer composes the introduction, table of contents,
+   conclusion and source list from the researched sections.
+5. **Fact-check.** The fact checker reviews the assembled draft and either
+   accepts it or returns notes, sending the draft back to the writer.
+6. **Assemble.** The publisher assembles the final report (optionally a
+   diagram from the visualizer).
+7. **Persist.** The route writes the run, sources, events, final report and the
+   verbatim NDJSON frames, joinable by `run_id` for replay and export.
 
 ---
 
@@ -370,12 +361,11 @@ cd frontend && npm test
 cd frontend && npm run build
 ```
 
-- **78 backend test modules** cover the pipeline, verification, contradictions,
+- **Backend test suite** covers retrieval, evidence grading, contradictions,
   confidence, budget, degradation, sessions, trace/replay, providers, resume,
   and API contracts.
 - **Deterministic offline suite** (`bench/run_offline.py`) runs without live
-  providers; **live suites** (`bench/run_live.py`, `bench/eval_*.py`) exercise
-  real providers. Labeled fixtures live in `bench/datasets.py`.
+  providers; labeled fixtures live in `bench/datasets.py`.
 - **Frontend regression tests** cover session persistence, interrupt/edit, and
   auto-scroll helpers.
 - Measured results: [`BENCHMARK_RESULTS.md`](BENCHMARK_RESULTS.md) and
@@ -410,19 +400,23 @@ The complete rulebook, including the bug classes each rule prevents, is
 
 ```text
 backend/
-  main.py                 FastAPI app + lifespan init
-  app/agents/             one module per pipeline stage or shared utility
-  app/graph/workflow.py   LangGraph StateGraph + wave-ordered summarization
-  app/api/routes.py       stream, resume, trace, sessions, providers
+  main.py                 FastAPI app + lifespan init (installs engine bridges)
+  engine/                 vendored multi-agent engine (gptr/ core + multi_agents/)
+  app/engine/             engine adapters: orchestrator, llm/retriever bridges,
+                          event adapter
+  app/agents/             retained search + evidence/source helpers
+  app/graph/              shared helpers (evidence acquisition, research state)
+  app/api/routes.py       stream, resume, trace, export, sessions
+  app/api/providers_routes.py  providers + fallback chains (Model Control Center)
   app/core/               config, llm client + cache, usage ledger, semantic
-                          engine, confidence, contradictions, depth, isolation,
-                          degradation, providers
+                          engine, confidence, contradictions, evidence grading,
+                          isolation, degradation, providers
   app/db/sqlite.py        auto-initializing schema + persistence
-  bench/                  offline/live benchmark suites + labeled datasets
-  tests/                  pytest suite (78 modules)
+  bench/                  deterministic component suite + labeled datasets
+  tests/                  pytest suite
 frontend/
   src/App.jsx             NDJSON stream consumer + session/thread state
-  src/components/         thread, answer card, intelligence panel, library views
+  src/components/         thread, answer card, intelligence panel, model controls
   test/                   Node-runner regression tests (session, edit, scroll)
 ```
 

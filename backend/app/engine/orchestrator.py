@@ -132,6 +132,9 @@ class MultiAgentRunner:
         report. Uses ``stream_mode="updates"`` so each yielded item is the set
         of channels a node wrote — the basis for per-stage events.
         """
+        # Ensure the vendored engine package is imported so its sys.path
+        # bootstrap is in effect before the absolute `multi_agents.*` import.
+        import engine  # noqa: F401
         from multi_agents.agents.orchestrator import ChiefEditorAgent
 
         task = self._build_task()

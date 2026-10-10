@@ -130,6 +130,9 @@ def install(client: SearchClient) -> type:
     def _get_retrievers(headers, cfg):  # noqa: ANN001 - engine signature
         return [retriever_cls]
 
+    # Import the vendored engine package first so its sys.path bootstrap runs
+    # before any `gptr.*` import resolves.
+    import engine  # noqa: F401
     import gptr.actions.retriever as retriever_mod
 
     retriever_mod.get_retrievers = _get_retrievers

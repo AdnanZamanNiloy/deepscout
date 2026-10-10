@@ -9,24 +9,38 @@ behind the design decisions that differ from a standard RAG chatbot.
 
 ```mermaid
 flowchart TD
-    Q[User query + mode] --> IN[Intent<br/>ambiguity, senses, domain,<br/>explanation level]
-    IN --> ORCH[Orchestrator<br/>complexity + plan targets]
-    ORCH --> PL[Planner<br/>delegation contracts: axis, search_type,<br/>minimum_sources, wave, variants]
-    PL -->|search-informed: one grounding search on the raw query| SE
-    SE[Search<br/>SearXNG / Wikipedia / arXiv / Crossref<br/>circuit breakers, canonical-URL dedup,<br/>domain diversity caps, disk cache]
-    SE --> SU[Summarizer<br/>wave-ordered specialists:<br/>wave N receives wave N-1 findings<br/>as bounded grounding context]
-    SU --> VE[Verifier<br/>lexical overlap, source authority,<br/>numeric grounding, polarity,<br/>quote location, freshness]
-    VE --> CR[Critic + Contradiction Engine + Confidence v2]
-    CR -->|sufficient| SY[Synthesizer<br/>sense-separated cited answer<br/>with mandatory disambiguation]
-    CR -->|expand: novel queries + budget + no stall| PL
-    CR -->|stop: budget wall / stall / no novel queries / ceiling| SY
-    SY --> QG[Answer quality gate<br/>accuracy/relevance/evidence/<br/>clarity/reasoning 0-100<br/>one bounded re-synthesis]
-    QG --> CH[Citation health check<br/>live URL re-validation +<br/>sentence-support fusion]
-    CH --> FIN[Finalize<br/>PRIMARY ANSWER = synthesizer prose<br/>+ separate AUDIT document]
+    Q[User query + mode] --> RT[POST /api/research/stream]
+    RT --> TEAM[Multi-agent engine team<br/>LangGraph StateGraph, compiled per request]
+    TEAM --> BR[Browser: initial research]
+    BR --> ED[Editor: plan section outline]
+    ED --> HU[Human review gate<br/>auto-accept in the API context]
+    HU --> RS[Researcher: parallel per-section research<br/>each section researched + reviewed + revised]
+    RS --> WR[Writer: introduction, TOC, conclusion, sources]
+    WR --> FC[Fact checker: accept or send back to writer]
+    FC -->|revise| WR
+    FC -->|accept| VZ[Visualizer]
+    VZ --> PB[Publisher: assemble the report]
+    PB --> OUT[final_report frame + persisted report]
 ```
 
-One LangGraph instance drives the loop (`app/graph/workflow.py`); the
-resume endpoint re-enters at the critic node with state rebuilt from SQLite.
+The engine team is driven by `app/engine/orchestrator.py`, which streams node
+updates as the graph runs. The API route (`app/api/routes.py`) translates those
+updates into the frontend's NDJSON events and owns the run/session lifecycle,
+persistence and replay capture.
+
+Two seams connect the engine to the rest of the product, both installed at
+startup by `app.engine.configure`:
+
+* **Generation** (`app/engine/llm_bridge.py`) — every engine LLM call is routed
+  through `app.core.llm.LLMClient`, so the provider or fallback chain selected
+  in the Model Control Center governs engine generation, and the client's
+  circuit breakers, response cache, usage ledger and concurrency cap apply.
+* **Retrieval** (`app/engine/retriever_bridge.py`) — the engine's web search is
+  backed by `app.agents.search.SearchClient` (SearXNG with Wikipedia / arXiv /
+  Crossref fallbacks), reusing the already-fetched page bodies.
+
+The engine itself lives under `backend/engine/` (`gptr/` research core +
+`multi_agents/` agent team), vendored as a self-contained, importable package.
 
 ---
 
@@ -69,41 +83,46 @@ from the question and the evidence.
 
 ## Component map
 
-### Intelligence
+### Engine (research + synthesis)
 
 | Module | Responsibility |
 |---|---|
-| `app/agents/intent.py` | Intent classification before research: ambiguity → ranked senses, domain, explanation level; deterministic fallback with curated homonym hints; never blocks — the answer disambiguates. |
-| `app/agents/answer_quality.py` | Pre-delivery gate: five-axis 0-100 scoring from measured state; scores usefulness (relevance/coherence/signal density/citation integrity), never heading compliance; penalizes process leakage; one bounded re-synthesis with failures fed back. |
-| `app/agents/outline.py` | Answer-first outline + adaptive `AnswerBlueprint`: the deterministic presentation strategy (question family, dominant themes, depth) handed to the writer in place of a heading list. |
-| `app/agents/planner.py` | Contracts with axis/search_type/minimum_sources/variants/wave/sense; axis-coverage enforcement; intent domain override; dependency waves (max 3). |
-| `app/agents/search.py` | 5 providers, per-provider circuit breakers + retry policies, fetch bulkhead, PDF extraction, canonical-URL + near-dup snippet dedup, domain diversity caps, freshness half-lives, disk cache. |
-| `app/agents/summarizer.py` | Per-contract specialists (financial/technical/…), source attribution validated against provided documents, direct-quote parsing, token-budgeted chunking, per-URL cache keyed by role + prerequisite digest. |
-| `app/agents/verifier.py` | Deterministic per-fact checks; blanks raw content after each pass (memory hygiene). |
-| `app/core/contradictions.py` | Three detectors (polarity first — outside the similarity band; then temporal; then unit-aware numeric), severity ordering, cap 5. |
-| `app/core/confidence.py` | 7 base signals + citation support + axis coverage + pool-size-scaled contradiction penalty; degraded-run cap 0.55. |
-| `app/agents/citation_check.py` | Live URL re-validation (HEAD → 2KB ranged GET, bounded, never fatal) fused with sentence support into per-source verdicts (ok/warn/broken/bad). |
-| `app/core/semantic.py` | TF-IDF hybrid engine: stemming, synonym canonicalization, negation weighting, vectorized batch scoring, stopword-stripped dup floor. |
-| `app/core/decision.py` | Decision layer (options → recommendation → rationale → risk) for strategic queries. |
+| `backend/engine/multi_agents/` | The agent team: orchestrator (ChiefEditor graph), editor/planner, researcher, reviewer/reviser, writer, fact checker, visualizer, publisher. |
+| `backend/engine/gptr/` | The shared research core the team calls: research conductor, context/compression, retrievers and scrapers, report generation, prompts. |
+| `app/engine/orchestrator.py` | Builds the team task from a request, compiles the graph, streams node updates, captures engine log signals, and assembles the final state (report + sources). |
+| `app/engine/llm_bridge.py` | Routes the engine's LLM funnel to `LLMClient` (Model Control Center governs generation). |
+| `app/engine/retriever_bridge.py` | Backs the engine's web search with `SearchClient`, declaring `requires_scraping=False` to reuse fetched bodies. |
+| `app/engine/event_adapter.py` | Maps engine node events onto the frontend's NDJSON vocabulary and builds the terminal `final_report` frame. |
+
+### Retained analysis & support
+
+| Module | Responsibility |
+|---|---|
+| `app/agents/search.py` | `SearchClient`: multi-provider retrieval (SearXNG / Wikipedia / arXiv / Crossref), circuit breakers, canonical-URL dedup, domain diversity, disk cache, page fetch. |
+| `app/agents/sources/`, `app/agents/evidence_utils.py` | Source classification, reliability, freshness, corroboration-query building, claim/number extraction, answer-support scoring — the shared evidence vocabulary. |
+| `app/agents/budget.py` | Four ceilings (USD/tokens/calls/seconds), mode multipliers, can-afford-pass protocol. |
+| `app/core/confidence.py` | Confidence engine: base signals + citation support + axis coverage + pool-size-scaled contradiction penalty; degraded-run cap 0.55. |
+| `app/core/contradictions.py` | Three detectors (polarity, temporal, unit-aware numeric), severity ordering, cap 5. |
+| `app/core/semantic.py` | TF-IDF hybrid engine: stemming, synonym canonicalization, negation weighting, vectorized batch scoring. |
+| `app/core/evidence_grade.py`, `app/core/investigation_state.py` | Claim grading (claim→source→verification→independence→corroboration→contradiction) and per-claim investigation memory. |
+| `app/graph/evidence.py`, `app/graph/state.py` | Shared evidence-acquisition helpers (`_claim_terms`, corroboration/coverage-gap functions) and the research-state TypedDict, retained after the orchestration removal. |
 
 ### Control & efficiency
 
 | Module | Responsibility |
 |---|---|
-| `app/core/depth_controller.py` | Intelligent stopping: sufficiency, marginal-gain stalls, ceiling, no-novel-query memory, budget walls, mode confidence targets, min iterations. |
-| `app/core/usage.py` | Per-run ledger (ContextVar): LLM tokens/cost, searches, cache hits; feeds the budget governor, the stopping rule, the API events and the UI. |
-| `app/agents/budget.py` | Four ceilings (USD/tokens/calls/seconds), mode multipliers, can-afford-pass protocol. |
-| `app/core/llm.py` | Provider chain with breakers, fail-fast auth/quota errors, Retry-After honoring (capped 3s), JSON mode, usage parsing, probe caching (30s success). |
-| `app/core/llm_cache.py` | Exact-prompt disk cache (TTL 6h, size-capped) — cache hits refund USD while keeping token accounting. |
-| `app/core/isolation.py` | AgentContext per sub-question: workers never see the full state or another contract's raw content. |
+| `app/core/usage.py` | Per-run ledger (ContextVar): LLM tokens/cost, searches, cache hits. |
+| `app/core/llm.py` | Provider chain with breakers, fail-fast auth/quota errors, Retry-After honoring (capped 3s), JSON mode, usage parsing, probe caching; the single generation funnel for both the engine and the retained helpers. |
+| `app/core/llm_cache.py` | Exact-prompt disk cache (TTL 6h, size-capped). |
+| `app/core/semantic.py`, `app/core/isolation.py` | Shared similarity engine and per-sub-question AgentContext isolation. |
 
 ### Surfaces
 
 | Module | Responsibility |
 |---|---|
-| `app/api/routes.py` | NDJSON stream (events below), resume, trace, provider CRUD + latency probe. |
-| `app/db/sqlite.py` | 14 tables, WAL, auto-initialized schema, `file:`/`sqlite://` URL forms. |
-| `frontend/` | React mission console: thread, answer card, claim drawer, intelligence panel (budget meter, wave strip, citation health, confidence breakdown). |
+| `app/api/routes.py` | NDJSON stream, resume, trace, export, sessions; provider CRUD + latency probe live in `app/api/providers_routes.py`. |
+| `app/db/sqlite.py` | Auto-initialized schema (WAL), `file:`/`sqlite://` URL forms. |
+| `frontend/` | React mission console: thread, answer card, claim drawer, intelligence panel, Model Control Center. |
 
 ---
 
@@ -111,80 +130,72 @@ from the question and the evidence.
 
 | Event | Payload highlights |
 |---|---|
-| `progress` | `request_id`, `message` |
-| `plan` | `items` (sub-questions), `orchestration`, `waves` (dependency-wave shape) |
-| `search_progress` | `snippets` |
-| `critic` | `iteration`, `reason`, `breakdown` (confidence signals + weights + notes), `budget` (live ledger snapshot) |
-| `findings` | `items` (claims with verification flags/scores/reasons); re-emitted once with `verified_update` after the verifier pass |
-| `final_report` | `report` (the primary answer), `audit` (separate audit/trace markdown), `confidence`, `degraded`, `answer_support`, `budget`, `wave_report`, `citation_health`, `quality`, `outline` |
-| `decisions` | `items` (decision layer options) |
+| `progress` | `request_id`, `session_id`, `message` (includes per-stage progress labels) |
+| `plan` | `items` (report sections), `orchestration`, `waves` |
+| `search_progress` | `snippets` (progress count as research proceeds) |
+| `critic` | `iteration`, `reason` (fact-checker revision notes), `breakdown` |
+| `final_report` | `report` (the primary answer), `confidence`, `degraded`, `audit`, `degraded_reasons`, `citation_health`, `quality`, `outline` |
 | `error` | `message` (actionable: key/quota/timeout causes) |
+
+Event types the engine team has no genuine signal for (`intent`, `route`,
+`direct_answer`, `findings`, `search_query`, `decisions`) are deliberately not
+fabricated; the frontend treats every event type as optional.
 
 ---
 
 ## Design decisions worth knowing
 
-**Why verification is deterministic (no LLM).** A verifier that costs a
-model call is a verifier you consult less often. Lexical + numeric +
-polarity checks run in ~145µs per claim and catch the failure modes that
-matter (fabricated numbers, negation inversions, topical mismatches) —
-measured F1 1.0 on the labeled set.
+**Why the engine is vendored, not a runtime dependency.** `backend/engine/`
+holds the multi-agent engine locally so the backend imports it without an
+external checkout and pins exactly what runs. Its internal absolute imports
+(`gptr.*`, `multi_agents.*`) are preserved by a one-time `sys.path` bootstrap
+in `engine/__init__.py`.
+
+**Why the provider stack is bridged, not duplicated.** The engine has its own
+config and provider layer, but the product's contract is that the Model
+Control Center decides what runs. The bridge routes the engine's single LLM
+funnel through `LLMClient`, so one mechanism (active provider or enabled chain,
+with its breakers/cache/ledger) governs all generation — no second provider
+configuration to drift.
+
+**Why retrieval is shared.** The engine's retriever seam is backed by
+`SearchClient`, so web search behaves identically to the rest of the product
+(SearXNG + Wikipedia/arXiv/Crossref fallbacks, the same caches and health
+accounting), and page bodies fetched here are reused by the engine instead of
+re-scraped.
 
 **Why the LLM cache is exact-prompt.** Semantic caching returns subtly
 wrong answers to slightly different questions. Research pipelines re-issue
-*identical* prompts (critic re-evals after partial expansion, re-runs) —
-an exact-hit cache captures that traffic with zero correctness risk.
-
-**Why contradictions penalize instead of blending into the average.**
-A weighted average lets three strong sources mask one direct lie. The
-penalty is pool-size scaled: one conflict among 3 facts means a third of
-the evidence disagrees; among 30 it is one stale page.
+*identical* prompts — an exact-hit cache captures that traffic with zero
+correctness risk.
 
 **Why "not" is not a stopword.** The negation token weighted like a number
 is what keeps "X" and "not X" from merging in dedup, keeps them inside the
 contradiction band, and keeps citation support from counting a negation as
 an affirmation. (Found by the benchmark suite, not by intuition.)
 
-**Why waves exist even though search is question-level.** The value is
-context chaining in the summarizer: "compare X vs Y" runs after "what is X"
-and receives its findings as bounded grounding — dependent extraction sees
-references it could not resolve from raw pages alone.
-
-**Why MAX_PARALLEL_LLM=2.** Concurrent large prompts are exactly what
+**Why MAX_PARALLEL_LLM is low.** Concurrent large prompts are exactly what
 exhausts free-tier TPM/TPD quotas (observed live: Groq 200k daily tokens
-burned by 3 parallel summarizer calls). The semaphore bounds in-flight
-prompts, not threads.
-
-**Why the quality gate scores usefulness, not headings.** An earlier gate gave
-25% of its clarity score for the presence of a `## Executive Summary` heading
-and 25% for bullets. That actively drove the writer toward the same
-report-shaped answer for every question and made a differently-shaped answer
-fail its own review. Clarity now measures readability, length band, signal
-density and the absence of process noise. A heading is never rewarded by
-itself.
+burned by 3 parallel calls). The semaphore bounds in-flight prompts, not
+threads.
 
 **Why process mechanics never reach the primary answer.** "Pipeline stage",
 "deterministic fallback", evidence grades, budgets and confidence floats
-describe the research system, not the subject. They are scrubbed from the
-answer and rendered in the audit layer. Uncertainty is expressed in prose
-("the evidence is thin on X"), not as a score.
-
-**Why deep mode is depth, not length.** Deep runs raise research
-breadth, triangulation and the synthesis depth guidance; they do not select a
-longer fixed report structure. A deep answer is stronger, not merely longer.
+describe the research system, not the subject. They belong in the audit layer,
+not the answer.
 
 ---
 
 ## Data lifecycles
 
-- **Raw page content** is blanked by the verifier after each pass — the
-  last consumer of full text is verification; snippets persist for
-  transparency.
-- **Facts** accumulate across passes with append-only plan growth; dedup
-  merges restatements and records corroboration (distinct domains only —
-  self-syndication is not corroboration).
-- **Caches**: search results 1h, LLM responses 6h, both size-capped at
-  250MB and LRU-evicted.
-- **SQLite**: every run persists agent events, sources, claims,
-  verification results, contradictions, citations, critic reviews and
-  decisions — the trace endpoint reconstructs the full timeline.
+- **Raw page content** is used during research and not persisted; the trace
+  keeps snippets for transparency.
+- **Facts** accumulate across research passes; dedup merges restatements and
+  corroboration counts distinct domains only — self-syndication is not
+  corroboration.
+- **Caches**: search results 1h, LLM responses 6h, both size-capped and
+  LRU-evicted.
+- **SQLite**: every run persists agent events, sources, claims, verification
+  results, contradictions, citations, critic reviews and the final report —
+  the trace endpoint reconstructs the full timeline, and the verbatim NDJSON
+  frames are stored for replay.

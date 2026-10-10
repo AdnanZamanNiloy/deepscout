@@ -68,7 +68,12 @@ def _providers_db(request: Request) -> str:
     settings = getattr(request.app.state, "settings", None)
     if settings is None:
         raise HTTPException(status_code=500, detail="Workflow is not initialized")
-    return settings.database_url
+    # Normalize the same way init_db/the persistence layer do: an unnormalized
+    # `sqlite:///...` value would be opened as a literal relative filename,
+    # creating an empty database with no tables (every provider route 500s).
+    from app.db.store.schema import normalize_db_path
+
+    return normalize_db_path(settings.database_url)
 
 
 @router.get("/providers")

@@ -108,6 +108,10 @@ def install(llm: LLMClient) -> EngineLLMBridge:
     """
     bridge = EngineLLMBridge(llm)
 
+    # Import the vendored engine package first: importing it installs its
+    # directory on sys.path so the absolute `gptr.*` / `multi_agents.*` imports
+    # used throughout the engine resolve.
+    import engine  # noqa: F401
     import gptr.utils.llm as gptr_llm
 
     gptr_llm.create_chat_completion = bridge.create_chat_completion

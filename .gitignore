@@ -42,6 +42,10 @@ outputs/
 # Third-party reference clones (read-only adaptation sources, never commit)
 gpt-researcher/
 
+# Local engine source tree used to vendor backend/engine/ (never commit; the
+# vendored copy under backend/engine/ is the committed one).
+deepresearch/
+
 # Self-hosted SearXNG checkout (third-party; has its own .git and venv).
 # The backend only needs its HTTP endpoint (SEARXNG_URL). The instance is not
 # part of this repository - a deployment supplies its own instance and
