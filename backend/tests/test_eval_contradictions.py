@@ -106,7 +106,7 @@ def test_wrong_label_trips_the_gate():
 def test_resolved_requires_an_explanation():
     """Every resolved finding from the fixtures must carry a non-empty
     explanation (the resolution string)."""
-    from app.core.contradiction_resolution import resolve_contradictions
+    from app.core.contradictions import resolve_contradictions
     from app.core.contradictions import find_contradictions
 
     for case in contradictions_v1.load_cases():
