@@ -268,7 +268,7 @@ function deriveAgents(run) {
 function deriveHealth(run) {
   const verified = run.findings.filter((f) => f.verified === true).length;
   const rows = [
-    { icon: IconDoc, label: "Sources analyzed", value: String(run.snippets), tone: "muted" },
+    { icon: IconDoc, label: "Sources analyzed", value: run.done ? String(run.snippets) : (run.snippets ? String(run.snippets) : "—"), tone: "muted" },
     { icon: IconCheckCircle, label: "Total claims", value: String(run.findings.length), tone: "muted" },
     { icon: IconCheckCircle, label: "Verified claims", value: String(verified), tone: "good" },
     { icon: IconAlert, label: "Critic passes", value: String(run.critiques.length), tone: run.critiques.length > 1 ? "warn" : "muted", hot: run.critiques.length > 1 },
