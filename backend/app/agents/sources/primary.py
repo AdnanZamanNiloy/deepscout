@@ -21,11 +21,38 @@ PRIMARY_SOURCE_HINTS: Dict[str, Tuple[str, ...]] = {
     "academic:general": ("arxiv.org", "doi.org", "semanticscholar.org"),
     "academic:legal": ("eur-lex.europa.eu", "courtlistener.com"),
     "academic:policy": ("oecd.org", "nber.org"),
+    "academic:software": ("arxiv.org", "dl.acm.org", "openreview.net"),
+    "academic:engineering": ("arxiv.org", "doi.org", "ieeexplore.ieee.org"),
     "news:general": ("reuters.com", "apnews.com", "ft.com"),
     "comparison:general": (),
     "encyclopedia:general": ("britannica.com",),
     "encyclopedia:philosophy": ("plato.stanford.edu",),
 }
+
+# (search_type, domain) pairs for which the generic IGO/statistical registry
+# (World Bank, WHO, OECD, UN) is a plausible primary publisher. Those agencies
+# publish human/economic/policy data; they publish NOTHING about a computer
+# science research topic. Firing the registry for an academic/technical question
+# was the mechanism behind the live drift ("site:who.int" queries returning
+# prostate-biopsy bibliometrics and marine-litter papers).
+_REGISTRY_APPROPRIATE_DOMAINS: frozenset = frozenset(
+    {"economics", "policy", "general", "science"}
+)
+
+
+def registry_appropriate(search_type: str, domain: str = "general") -> bool:
+    """May the generic IGO/statistical registry be used for this question?
+
+    True only for statistical/news/policy-shaped questions whose domain is not
+    an academic/technical field. An `academic` search type never consults the
+    IGO registry — its primary publishers are preprint servers, journals and
+    conferences, which `primary_source_hints` already names.
+    """
+    st = (search_type or "").strip().lower()
+    dm = (domain or "").strip().lower() or "general"
+    if st == "academic":
+        return False
+    return dm in _REGISTRY_APPROPRIATE_DOMAINS
 
 
 PRIMARY_INTENT_TERMS: Dict[str, Tuple[str, ...]] = {

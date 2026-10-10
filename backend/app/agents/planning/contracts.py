@@ -179,7 +179,28 @@ def _query_concept(query: str) -> str:
         text,
         flags=re.IGNORECASE,
     )
-    text = re.sub(r"^\s*(me|us|some|a\s+few|any|the)\s+", "", text, flags=re.IGNORECASE)
+    # Strip leading filler repeatedly: "suggest me some X" must reduce to "X" —
+    # a single pass left "some X" (the guidance verb consumed "suggest", then
+    # only "me" was removed), and the leftover filler was rendered verbatim into
+    # every synthesized contract ("some highly demanding research topic ...").
+    prev = None
+    while prev != text:
+        prev = text
+        text = re.sub(
+            r"^\s*(me|us|some|a\s+few|a|an|the|any|please)\s+",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"^\s*(give|show|list|get)\s+(?:me|us)\s+",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+    # "give me ideas for X" / "ideas for X" carry a trailing construct: the
+    # concept is X, not "ideas for X".
+    text = re.sub(r"^\s*ideas\s+for\s+", "", text, flags=re.IGNORECASE)
     return re.sub(r"\s+", " ", text).strip(" ?.!") or (query or "").strip()
 
 

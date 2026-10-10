@@ -16,6 +16,7 @@ from app.agents.sources.jurisdiction import (
 from app.agents.sources.primary import (
     primary_intent_terms,
     primary_source_hints,
+    registry_appropriate,
     wants_a_primary_source,
 )
 
@@ -108,13 +109,38 @@ def grounded_site_targets(
     for term in own:
         if term not in out:
             out.append(term)
-    for hint in primary_source_hints(search_type, domain):
-        if len(out) >= max(1, max_sites):
-            break
-        if hint in out or not jurisdiction_is_admissible(hint, juris):
-            continue
-        out.append(hint)
-    if not out and allow_registry_fallback:
+    # A registered (search_type, domain) hint is only usable when the QUESTION
+    # actually wants that kind of publisher. `statistical:general` is (World
+    # Bank, OECD, census), and aiming those at an academic/technical question
+    # whose contract merely carried search_type=statistical is the mechanism
+    # behind the live IGO drift. A question whose evidence need is academic and
+    # which asks for no statistics/filing/legal document gets NO registry hint —
+    # returning () so the caller skips the site: search rather than firing an
+    # over-constrained one. Questions that name a jurisdiction keep their own
+    # agencies regardless.
+    from app.agents.evidence_type import (
+        EV_ACADEMIC,
+        EV_FILING,
+        EV_LEGAL,
+        EV_STATISTICAL,
+        classify_evidence_need,
+    )
+
+    need = classify_evidence_need(question)
+    registry_wanted = any(
+        need.scores.get(ev, 0.0) > 0.0 for ev in (EV_STATISTICAL, EV_FILING, EV_LEGAL)
+    )
+    academic_only = (
+        need.scores.get(EV_ACADEMIC, 0.0) > 0.0 and not registry_wanted
+    )
+    if not academic_only:
+        for hint in primary_source_hints(search_type, domain):
+            if len(out) >= max(1, max_sites):
+                break
+            if hint in out or not jurisdiction_is_admissible(hint, juris):
+                continue
+            out.append(hint)
+    if not out and allow_registry_fallback and not academic_only:
         pool = authoritative_site_terms(
             max_sites=max(1, max_sites) + 2, offset=max(0, attempt)
         )
@@ -193,6 +219,31 @@ def build_dimension_primary_query(
     if scoped:
         return scoped
     if not wants_a_primary_source(text):
+        return ""
+    # The generic IGO/statistical registry (World Bank, WHO, OECD, UN) is only a
+    # plausible primary publisher for statistical/news/policy questions about a
+    # human, economic or policy subject. Firing it for an academic/technical
+    # question (no grounded hint exists) aimed the reserved primary slot at
+    # agencies that publish nothing about the subject, and the over-constrained
+    # query then matched whatever indexed page happened to share the boilerplate
+    # — the live drift ("site:who.int" -> prostate-biopsy bibliometrics, marine
+    # litter on a CS-topics question). `grounded_site_targets` already declines
+    # for academic-only questions, so `scoped` is "" there; this guard keeps the
+    # registry FALLBACK below from reinstating it.
+    from app.agents.evidence_type import (
+        EV_ACADEMIC,
+        EV_FILING,
+        EV_LEGAL,
+        EV_STATISTICAL,
+        classify_evidence_need,
+    )
+
+    need = classify_evidence_need(text)
+    registry_wanted = any(
+        need.scores.get(ev, 0.0) > 0.0 for ev in (EV_STATISTICAL, EV_FILING, EV_LEGAL)
+    )
+    academic_only = need.scores.get(EV_ACADEMIC, 0.0) > 0.0 and not registry_wanted
+    if academic_only or not registry_appropriate(search_type, domain):
         return ""
     juris = question_jurisdiction(text)
     # A dimension about a named country goes to that country's own agencies
