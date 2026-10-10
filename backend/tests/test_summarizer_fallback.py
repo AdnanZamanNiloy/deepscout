@@ -178,3 +178,47 @@ def test_empty_model_object_is_weak_evidence_not_a_provider_outage(tmp_path):
         )
     finally:
         clear_fallbacks()
+
+
+def test_fallback_uses_the_same_relevance_floor_as_the_llm_path(tmp_path):
+    """The extractive fallback must not admit claims the LLM path would reject.
+
+    Regression (live MSc-topic run): when the free model returned an empty
+    object on large prompts, the fallback ran with a 0.2 overlap floor — half
+    the LLM path's MIN_QUERY_OVERLAP — so a degraded run admitted off-topic
+    fragments the LLM path would have filtered ("rip current detection" on a
+    computer-science topic query). A degraded run must be WEAKER, never less
+    on-topic.
+    """
+    from app.agents.evidence.cleaning import MIN_QUERY_OVERLAP
+    import app.agents.summarizer as _sum
+    # Fix A: the fallback floor is now the LLM-path floor, not a looser one.
+    assert _sum.MIN_FALLBACK_OVERLAP == MIN_QUERY_OVERLAP    # The behavioural contract: an off-topic sentence does NOT enter the pool.
+    results = [
+        {
+            "title": "Rip current detection",
+            "url": "https://example-arxiv.org/abs/1",
+            "snippet": "",
+            "content": (
+                "Rip current detection and segmentation is a newly proposed "
+                "benchmark task for coastal safety using video frames. "
+                "The dataset contains annotated shorebreak imagery."
+            ),
+            "sub_question": "What are demanding MSc research topics in computer science?",
+        }
+    ]
+    reset_fallbacks()
+    try:
+        facts = asyncio.run(
+            summarizer_agent(
+                ExplodingLLM(tmp_path),
+                "suggest highly demanding research topic for M.sc in computer science",
+                results,
+            )
+        )
+    finally:
+        clear_fallbacks()
+    claims = " ".join(str(f.get("claim", "")) for f in facts).lower()
+    assert "rip current" not in claims and "shorebreak" not in claims, (
+        "an off-topic fragment must not survive the degraded extractive fallback"
+    )

@@ -243,6 +243,12 @@ EXCERPT_CHAR_BUDGET = 22_000
 MAX_SOURCES_PER_CALL = 20
 MIN_EXCERPT_CHARS = 600
 MAX_EXCERPT_CHARS = 3_500
+# The extractive fallback's topical floor. Must equal the LLM path's
+# MIN_QUERY_OVERLAP (imported at the top of the module) so a degraded run is
+# WEAKER, never less on-topic: the fallback previously used a looser 0.2 and
+# admitted off-topic fragments exactly when the model returned nothing. Kept as
+# a named constant (not a local) so the contract is testable.
+MIN_FALLBACK_OVERLAP = MIN_QUERY_OVERLAP
 
 # Groq rejects requests over ~21-41KB with HTTP 413 (measured live), so a
 # full 12-source budget can exceed what the provider accepts. The ladder
@@ -588,6 +594,16 @@ async def summarizer_agent(
                         )
                         fallback_reason = "llm_returned_nothing"
                         budget_index += 1
+                        # ALSO shrink the SOURCE COUNT, not only the excerpt size.
+                        # An empty object means the model spent its output budget
+                        # without emitting fields — and it does so more the more
+                        # material the prompt carries. Earlier rungs kept all 20
+                        # sources and only shortened excerpts, so the JSON-output
+                        # burden never fell and every rung returned empty (the
+                        # live MSc run degraded through all three). Fewer sources
+                        # means fewer facts to emit, which is what actually lets a
+                        # constrained model complete.
+                        max_sources_per_call = max(4, max_sources_per_call // 2)
                         continue
                     # Last rung and STILL empty: the provider answered, the model
                     # produced nothing usable. This is an evidence/output problem,
@@ -759,7 +775,13 @@ async def summarizer_agent(
     # taking the first sentences over a bare 0.15 overlap let off-topic
     # passages through as top claims.
     record_fallback("summarizer", reason=_degradation_reason(fallback_reason))
-    MIN_FALLBACK_OVERLAP = 0.2
+    # The extractive fallback must hold the SAME topical bar as the LLM path,
+    # not a looser one (see MIN_FALLBACK_OVERLAP): it used to accept claims at
+    # 0.2 overlap (half the LLM path's MIN_QUERY_OVERLAP) and skipped the
+    # generic-head guard — so exactly when the model returned nothing usable,
+    # the fallback admitted off-topic fragments the LLM path would have rejected
+    # (the live run's "rip current detection" / "poultry feed" claims on an
+    # unrelated query). A degraded run must be WEAKER, never less on-topic.
     fallback: List[Dict[str, Any]] = []
     for item in quality_results[:MAX_SOURCES_PER_CALL]:
         raw = (item.get("content", "") or "")[:4000] or item.get("snippet", "")
@@ -779,6 +801,11 @@ async def summarizer_agent(
                 claim_query_overlap(sense, claim) if sense else 0.0,
             )
             if relevance < MIN_FALLBACK_OVERLAP:
+                continue
+            # Same off-topic guard the LLM path applies: a claim that cleared the
+            # floor on a single generic head noun while naming none of the
+            # query's subjects is contamination, degraded run or not.
+            if claim_matches_only_a_generic_head(query, claim, query_entity_tokens):
                 continue
             scored.append((relevance, claim))
         scored.sort(key=lambda pair: pair[0], reverse=True)
