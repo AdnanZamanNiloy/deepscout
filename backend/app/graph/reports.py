@@ -266,6 +266,13 @@ def build_answer_audit(
             )
             if o.get("rationale"):
                 decision_lines.append(f"  Rationale: {o['rationale']}")
+            if o.get("feasibility"):
+                decision_lines.append(f"  Feasibility: {o['feasibility']}")
+            if o.get("uncertainty"):
+                decision_lines.append(f"  Uncertainty: {o['uncertainty']}")
+            if o.get("supporting_sources"):
+                sources = ", ".join(str(s) for s in o["supporting_sources"])
+                decision_lines.append(f"  Evidence: {sources}")
             if o.get("risk_note"):
                 decision_lines.append(f"  Risk: {o['risk_note']}")
         lines.extend(["## Decision layer", *decision_lines, ""])

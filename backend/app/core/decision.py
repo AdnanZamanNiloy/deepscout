@@ -69,6 +69,70 @@ def _contradiction_penalty(contradictions: List[Dict[str, Any]]) -> int:
     )
 
 
+def _primary_support_count(supporting: List[Dict[str, Any]]) -> int:
+    """How many of an option's supporting claims rest on a primary source.
+
+    Primary evidence (a dataset, official series, statute, peer-reviewed
+    paper) is what makes a recommendation FEASIBLE to defend; commentary alone
+    is not. Deterministic, from the same facts the option already carries.
+    """
+    n = 0
+    for f in supporting or ():
+        if f.get("is_primary"):
+            n += 1
+            continue
+        try:
+            from app.agents.sources import is_primary_source
+
+            if is_primary_source(str(f.get("source", "") or "")):
+                n += 1
+        except Exception:
+            continue
+    return n
+
+
+def _uncertainty_level(unresolved_conflicts: int, support: int, primary: int) -> str:
+    """Coarse, honest uncertainty band for an option.
+
+    Derived from the two things a reader can act on: how contested the
+    evidence is (unresolved cross-source conflicts) and how thin the support
+    is. Never claims more certainty than the pool supports — a
+    single-source option is "high" uncertainty however confident the prose.
+    """
+    if unresolved_conflicts >= 2:
+        return "high"
+    if support == 0:
+        return "high"
+    if unresolved_conflicts >= 1 or support < 2 or primary == 0:
+        return "medium"
+    return "low"
+
+
+def _feasibility_note(axis: str, support: int, primary: int, support_score: int) -> str:
+    """A feasibility assessment grounded in the evidence behind the option.
+
+    Feasibility here means "how defensible is acting on this framing, given
+    what was actually found" — evidenced, not asserted. More independent,
+    primary-backed claims means a more feasible recommendation to stand
+    behind.
+    """
+    if support_score == 0:
+        return (
+            f"No verified claim supports the '{axis}' framing yet; acting on it "
+            "would rest on no evidence gathered in this run."
+        )
+    if primary == 0:
+        return (
+            f"Defensible but secondary: {support_score} verified claim(s) back "
+            f"'{axis}', none from a primary source, so the recommendation rests "
+            "on commentary rather than measured data."
+        )
+    return (
+        f"Feasible: {support_score} verified claim(s) back '{axis}', "
+        f"including {primary} from primary source(s)."
+    )
+
+
 def build_decision_layer(
     state: Dict[str, Any],
     settings: Settings | None = None,
@@ -99,12 +163,23 @@ def build_decision_layer(
     # Derive one option per leading axis (up to MAX_OPTIONS): the axis IS the
     # strategic framing — e.g. a cost axis yields "prioritize cost evidence".
     options: List[Dict[str, Any]] = []
+    unresolved_conflicts = _contradiction_penalty(contradictions)
     for idx, axis in enumerate(axes[:MAX_OPTIONS]):
         label = chr(ord("A") + idx)
         supporting = _verified_supporting_claims(axis, state)
         support_score = len(supporting)
-        risk = _contradiction_penalty(contradictions)
+        primary = _primary_support_count(supporting)
+        risk = unresolved_conflicts
         top_claim = supporting[0]["claim"] if supporting else ""
+        # Explicit citation refs so the rationale is traceable to evidence, not
+        # just a count. Bounded and de-duplicated.
+        citations: List[str] = []
+        for f in supporting:
+            src = str(f.get("source", "") or "").strip()
+            if src and src not in citations:
+                citations.append(src)
+            if len(citations) >= 3:
+                break
         options.append({
             "option_label": label,
             "description": (
@@ -123,6 +198,12 @@ def build_decision_layer(
                 if risk
                 else f"Narrows the decision to '{axis}' alone."
             ),
+            # New, additive fields (Feature 18 completeness): a recommendation
+            # must carry its reasoning (rationale), evidence (supporting_sources),
+            # a feasibility assessment, and an honest uncertainty band.
+            "supporting_sources": citations,
+            "feasibility": _feasibility_note(axis, support_score, primary, support_score),
+            "uncertainty": _uncertainty_level(unresolved_conflicts, support_score, primary),
             "_support": support_score,
             "_risk": risk,
         })
