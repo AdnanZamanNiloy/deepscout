@@ -108,6 +108,13 @@ def test_recommendation_concept_strips_the_guidance_verb():
     assert _query_concept("Recommend the best programming language") == (
         "best programming language"
     )
+    # Fillers after the guidance verb must not leak into the concept: a single
+    # pass left "some X", which was rendered verbatim into every synthesized
+    # contract ("some highly demanding research topic in computer science ...").
+    assert _query_concept(
+        "suggest me some highly demanding research topic in computer science"
+    ) == "highly demanding research topic in computer science"
+    assert _query_concept("give me a few ideas for research topics") == "research topics"
 
 
 # ---------------------------------------------------------------------------

@@ -307,3 +307,38 @@ def test_negative_site_is_an_exclusion_not_a_target() -> None:
     assert split.excluded == ("example.com",)
     assert "example.com" not in split.hard
     assert "example.com" not in split.soft
+
+# ---------------------------------------------------------------------------
+# An academic/technical question must not be scoped to IGO/statistical agencies
+# ---------------------------------------------------------------------------
+
+# Live defect: a computer-science research-topics question arrived with
+# search_type=statistical, so the reserved primary-source slot was aimed at the
+# generic IGO registry (`site:who.int`, `site:worldbank.org`, `site:oecd.org`)
+# plus the boilerplate "official report government data dataset peer-reviewed
+# study". Those agencies publish nothing about the subject, and the
+# over-constrained query matched unrelated indexed pages (prostate-biopsy
+# bibliometrics, marine-litter papers) — the drift the critic reported every
+# round. The gate is the QUESTION's evidence need, not the contract's label.
+
+_CS_QUESTION = (
+    "Which computer science research topics are currently ranked as most "
+    "demanding by authoritative frontier sources in 2026?"
+)
+
+
+def test_academic_question_is_not_scoped_to_igo_agencies() -> None:
+    for search_type in ("academic", "statistical", "evidence"):
+        grounded = grounded_site_targets(
+            _CS_QUESTION, search_type, "general", allow_registry_fallback=True
+        )
+        assert grounded == (), (search_type, grounded)
+        query = build_dimension_primary_query(_CS_QUESTION, search_type, "general")
+        assert query == "", (search_type, query)
+
+
+def test_statistical_question_still_gets_its_registry() -> None:
+    """The fix is scoped: a genuine statistical question keeps its publisher."""
+    query = build_dimension_primary_query("population of Malawi in 2024", "statistical", "general")
+    assert "site:" in query
+    assert "gov.mw" in query or "worldbank.org" in query
