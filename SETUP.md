@@ -177,13 +177,8 @@ cd backend
 Writes `bench/results/benchmark_results.json` and
 `bench/results/BENCHMARK_RESULTS.md`.
 
-Live (spends real free-tier quota — one research run per query):
-
-```bash
-cd backend
-../.venv/bin/python bench/run_live.py
-DEEPSCOUT_LIVE_QUERIES="question one|question two" ../.venv/bin/python bench/run_live.py
-```
+For a live end-to-end check, run the backend and stream a query (see the smoke
+test below); the offline suite covers the deterministic components only.
 
 ---
 
