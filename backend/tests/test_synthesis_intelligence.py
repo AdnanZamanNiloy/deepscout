@@ -721,7 +721,7 @@ _ON_TOPIC_FACTS = (
 
 def test_coverage_gaps_exclude_off_topic_facts():
     """Bug 2: gaps for Limitations name only claims from the query's own pool."""
-    from app.graph.workflow import _query_inscope_facts
+    from app.graph.evidence import _query_inscope_facts
 
     facts = [{"claim": c} for c in (*_ON_TOPIC_FACTS, *_OFF_TOPIC_FACTS)]
     inscope = _query_inscope_facts(
@@ -738,7 +738,7 @@ def test_coverage_gaps_exclude_off_topic_facts():
 def test_measured_coverage_gaps_have_no_off_topic_sources():
     """Bug 2 end-to-end: the Limitations gap strings never name the off-topic
     Iran/NBER/politics claims on a transformer query."""
-    from app.graph.workflow import _measured_coverage_gaps
+    from app.graph.evidence import _measured_coverage_gaps
 
     state = {
         "query": "What is a transformer?",
@@ -767,7 +767,7 @@ def test_measured_coverage_gaps_have_no_off_topic_sources():
 def test_inscope_filter_never_starves_limitations():
     """Bug 2 safety: if nothing clears the relevance bar, the original pool is
     returned rather than emptied (AGENTS.md 4.7 — no starved section)."""
-    from app.graph.workflow import _query_inscope_facts
+    from app.graph.evidence import _query_inscope_facts
 
     facts = [{"claim": c} for c in _OFF_TOPIC_FACTS]
     assert _query_inscope_facts(facts, "What is a transformer?", []) == facts
