@@ -63,6 +63,20 @@ def _heuristic_dimensions(query: str, intent: Optional[Dict[str, Any]] = None) -
         for m in ("should we", "should i", "should our", "should the",
                   "should ", "invest", "worth it", "recommend", "decide")
     )
+    # A RECOMMENDATION request ("suggest me some X", "give me ideas for Y",
+    # "what should I study") is not a factual lookup: it needs candidate options,
+    # the criteria that make one suitable, and authoritative sources that
+    # recommend/rank. Planned as `else` -> "definition" (what ARE research
+    # areas), so the run searched for papers ABOUT the subject and returned a
+    # survey of open problems instead of a set of suggestions. Checked before
+    # `is_decision` so the guidance shape wins over the trade-off shape.
+    is_recommendation = any(
+        m in text
+        for m in ("suggest", "recommend", "advise", "give me some", "give me a few",
+                  "give me ideas", "some ideas", "ideas for", "topic suggestions",
+                  "what should i study", "what should i research", "what should we study",
+                  "which topics", "what topics", "best topics", "good topics")
+    )
     is_comparative = qtype == "comparative" or any(
         m in text for m in (" vs ", " versus ", "compare", "compared", "comparison")
     )
@@ -88,7 +102,16 @@ def _heuristic_dimensions(query: str, intent: Optional[Dict[str, Any]] = None) -
                   "safe", "danger", "ethical", "controversial", "bias")
     )
 
-    if is_decision:
+    if is_recommendation:
+        # Candidate options FIRST (the thing the user asked for), then the
+        # criteria that make one suitable, then the authoritative bodies that
+        # rank or recommend them, then pitfalls. This is what makes the planner
+        # search for guidance sources rather than subject-matter papers.
+        _add("candidate options")
+        _add("selection criteria")
+        _add("authoritative recommendations")
+        _add("risks and pitfalls")
+    elif is_decision:
         _add("policy options")
         _add("cost and financing")
         _add("risk and feasibility")

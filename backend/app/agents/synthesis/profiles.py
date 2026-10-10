@@ -154,6 +154,18 @@ _FORMAT_GUIDANCE: Dict[str, str] = {
         "works, then where it matters and what it is commonly confused with. "
         "Include at most one analogy, and mark it as an analogy."
     ),
+    "recommendation": (
+        "SHAPE — this is a request for suggestions the reader can act on, not a "
+        "survey of the field. Lead with a short ranked set of concrete options "
+        "(typically 4-8), each self-contained and cited, with one clause on WHY "
+        "it fits the reader's stated situation and what makes it distinctive. "
+        "For research or project topics, give each option its method or "
+        "approach and a feasibility note (skills, data, compute, supervision, "
+        "time to first result). Close with how to choose and what would change "
+        "the ranking. If a source ranks or recommends the options, follow its "
+        "ranking; if not, say the list is assembled rather than measured, and "
+        "never present an unranked list as a ranking."
+    ),
     "comparison": (
         "SHAPE — this is a comparison. Organise by CRITERION, not by item: each "
         "section compares both options on one dimension with their numbers side "
@@ -225,6 +237,14 @@ _QUERY_TYPE_PATTERNS: Sequence[Tuple[str, "re.Pattern[str]"]] = (
                          r"configure|tutorial)\b", re.I)),
     ("causal", re.compile(r"\b(why|what caused|cause[ds]? of|reason[s]? (?:for|why)|"
                           r"leads? to|because of)\b", re.I)),
+    # A request for suggestions the reader can act on — checked before
+    # `decision` (a "suggest some options" ask is not a trade-off analysis) and
+    # before `list`/`definition` so "what should I study" is not read as a
+    # definitional lookup. Mirrors the blueprint's own `recommendation` shape.
+    ("recommendation", re.compile(r"\b(suggest|recommend|advise|give me (?:some|a few|ideas|examples)|"
+                                  r"some ideas|topic suggestions|which .{0,30}should (?:i|we)|"
+                                  r"what should (?:i|we) (?:study|research|choose|pick|learn)|"
+                                  r"best .{0,25}(?:to (?:study|learn|research)|for (?:me|us)))\b", re.I)),
     ("decision", re.compile(r"\b(should (?:i|we|they)|worth it|is it worth|"
                             r"recommend|choose between|invest in)\b", re.I)),
     ("forecast", re.compile(r"\b(will |forecast|projection|predicted|by 20\d\d|"
@@ -273,7 +293,8 @@ def _format_guidance(query: str, intent: Dict[str, Any] | None) -> str:
         alias = {"how_to": "howto", "procedural": "howto", "chronology": "timeline",
                  "evaluative": "decision", "strategic": "decision",
                  "factual": "status", "person": "entity", "organisation": "entity",
-                 "organization": "entity"}.get(declared, "")
+                 "organization": "entity", "guidance": "recommendation",
+                 "suggestion": "recommendation", "suggestion_request": "recommendation"}.get(declared, "")
         key = alias if alias in _FORMAT_GUIDANCE else ""
     if not key:
         key = infer_query_type(query)

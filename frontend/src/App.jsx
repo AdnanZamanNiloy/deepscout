@@ -664,7 +664,15 @@ export default function App() {
         }
         break;
       case "error": {
-        const message = evt.message || "Unknown stream error";
+        // Coerce to a string: a structured error payload (or a replayed frame
+        // whose `message` is an object) must never render as "[object Object]"
+        // nor crash the `.slice`/`.test` calls below.
+        const raw = evt.message;
+        const message = typeof raw === "string" && raw.trim()
+          ? raw
+          : raw && typeof raw === "object"
+            ? (raw.message || raw.msg || raw.detail || JSON.stringify(raw))
+            : "Unknown stream error";
         const noKey = isNoProviderError(message);
         const resumable = !noKey && /timed out|failed/i.test(message);
         setMessages((prev) => prev.map((m) => {

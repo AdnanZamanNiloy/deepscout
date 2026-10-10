@@ -11,16 +11,39 @@ to produce.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Sequence
 
 from app.agents.contradiction import summarize_contradictions
 from app.agents.evidence_utils import extract_domain
-from app.agents.research_quality import IndependenceReport, TemporalProfile
+from app.agents.quality.independence import IndependenceReport
+from app.agents.quality.temporal import TemporalProfile
 from app.agents.synthesis.primitives import order_by_assumed_reading
 from app.agents.sources import canonical_url, primary_source_share
 
 from app.agents.synthesis.findings import _ledger_warnings
 from app.agents.synthesis.primitives import _corroboration, _safe_int
+
+
+# A RECOMMENDATION / GUIDANCE request: the user wants suggestions they can act
+# on, not an analysis of a term. For these, a term inside the query having
+# several readings does NOT make the request ambiguous — the ask ("suggest
+# topics") is unambiguous, and opening with a "which meaning did you mean"
+# block buries the answer. Live case: "suggest me some highly demanding
+# research topics" opened with a three-reading disambiguation of "demanding"
+# and answered none of them directly.
+_GUIDANCE_RE = re.compile(
+    r"\b(suggest|recommend|advise|give me (?:some|a few|ideas|examples)|"
+    r"some ideas|topic suggestions|ideas for|"
+    r"what should (?:i|we) (?:study|research|choose|pick|learn|do)|"
+    r"which .{0,30}should (?:i|we))\b",
+    re.IGNORECASE,
+)
+
+
+def _is_guidance_query(intent: Dict[str, Any]) -> bool:
+    q = str((intent or {}).get("query", "") or "")
+    return bool(_GUIDANCE_RE.search(q))
 
 
 def _render_interpretations_block(intent: Dict[str, Any], ambiguity: Dict[str, Any] | None = None) -> str:
@@ -39,6 +62,10 @@ def _render_interpretations_block(intent: Dict[str, Any], ambiguity: Dict[str, A
                    that answered none of them.
     """
     if not isinstance(intent, dict):
+        return ""
+    # A guidance request is not made ambiguous by a multi-reading term inside it;
+    # suppress the disambiguation framing so the answer leads with suggestions.
+    if _is_guidance_query(intent):
         return ""
     policy = ambiguity if isinstance(ambiguity, dict) else {}
     action = str(policy.get("action", "") or "")
@@ -124,6 +151,9 @@ def _render_ambiguity_block(intent: Dict[str, Any], policy: Dict[str, Any] | Non
     the user sees, contradicted the decision that produced it.
     """
     if not isinstance(intent, dict) or not intent.get("ambiguity"):
+        return ""
+    # See `_is_guidance_query`: a suggestion request keeps its suggestion shape.
+    if _is_guidance_query(intent):
         return ""
     senses = [
         s for s in (intent.get("senses") or [])

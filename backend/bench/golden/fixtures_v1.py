@@ -191,6 +191,40 @@ TOPIC_PACKS: Dict[str, List[Dict[str, Any]]] = {
             "2023 compared with 2022, affected by supply chain constraints.",
             "statistical", "2024-01-30",
         ),
+        _page(
+            "https://www.iea.org/reports/renewables-2023/executive-summary",
+            "Renewables 2023 Executive Summary",
+            "Solar PV accounted for three-quarters of the additions, while wind "
+            "additions declined slightly. Declining module prices and supportive "
+            "policy drove solar deployment faster than any other technology.",
+            "statistical", "2024-01-11",
+        ),
+        _page(
+            "https://www.nrel.gov/solar-cost",
+            "Solar Photovoltaic Cost Trends",
+            "The cost of utility-scale solar fell 82 percent between 2010 and "
+            "2023 as module prices and installation costs declined. Falling "
+            "levelised cost made solar competitive with fossil generation in "
+            "most markets.",
+            "academic", "2024-03-18",
+        ),
+        _page(
+            "https://ourworldindata.org/solar-growth",
+            "The Rapid Growth of Solar Power",
+            "Solar photovoltaic deployment grew faster than any energy source in "
+            "history, driven by learning-by-doing and manufacturing scale. "
+            "Policy support and falling costs together drove the rapid growth in "
+            "solar capacity additions.",
+            "academic", "2024-04-05",
+        ),
+        _page(
+            "https://www.bnef.com/solar-outlook",
+            "Solar Market Outlook",
+            "Global solar installations reached 390 GW in 2023, up from 239 GW in "
+            "2022. Subsidy schemes and auctions contributed to the surge in "
+            "capacity.",
+            "statistical", "2024-02-14",
+        ),
     ],
     # -- AI enterprise adoption ---------------------------------------------
     "ai_adoption": [
@@ -218,6 +252,30 @@ TOPIC_PACKS: Dict[str, List[Dict[str, Any]]] = {
             "economies.",
             "academic", "2024-04-20",
         ),
+        _page(
+            "https://www.pwc.com/ai-barometer",
+            "AI Business Barometer",
+            "Enterprise adoption of artificial intelligence reached 62 percent "
+            "of surveyed companies in 2024. The largest gains were in finance "
+            "and technology sectors.",
+            "statistical", "2024-05-30",
+        ),
+        _page(
+            "https://www.gartner.com/ai-adoption",
+            "AI Adoption Forecast",
+            "Enterprise adoption of artificial intelligence reached 62 percent "
+            "of surveyed companies in 2024. Agentic and generative tools "
+            "accounted for most of the new deployments.",
+            "industry", "2024-06-12",
+        ),
+        _page(
+            "https://www.imf.org/ai-productivity",
+            "AI and Productivity",
+            "Larger firms adopt AI faster than smaller firms across the sampled "
+            "economies. Productivity gains from AI remain concentrated in "
+            "leading firms and advanced economies.",
+            "statistical", "2024-04-02",
+        ),
     ],
     # -- grid-scale storage --------------------------------------------------
     "storage": [
@@ -236,6 +294,30 @@ TOPIC_PACKS: Dict[str, List[Dict[str, Any]]] = {
             "2023, nearly doubling year over year. Storage costs continued to "
             "fall as manufacturing scaled.",
             "statistical", "2024-03-05",
+        ),
+        _page(
+            "https://www.bnef.com/storage-outlook",
+            "Energy Storage Market Outlook",
+            "Global grid-scale battery storage installations reached 45 GW in "
+            "2023, a record for the sector. Falling lithium-ion prices and "
+            "renewable integration requirements drove deployment.",
+            "statistical", "2024-04-10",
+        ),
+        _page(
+            "https://www.woodmac.com/storage",
+            "Storage Deployment Analysis",
+            "Grid-scale battery storage deployment expanded at a record pace in "
+            "2023, nearly doubling year over year. Storage duration averages two "
+            "hours at most utility-scale sites.",
+            "industry", "2024-02-28",
+        ),
+        _page(
+            "https://www.energy.gov/storage",
+            "Grid Storage Program",
+            "Battery storage capacity in the United States grew to 16 GW by the "
+            "end of 2023. Storage deployment is concentrated in markets with "
+            "high renewable penetration and supportive regulation.",
+            "statistical", "2024-03-20",
         ),
     ],
     # -- nuclear vs solar comparison ----------------------------------------
@@ -266,6 +348,32 @@ TOPIC_PACKS: Dict[str, List[Dict[str, Any]]] = {
             "nuclear plant's.",
             "industry", "2024-06-10",
         ),
+        _page(
+            "https://www.world-nuclear.org/economics",
+            "Nuclear Economics and Investment",
+            "Nuclear plants provide firm baseload power but have the highest "
+            "levelised cost of new generation among mature technologies. New "
+            "nuclear construction carries high capital costs and long build "
+            "times that raise financing risk.",
+            "industry", "2024-03-12",
+        ),
+        _page(
+            "https://www.iaea.org/nuclear-energy",
+            "Nuclear Energy and Decarbonisation",
+            "Nuclear power provides low-carbon firm generation and can operate at "
+            "a high capacity factor across decades. Small modular reactors may "
+            "reduce capital costs and build times relative to large plants.",
+            "academic", "2024-05-01",
+        ),
+        _page(
+            "https://www.imf.org/nuclear-investment",
+            "Financing Nuclear Investment",
+            "Nuclear construction requires large upfront capital and has a "
+            "history of cost overruns and delays. Countries weighing nuclear "
+            "investment must compare its firm output against cheaper but "
+            "variable renewables with storage.",
+            "statistical", "2024-04-22",
+        ),
     ],
     # -- lithium-ion battery costs ------------------------------------------
     "lithium": [
@@ -285,6 +393,31 @@ TOPIC_PACKS: Dict[str, List[Dict[str, Any]]] = {
             "kilowatt-hour in 2023, a decline of 14 percent from the previous "
             "year. Learning-by-doing and scale drove the cost reduction.",
             "academic", "2023-11-22",
+        ),
+        _page(
+            "https://www.bnef.com/battery-price-survey",
+            "Battery Price Survey",
+            "Lithium-ion battery pack prices fell to 139 dollars per "
+            "kilowatt-hour in 2023, a decline of 14 percent from the previous "
+            "year. Raw material cost increases partially offset manufacturing "
+            "gains.",
+            "statistical", "2024-01-20",
+        ),
+        _page(
+            "https://www.nrel.gov/battery-cost",
+            "Battery Cost Projections",
+            "Battery pack costs are projected to fall below 100 dollars per "
+            "kilowatt-hour by 2030 as production scales. Chemistry improvements "
+            "and higher energy density drive the decline.",
+            "academic", "2024-02-15",
+        ),
+        _page(
+            "https://www.mckinsey.com/battery-value-chain",
+            "The Battery Value Chain",
+            "Manufacturing scale and falling material costs drove the decline in "
+            "battery prices. Demand growth for electric vehicles and storage "
+            "supported further capacity expansion.",
+            "industry", "2024-03-08",
         ),
     ],
     # -- fine-tuning vs RAG --------------------------------------------------
@@ -348,6 +481,23 @@ TOPIC_PACKS: Dict[str, List[Dict[str, Any]]] = {
             "temperatures.",
             "statistical", "2023-11-30",
         ),
+        _page(
+            "https://www.iea.org/heat-pumps",
+            "The Future of Heat Pumps",
+            "A heat pump is a device that moves heat from a colder space to a "
+            "warmer one rather than generating heat by combustion. Heat pumps "
+            "accounted for a growing share of building heating as gas prices "
+            "rose.",
+            "statistical", "2024-01-18",
+        ),
+        _page(
+            "https://www.eia.gov/heat-pump-adoption",
+            "Residential Heat Pump Adoption",
+            "Heat pump sales outpaced gas furnace sales in the United States for "
+            "the first time in 2023. Adoption is concentrated in regions with "
+            "mild climates and generous rebates.",
+            "statistical", "2024-03-01",
+        ),
     ],
     # -- electric vehicles ---------------------------------------------------
     "ev": [
@@ -366,6 +516,22 @@ TOPIC_PACKS: Dict[str, List[Dict[str, Any]]] = {
             "35 percent increase over 2022. Growth slowed in some markets as "
             "subsidies were phased out.",
             "industry", "2024-05-02",
+        ),
+        _page(
+            "https://www.iea.org/ev-data",
+            "Electric Vehicle Data Explorer",
+            "Electric vehicles accounted for roughly 18 percent of total car "
+            "sales in 2023. China accounted for about 60 percent of global "
+            "electric vehicle sales.",
+            "statistical", "2024-04-23",
+        ),
+        _page(
+            "https://www.bnef.com/ev-adoption",
+            "EV Adoption Forecast",
+            "Global electric vehicle sales reached 14 million units in 2023, a "
+            "35 percent increase over 2022. Charging infrastructure rollout "
+            "remains a constraint in some regions.",
+            "industry", "2024-06-05",
         ),
     ],
     # -- wind vs solar -------------------------------------------------------
@@ -413,6 +579,22 @@ TOPIC_PACKS: Dict[str, List[Dict[str, Any]]] = {
             "capacity that many regulators currently lack.",
             "policy", "2024-04-15",
         ),
+        _page(
+            "https://www.brookings.edu/ai-governance",
+            "Governing Artificial Intelligence",
+            "Industry self-regulation is faster to update but lacks enforcement "
+            "mechanisms. Binding rules create legal certainty but risk lagging "
+            "behind model capabilities.",
+            "policy", "2024-03-20",
+        ),
+        _page(
+            "https://www.nist.gov/ai-safety",
+            "AI Safety Standards",
+            "Binding regulation can set minimum safety standards for frontier "
+            "artificial intelligence models. Technical standards must be updated "
+            "frequently to keep pace with new model releases.",
+            "policy", "2024-05-01",
+        ),
     ],
     # -- ambiguous terms -----------------------------------------------------
     "transformer_ambiguous": [
@@ -449,6 +631,21 @@ TOPIC_PACKS: Dict[str, List[Dict[str, Any]]] = {
             "electronics and software. The company was founded in 1976.",
             "encyclopedia", "2023-09-15",
         ),
+        _page(
+            "https://www.reuters.com/apple-earnings",
+            "Apple Reports Quarterly Results",
+            "Apple Inc. reported quarterly revenue driven by services and iPhone "
+            "sales. The company remains one of the largest by market "
+            "capitalisation.",
+            "news", "2024-05-02",
+        ),
+        _page(
+            "https://britannica.com/apple-fruit",
+            "Apple (Fruit)",
+            "The apple is the edible fruit produced by an apple tree. Cultivars "
+            "are grown worldwide for fresh eating and cooking.",
+            "encyclopedia", "2023-11-10",
+        ),
     ],
     "bank": [
         _page(
@@ -464,6 +661,21 @@ TOPIC_PACKS: Dict[str, List[Dict[str, Any]]] = {
             "A bank is a financial institution that accepts deposits and makes "
             "loans. Banks are regulated by central authorities.",
             "encyclopedia", "2023-08-20",
+        ),
+        _page(
+            "https://www.imf.org/banking-regulation",
+            "Banking Regulation and Stability",
+            "Banks are regulated by central authorities to protect depositors "
+            "and financial stability. Capital and liquidity requirements limit "
+            "the risk of bank runs.",
+            "policy", "2024-04-18",
+        ),
+        _page(
+            "https://www.federalreserve.gov/banking",
+            "The Role of Banks",
+            "A bank is a financial institution that accepts deposits and makes "
+            "loans. Banks transmit monetary policy by adjusting lending rates.",
+            "policy", "2024-02-28",
         ),
     ],
     # -- generic fallback (used only when no topic matches) ------------------
@@ -544,10 +756,17 @@ _TOPIC_KEYWORDS: List[tuple] = [
 
 
 def route_topic(text: str) -> str:
-    """Deterministic topic router for a raw query / sub-question text."""
+    """Deterministic topic router for a raw query / sub-question text.
+
+    Keywords match on WORD BOUNDARIES, not raw substrings. The substring
+    version was a live fixture bug: "rag" matched inside "battery sto-RAG-e",
+    "cove-RAG-e" and "ave-RAG-e", so the grid-storage golden query was routed
+    to the retrieval-augmented-generation evidence pack and scored near zero on
+    coverage. A bare-substring router cannot be trusted with short acronyms.
+    """
     low = (text or "").lower()
     for keyword, topic in _TOPIC_KEYWORDS:
-        if keyword in low:
+        if re.search(rf"(?<!\w){re.escape(keyword)}(?!\w)", low):
             return topic
     return "generic"
 

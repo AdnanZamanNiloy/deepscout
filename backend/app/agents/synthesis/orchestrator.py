@@ -19,7 +19,7 @@ from app.agents.evidence_utils import (
     dedupe_semantic_facts,
     filter_facts_by_domain,
 )
-from app.agents.epistemics import EpistemicReport, assess_epistemics
+from app.agents.epistemic.asymmetry import EpistemicReport, assess_epistemics
 from app.agents.outline import (
     AnswerOutline,
     build_blueprint,
@@ -27,12 +27,9 @@ from app.agents.outline import (
     render_blueprint,
     render_outline,
 )
-from app.agents.research_quality import (
-    assess_independence,
-    apply_independence,
-    temporal_profile,
-    render_quality_contract,
-)
+from app.agents.quality.independence import assess_independence, apply_independence
+from app.agents.quality.quality import render_quality_contract
+from app.agents.quality.temporal import temporal_profile
 from app.core.degradation import EVIDENCE_WEAK, PROVIDER_TRANSIENT, record_fallback
 from app.core.llm import AllProvidersFailedError, LLMClient, PromptTooLargeError
 from app.core.logging import get_logger
@@ -53,6 +50,7 @@ from app.agents.synthesis.context_blocks import (
     _render_analytical_guidance,
     _render_context_block,
     _render_interpretations_block,
+    _is_guidance_query,
 )
 from app.agents.synthesis.deterministic import _deterministic_report
 from app.agents.synthesis.finalize import (
@@ -505,7 +503,15 @@ async def synthesize(
             + _render_structure_contract(
                 resolved_profile,
                 angles=angles,
-                ambiguous=bool(isinstance(intent, dict) and intent.get("ambiguity")),
+                # A guidance request ("suggest me topics") is not made ambiguous
+                # by a multi-reading term inside it; telling the writer to open
+                # with "distinct meanings" buries the suggestions. See
+                # `_is_guidance_query`.
+                ambiguous=bool(
+                    isinstance(intent, dict)
+                    and intent.get("ambiguity")
+                    and not _is_guidance_query(intent)
+                ),
                 has_figures=_has_numeric_facts(cited_facts),
             )
             + "\n\n"

@@ -1,7 +1,7 @@
 {
   "suite": "deepscout-golden-offline-eval",
   "version": "v2",
-  "ran_at": "2026-09-23T09:08:42.870032+00:00",
+  "ran_at": "2026-10-09T19:00:31.232595+00:00",
   "golden_path": "bench/golden/queries_v1.json",
   "thresholds_path": "bench/golden/thresholds_v1.json",
   "aggregate": {
@@ -10,20 +10,22 @@
     "queries_failed": 0,
     "metrics": {
       "query_type_accuracy": 1.0,
-      "dimension_hit_rate": 0.8846,
+      "dimension_hit_rate": 0.9487,
       "forbidden_clean_rate": 1.0,
       "section_presence_rate": 0.4,
-      "structural_adaptability_rate": 0.7308,
+      "structural_adaptability_rate": 0.6154,
       "process_clean_rate": 1.0,
       "citation_resolution_rate": 1.0,
-      "verified_claims_mean": 2.4615,
-      "corroborated_claims_mean": 1.7308,
-      "distinct_domains_mean": 1.9231,
-      "primary_share_mean": 0.8205,
+      "verified_claims_mean": 3.6923,
+      "corroborated_claims_mean": 2.2692,
+      "distinct_domains_mean": 2.7692,
+      "primary_share_mean": 0.7679,
       "grade_ab_share": 1.0,
-      "answer_quality_mean": 60.1154,
-      "answer_relevance_mean": 0.3945,
-      "support_rate_mean": 0.5051,
+      "answer_quality_mean": 68.6154,
+      "answer_relevance_mean": 0.6088,
+      "report_quality_mean": 9.1146,
+      "report_quality_pass_rate": 0.6538,
+      "support_rate_mean": 0.5295,
       "minimums_pass_rate": 1.0
     }
   },
@@ -32,7 +34,7 @@
       "queries": 3,
       "metrics": {
         "query_type_accuracy": 1.0,
-        "dimension_hit_rate": 0.8889,
+        "dimension_hit_rate": 1.0,
         "forbidden_clean_rate": 1.0,
         "section_presence_rate": 0.4,
         "structural_adaptability_rate": 1.0,
@@ -40,12 +42,14 @@
         "citation_resolution_rate": 1.0,
         "verified_claims_mean": 2.0,
         "corroborated_claims_mean": 1.0,
-        "distinct_domains_mean": 1.3333,
-        "primary_share_mean": 0.0,
+        "distinct_domains_mean": 1.6667,
+        "primary_share_mean": 0.3333,
         "grade_ab_share": 1.0,
-        "answer_quality_mean": 58.6667,
-        "answer_relevance_mean": 0.5552,
-        "support_rate_mean": 0.4444,
+        "answer_quality_mean": 64.0,
+        "answer_relevance_mean": 0.574,
+        "report_quality_mean": 10.0,
+        "report_quality_pass_rate": 1.0,
+        "support_rate_mean": 0.3889,
         "minimums_pass_rate": 1.0
       }
     },
@@ -53,20 +57,22 @@
       "queries": 4,
       "metrics": {
         "query_type_accuracy": 1.0,
-        "dimension_hit_rate": 0.5833,
+        "dimension_hit_rate": 0.6667,
         "forbidden_clean_rate": 1.0,
         "section_presence_rate": 0.4,
-        "structural_adaptability_rate": 1.0,
+        "structural_adaptability_rate": 0.75,
         "process_clean_rate": 1.0,
         "citation_resolution_rate": 1.0,
-        "verified_claims_mean": 2.75,
-        "corroborated_claims_mean": 1.75,
-        "distinct_domains_mean": 2.25,
-        "primary_share_mean": 0.875,
+        "verified_claims_mean": 5.5,
+        "corroborated_claims_mean": 3.75,
+        "distinct_domains_mean": 3.75,
+        "primary_share_mean": 0.675,
         "grade_ab_share": 1.0,
-        "answer_quality_mean": 58.75,
-        "answer_relevance_mean": 0.3861,
-        "support_rate_mean": 0.4417,
+        "answer_quality_mean": 70.25,
+        "answer_relevance_mean": 0.7068,
+        "report_quality_mean": 9.195,
+        "report_quality_pass_rate": 0.75,
+        "support_rate_mean": 0.575,
         "minimums_pass_rate": 1.0
       }
     },
@@ -77,17 +83,19 @@
         "dimension_hit_rate": 1.0,
         "forbidden_clean_rate": 1.0,
         "section_presence_rate": 0.4,
-        "structural_adaptability_rate": 0.0,
+        "structural_adaptability_rate": 0.25,
         "process_clean_rate": 1.0,
         "citation_resolution_rate": 1.0,
-        "verified_claims_mean": 3.25,
-        "corroborated_claims_mean": 2.5,
-        "distinct_domains_mean": 2.5,
-        "primary_share_mean": 0.875,
+        "verified_claims_mean": 4.25,
+        "corroborated_claims_mean": 3.5,
+        "distinct_domains_mean": 3.25,
+        "primary_share_mean": 0.9,
         "grade_ab_share": 1.0,
-        "answer_quality_mean": 58.5,
-        "answer_relevance_mean": 0.3246,
-        "support_rate_mean": 0.4833,
+        "answer_quality_mean": 70.5,
+        "answer_relevance_mean": 0.6483,
+        "report_quality_mean": 8.3575,
+        "report_quality_pass_rate": 0.0,
+        "support_rate_mean": 0.6167,
         "minimums_pass_rate": 1.0
       }
     },
@@ -95,20 +103,22 @@
       "queries": 4,
       "metrics": {
         "query_type_accuracy": 1.0,
-        "dimension_hit_rate": 0.9167,
+        "dimension_hit_rate": 1.0,
         "forbidden_clean_rate": 1.0,
         "section_presence_rate": 0.4,
-        "structural_adaptability_rate": 0.5,
+        "structural_adaptability_rate": 0.25,
         "process_clean_rate": 1.0,
         "citation_resolution_rate": 1.0,
-        "verified_claims_mean": 2.0,
-        "corroborated_claims_mean": 1.25,
-        "distinct_domains_mean": 1.5,
-        "primary_share_mean": 0.9167,
+        "verified_claims_mean": 4.5,
+        "corroborated_claims_mean": 2.5,
+        "distinct_domains_mean": 3.0,
+        "primary_share_mean": 0.75,
         "grade_ab_share": 1.0,
-        "answer_quality_mean": 58.0,
-        "answer_relevance_mean": 0.3367,
-        "support_rate_mean": 0.5,
+        "answer_quality_mean": 63.25,
+        "answer_relevance_mean": 0.4911,
+        "report_quality_mean": 9.4525,
+        "report_quality_pass_rate": 1.0,
+        "support_rate_mean": 0.375,
         "minimums_pass_rate": 1.0
       }
     },
@@ -116,10 +126,10 @@
       "queries": 3,
       "metrics": {
         "query_type_accuracy": 1.0,
-        "dimension_hit_rate": 0.8889,
+        "dimension_hit_rate": 1.0,
         "forbidden_clean_rate": 1.0,
         "section_presence_rate": 0.4,
-        "structural_adaptability_rate": 1.0,
+        "structural_adaptability_rate": 0.3333,
         "process_clean_rate": 1.0,
         "citation_resolution_rate": 1.0,
         "verified_claims_mean": 1.6667,
@@ -127,8 +137,10 @@
         "distinct_domains_mean": 1.3333,
         "primary_share_mean": 1.0,
         "grade_ab_share": 1.0,
-        "answer_quality_mean": 58.6667,
-        "answer_relevance_mean": 0.2367,
+        "answer_quality_mean": 69.3333,
+        "answer_relevance_mean": 0.7026,
+        "report_quality_mean": 8.1367,
+        "report_quality_pass_rate": 0.0,
         "support_rate_mean": 0.5556,
         "minimums_pass_rate": 1.0
       }
@@ -137,20 +149,22 @@
       "queries": 5,
       "metrics": {
         "query_type_accuracy": 1.0,
-        "dimension_hit_rate": 0.9333,
+        "dimension_hit_rate": 1.0,
         "forbidden_clean_rate": 1.0,
         "section_presence_rate": 0.4,
         "structural_adaptability_rate": 1.0,
         "process_clean_rate": 1.0,
         "citation_resolution_rate": 1.0,
-        "verified_claims_mean": 3.0,
-        "corroborated_claims_mean": 2.0,
-        "distinct_domains_mean": 2.4,
+        "verified_claims_mean": 3.6,
+        "corroborated_claims_mean": 1.4,
+        "distinct_domains_mean": 2.8,
         "primary_share_mean": 1.0,
         "grade_ab_share": 1.0,
-        "answer_quality_mean": 65.8,
-        "answer_relevance_mean": 0.5199,
-        "support_rate_mean": 0.5867,
+        "answer_quality_mean": 77.6,
+        "answer_relevance_mean": 0.7025,
+        "report_quality_mean": 9.366,
+        "report_quality_pass_rate": 0.8,
+        "support_rate_mean": 0.68,
         "minimums_pass_rate": 1.0
       }
     },
@@ -164,14 +178,16 @@
         "structural_adaptability_rate": 0.6667,
         "process_clean_rate": 1.0,
         "citation_resolution_rate": 1.0,
-        "verified_claims_mean": 2.0,
+        "verified_claims_mean": 3.3333,
         "corroborated_claims_mean": 1.6667,
-        "distinct_domains_mean": 1.6667,
-        "primary_share_mean": 0.8889,
+        "distinct_domains_mean": 3.0,
+        "primary_share_mean": 0.5556,
         "grade_ab_share": 1.0,
-        "answer_quality_mean": 60.3333,
-        "answer_relevance_mean": 0.3644,
-        "support_rate_mean": 0.5,
+        "answer_quality_mean": 60.0,
+        "answer_relevance_mean": 0.3668,
+        "report_quality_mean": 9.24,
+        "report_quality_pass_rate": 1.0,
+        "support_rate_mean": 0.4222,
         "minimums_pass_rate": 1.0
       }
     }
@@ -226,14 +242,14 @@
       },
       "evidence": {
         "grade_distribution": {
-          "A": 3,
-          "B": 2,
+          "A": 2,
+          "B": 3,
           "C": 0,
           "D": 0
         },
         "grade_ab_share": 1.0,
         "verified_claims": 5,
-        "corroborated_claims": 3,
+        "corroborated_claims": 2,
         "needs_corroboration": 1,
         "distinct_domains": 4,
         "primary_share": 1.0,
@@ -246,21 +262,35 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 66,
-        "passed": false,
-        "accuracy": 63,
-        "relevance": 77,
-        "evidence": 54,
-        "clarity": 85,
-        "reasoning": 45,
-        "answer_relevance": 0.5743,
+        "overall": 72,
+        "passed": true,
+        "accuracy": 56,
+        "relevance": 78,
+        "evidence": 62,
+        "clarity": 100,
+        "reasoning": 79,
+        "answer_relevance": 0.7394,
         "failures": [
-          "Clarity: report length (123 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Reasoning: the report states no limitations \u2014 add what could not be verified."
         ]
       },
-      "support_rate": 0.6,
+      "report_quality": {
+        "query_type": "analytical",
+        "groundedness": 1.0,
+        "accuracy": 1.0,
+        "coverage": 0.75,
+        "readability": 1.0,
+        "score": 9.38,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.35,
+          "accuracy": 0.2,
+          "coverage": 0.25,
+          "readability": 0.2
+        }
+      },
+      "support_rate": 0.4,
       "minimums_checks": {
         "verified_claims": true,
         "corroborated_claims": true,
@@ -274,12 +304,12 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.142,
+      "wall_sec": 0.116,
       "topic": "rag",
-      "llm_calls": 11
+      "llm_calls": 9
     },
     {
       "id": "factual-mrna",
@@ -330,14 +360,14 @@
       },
       "evidence": {
         "grade_distribution": {
-          "A": 2,
-          "B": 1,
+          "A": 1,
+          "B": 2,
           "C": 0,
           "D": 0
         },
         "grade_ab_share": 1.0,
         "verified_claims": 3,
-        "corroborated_claims": 2,
+        "corroborated_claims": 1,
         "needs_corroboration": 1,
         "distinct_domains": 2,
         "primary_share": 1.0,
@@ -350,22 +380,35 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 65,
-        "passed": false,
-        "accuracy": 78,
-        "relevance": 61,
-        "evidence": 54,
-        "clarity": 75,
-        "reasoning": 44,
-        "answer_relevance": 0.4312,
+        "overall": 84,
+        "passed": true,
+        "accuracy": 100,
+        "relevance": 76,
+        "evidence": 60,
+        "clarity": 100,
+        "reasoning": 79,
+        "answer_relevance": 0.6859,
         "failures": [
           "Relevance: the answer opening does not address the query's core terms (mrna, vaccine, produce, immune). Answer the asked question directly in the first paragraph.",
-          "Clarity: report length (75 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Reasoning: the report states no limitations \u2014 add what could not be verified."
         ]
       },
-      "support_rate": 0.6666666666666666,
+      "report_quality": {
+        "query_type": "analytical",
+        "groundedness": 1.0,
+        "accuracy": 0.0,
+        "coverage": 0.6,
+        "readability": 1.0,
+        "score": 8.75,
+        "target": 9.0,
+        "passes": false,
+        "weights": {
+          "groundedness": 0.43749999999999994,
+          "coverage": 0.3125,
+          "readability": 0.25
+        }
+      },
+      "support_rate": 1.0,
       "minimums_checks": {
         "verified_claims": true,
         "corroborated_claims": true,
@@ -379,12 +422,13 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "summarizer",
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.046,
+      "wall_sec": 0.05,
       "topic": "mrna",
-      "llm_calls": 11
+      "llm_calls": 9
     },
     {
       "id": "factual-transformer-ml",
@@ -398,7 +442,7 @@
         "mechanism",
         "evidence"
       ],
-      "dimensions_hit": 2,
+      "dimensions_hit": 3,
       "dimensions_min": 2,
       "dimensions_ok": true,
       "forbidden_hits": [],
@@ -455,19 +499,35 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 67,
+        "overall": 69,
         "passed": false,
         "accuracy": 68,
         "relevance": 79,
-        "evidence": 54,
+        "evidence": 64,
         "clarity": 80,
-        "reasoning": 45,
+        "reasoning": 39,
         "answer_relevance": 0.6249,
         "failures": [
           "Clarity: report length (98 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
           "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says.",
+          "Reasoning 39/100 is below the 40/100 floor."
         ]
+      },
+      "report_quality": {
+        "query_type": "factual",
+        "groundedness": 1.0,
+        "accuracy": 0.0,
+        "coverage": 1.0,
+        "readability": 1.0,
+        "score": 10.0,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.6,
+          "coverage": 0.19999999999999998,
+          "readability": 0.19999999999999998
+        }
       },
       "support_rate": 0.5,
       "minimums_checks": {
@@ -484,12 +544,12 @@
       "minimums_ok": true,
       "degraded": [
         "router",
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.059,
+      "wall_sec": 0.045,
       "topic": "transformer_ml",
-      "llm_calls": 12
+      "llm_calls": 10
     },
     {
       "id": "factual-solid-state",
@@ -540,14 +600,14 @@
       },
       "evidence": {
         "grade_distribution": {
-          "A": 2,
-          "B": 0,
+          "A": 1,
+          "B": 1,
           "C": 0,
           "D": 0
         },
         "grade_ab_share": 1.0,
         "verified_claims": 2,
-        "corroborated_claims": 2,
+        "corroborated_claims": 1,
         "needs_corroboration": 0,
         "distinct_domains": 2,
         "primary_share": 1.0,
@@ -560,21 +620,34 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 69,
-        "passed": false,
-        "accuracy": 78,
-        "relevance": 74,
-        "evidence": 54,
-        "clarity": 78,
-        "reasoning": 45,
-        "answer_relevance": 0.5317,
+        "overall": 88,
+        "passed": true,
+        "accuracy": 100,
+        "relevance": 88,
+        "evidence": 64,
+        "clarity": 100,
+        "reasoning": 79,
+        "answer_relevance": 0.7634,
         "failures": [
-          "Clarity: report length (90 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Reasoning: the report states no limitations \u2014 add what could not be verified."
         ]
       },
-      "support_rate": 0.6666666666666666,
+      "report_quality": {
+        "query_type": "analytical",
+        "groundedness": 1.0,
+        "accuracy": 0.0,
+        "coverage": 0.833,
+        "readability": 1.0,
+        "score": 9.48,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.43749999999999994,
+          "coverage": 0.3125,
+          "readability": 0.25
+        }
+      },
+      "support_rate": 1.0,
       "minimums_checks": {
         "verified_claims": true,
         "corroborated_claims": true,
@@ -588,12 +661,12 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.05,
+      "wall_sec": 0.04,
       "topic": "solid_state",
-      "llm_calls": 11
+      "llm_calls": 8
     },
     {
       "id": "trend-renewables",
@@ -630,10 +703,10 @@
       "structural_adaptive": false,
       "process_noise": 0,
       "citation": {
-        "markers_total": 4,
-        "markers_resolved": 4,
+        "markers_total": 6,
+        "markers_resolved": 6,
         "markers_unresolved": [],
-        "legend_entries": 3,
+        "legend_entries": 5,
         "legend_unused": [],
         "resolution_rate": 1.0,
         "no_dangling": true,
@@ -644,18 +717,18 @@
       },
       "evidence": {
         "grade_distribution": {
-          "A": 3,
-          "B": 1,
+          "A": 4,
+          "B": 4,
           "C": 0,
           "D": 0
         },
         "grade_ab_share": 1.0,
-        "verified_claims": 4,
-        "corroborated_claims": 3,
+        "verified_claims": 8,
+        "corroborated_claims": 4,
         "needs_corroboration": 1,
-        "distinct_domains": 3,
-        "primary_share": 0.6666666666666666,
-        "total_claims": 4
+        "distinct_domains": 5,
+        "primary_share": 0.4,
+        "total_claims": 8
       },
       "contradictions": {
         "total": 0,
@@ -664,22 +737,38 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 61,
+        "overall": 57,
         "passed": false,
-        "accuracy": 63,
-        "relevance": 64,
+        "accuracy": 41,
+        "relevance": 69,
         "evidence": 49,
-        "clarity": 80,
-        "reasoning": 44,
+        "clarity": 91,
+        "reasoning": 38,
         "answer_relevance": 0.4276,
         "failures": [
           "Relevance: the answer opening does not address the query's core terms (current, trend, global, renewable). Answer the asked question directly in the first paragraph.",
-          "Clarity: report length (99 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
           "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says.",
+          "Reasoning 38/100 is below the 40/100 floor."
         ]
       },
-      "support_rate": 0.5,
+      "report_quality": {
+        "query_type": "factual",
+        "groundedness": 1.0,
+        "accuracy": 1.0,
+        "coverage": 0.714,
+        "readability": 1.0,
+        "score": 9.57,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.45,
+          "accuracy": 0.25,
+          "coverage": 0.15,
+          "readability": 0.15
+        }
+      },
+      "support_rate": 0.16666666666666666,
       "minimums_checks": {
         "verified_claims": true,
         "corroborated_claims": true,
@@ -693,12 +782,12 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.075,
+      "wall_sec": 0.097,
       "topic": "renewables",
-      "llm_calls": 11
+      "llm_calls": 9
     },
     {
       "id": "trend-ai-adoption",
@@ -712,7 +801,7 @@
         "evidence",
         "trend"
       ],
-      "dimensions_hit": 2,
+      "dimensions_hit": 3,
       "dimensions_min": 2,
       "dimensions_ok": true,
       "forbidden_hits": [],
@@ -769,19 +858,36 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 64,
+        "overall": 65,
         "passed": false,
         "accuracy": 68,
         "relevance": 72,
-        "evidence": 54,
+        "evidence": 64,
         "clarity": 69,
-        "reasoning": 45,
+        "reasoning": 39,
         "answer_relevance": 0.5765,
         "failures": [
           "Clarity: report length (43 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
           "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says.",
+          "Reasoning 39/100 is below the 40/100 floor."
         ]
+      },
+      "report_quality": {
+        "query_type": "factual",
+        "groundedness": 1.0,
+        "accuracy": 1.0,
+        "coverage": 0.8,
+        "readability": 1.0,
+        "score": 9.7,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.45,
+          "accuracy": 0.25,
+          "coverage": 0.15,
+          "readability": 0.15
+        }
       },
       "support_rate": 0.5,
       "minimums_checks": {
@@ -798,12 +904,13 @@
       "minimums_ok": true,
       "degraded": [
         "router",
-        "planner_dimensions"
+        "summarizer",
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.031,
+      "wall_sec": 0.021,
       "topic": "ai_adoption",
-      "llm_calls": 12
+      "llm_calls": 11
     },
     {
       "id": "trend-storage",
@@ -836,14 +943,14 @@
       ],
       "sections_present": 2,
       "section_presence_rate": 0.4,
-      "detected_shape": "thematic",
-      "structural_adaptive": true,
+      "detected_shape": "chronological",
+      "structural_adaptive": false,
       "process_noise": 0,
       "citation": {
-        "markers_total": 2,
-        "markers_resolved": 2,
+        "markers_total": 6,
+        "markers_resolved": 6,
         "markers_unresolved": [],
-        "legend_entries": 1,
+        "legend_entries": 5,
         "legend_unused": [],
         "resolution_rate": 1.0,
         "no_dangling": true,
@@ -854,18 +961,18 @@
       },
       "evidence": {
         "grade_distribution": {
-          "A": 0,
-          "B": 1,
+          "A": 4,
+          "B": 2,
           "C": 0,
           "D": 0
         },
         "grade_ab_share": 1.0,
-        "verified_claims": 1,
-        "corroborated_claims": 0,
-        "needs_corroboration": 0,
-        "distinct_domains": 1,
-        "primary_share": 1.0,
-        "total_claims": 1
+        "verified_claims": 6,
+        "corroborated_claims": 4,
+        "needs_corroboration": 1,
+        "distinct_domains": 5,
+        "primary_share": 0.6,
+        "total_claims": 6
       },
       "contradictions": {
         "total": 0,
@@ -874,21 +981,34 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 47,
-        "passed": false,
-        "accuracy": 68,
-        "relevance": 10,
-        "evidence": 54,
-        "clarity": 69,
-        "reasoning": 30,
-        "answer_relevance": 0.0021,
+        "overall": 71,
+        "passed": true,
+        "accuracy": 65,
+        "relevance": 78,
+        "evidence": 53,
+        "clarity": 90,
+        "reasoning": 79,
+        "answer_relevance": 0.618,
         "failures": [
-          "Relevance: the report's content does not match the question asked \u2014 it reads as evidence about a different topic. Restructure around the query's actual subject: 'What is the current state of grid-scale battery storage deployment?'.",
-          "Relevance: the answer opening does not address the query's core terms (current, state, grid, scale). Answer the asked question directly in the first paragraph.",
-          "Relevance: the report drifts from the researched angles/meaning \u2014 restructure so every section serves the query's resolved intent.",
-          "Clarity: report length (46 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
+          "Clarity: the answer exposes internal research-process detail (pipeline stages, fallbacks, evidence grades, budgets). Describe what is known; leave process provenance to the audit layer.",
           "Reasoning: the report states no limitations \u2014 add what could not be verified."
         ]
+      },
+      "report_quality": {
+        "query_type": "exploratory",
+        "groundedness": 1.0,
+        "accuracy": 1.0,
+        "coverage": 0.714,
+        "readability": 1.0,
+        "score": 9.29,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.35,
+          "accuracy": 0.2,
+          "coverage": 0.25,
+          "readability": 0.2
+        }
       },
       "support_rate": 0.5,
       "minimums_checks": {
@@ -904,13 +1024,12 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions",
-        "summarizer"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.043,
+      "wall_sec": 0.159,
       "topic": "storage",
-      "llm_calls": 11
+      "llm_calls": 13
     },
     {
       "id": "comparison-nuclear-solar",
@@ -947,10 +1066,10 @@
       "structural_adaptive": false,
       "process_noise": 0,
       "citation": {
-        "markers_total": 3,
-        "markers_resolved": 3,
+        "markers_total": 6,
+        "markers_resolved": 6,
         "markers_unresolved": [],
-        "legend_entries": 2,
+        "legend_entries": 5,
         "legend_unused": [],
         "resolution_rate": 1.0,
         "no_dangling": true,
@@ -961,18 +1080,18 @@
       },
       "evidence": {
         "grade_distribution": {
-          "A": 2,
+          "A": 6,
           "B": 1,
           "C": 0,
           "D": 0
         },
         "grade_ab_share": 1.0,
-        "verified_claims": 3,
-        "corroborated_claims": 2,
+        "verified_claims": 7,
+        "corroborated_claims": 6,
         "needs_corroboration": 1,
-        "distinct_domains": 2,
-        "primary_share": 0.5,
-        "total_claims": 3
+        "distinct_domains": 5,
+        "primary_share": 0.6,
+        "total_claims": 7
       },
       "contradictions": {
         "total": 0,
@@ -981,23 +1100,36 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 53,
+        "overall": 67,
         "passed": false,
-        "accuracy": 57,
-        "relevance": 46,
-        "evidence": 46,
-        "clarity": 78,
-        "reasoning": 38,
-        "answer_relevance": 0.2361,
+        "accuracy": 66,
+        "relevance": 64,
+        "evidence": 52,
+        "clarity": 90,
+        "reasoning": 77,
+        "answer_relevance": 0.3902,
         "failures": [
           "Relevance: the answer opening does not address the query's core terms (compare, nuclear, solar, energy). Answer the asked question directly in the first paragraph.",
-          "Clarity: report length (88 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says.",
-          "Reasoning 38/100 is below the 40/100 floor."
+          "Clarity: the answer exposes internal research-process detail (pipeline stages, fallbacks, evidence grades, budgets). Describe what is known; leave process provenance to the audit layer.",
+          "Reasoning: the report states no limitations \u2014 add what could not be verified."
         ]
       },
-      "support_rate": 0.3333333333333333,
+      "report_quality": {
+        "query_type": "comparative",
+        "groundedness": 1.0,
+        "accuracy": 0.0,
+        "coverage": 0.429,
+        "readability": 1.0,
+        "score": 8.21,
+        "target": 9.0,
+        "passes": false,
+        "weights": {
+          "groundedness": 0.43749999999999994,
+          "coverage": 0.3125,
+          "readability": 0.25
+        }
+      },
+      "support_rate": 0.6666666666666666,
       "minimums_checks": {
         "verified_claims": true,
         "corroborated_claims": true,
@@ -1011,12 +1143,12 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.074,
+      "wall_sec": 0.214,
       "topic": "nuclear",
-      "llm_calls": 11
+      "llm_calls": 13
     },
     {
       "id": "comparison-lithium-solid",
@@ -1087,20 +1219,34 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 64,
-        "passed": false,
-        "accuracy": 78,
-        "relevance": 59,
-        "evidence": 54,
-        "clarity": 74,
-        "reasoning": 42,
-        "answer_relevance": 0.3643,
+        "overall": 72,
+        "passed": true,
+        "accuracy": 66,
+        "relevance": 76,
+        "evidence": 60,
+        "clarity": 90,
+        "reasoning": 79,
+        "answer_relevance": 0.7117,
         "failures": [
           "Relevance: the answer opening does not address the query's core terms (compare, lithium, solid, state). Answer the asked question directly in the first paragraph.",
-          "Clarity: report length (68 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Clarity: the answer exposes internal research-process detail (pipeline stages, fallbacks, evidence grades, budgets). Describe what is known; leave process provenance to the audit layer.",
+          "Reasoning: the report states no limitations \u2014 add what could not be verified."
         ]
+      },
+      "report_quality": {
+        "query_type": "comparative",
+        "groundedness": 1.0,
+        "accuracy": 0.0,
+        "coverage": 0.444,
+        "readability": 1.0,
+        "score": 8.26,
+        "target": 9.0,
+        "passes": false,
+        "weights": {
+          "groundedness": 0.43749999999999994,
+          "coverage": 0.3125,
+          "readability": 0.25
+        }
       },
       "support_rate": 0.6666666666666666,
       "minimums_checks": {
@@ -1116,12 +1262,12 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.069,
+      "wall_sec": 0.087,
       "topic": "lithium",
-      "llm_calls": 11
+      "llm_calls": 12
     },
     {
       "id": "comparison-rag-finetune",
@@ -1154,8 +1300,8 @@
       ],
       "sections_present": 2,
       "section_presence_rate": 0.4,
-      "detected_shape": "thematic",
-      "structural_adaptive": false,
+      "detected_shape": "criterion_comparison",
+      "structural_adaptive": true,
       "process_noise": 0,
       "citation": {
         "markers_total": 5,
@@ -1192,22 +1338,37 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 62,
-        "passed": false,
-        "accuracy": 63,
-        "relevance": 61,
-        "evidence": 54,
-        "clarity": 85,
-        "reasoning": 44,
-        "answer_relevance": 0.4257,
+        "overall": 76,
+        "passed": true,
+        "accuracy": 80,
+        "relevance": 76,
+        "evidence": 64,
+        "clarity": 80,
+        "reasoning": 79,
+        "answer_relevance": 0.7889,
         "failures": [
           "Relevance: the answer opening does not address the query's core terms (compare, retrieval, augmented, generation). Answer the asked question directly in the first paragraph.",
-          "Clarity: report length (123 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Clarity: the answer exposes internal research-process detail (pipeline stages, fallbacks, evidence grades, budgets). Describe what is known; leave process provenance to the audit layer.",
+          "Reasoning: the report states no limitations \u2014 add what could not be verified."
         ]
       },
-      "support_rate": 0.6,
+      "report_quality": {
+        "query_type": "comparative",
+        "groundedness": 1.0,
+        "accuracy": 1.0,
+        "coverage": 0.5,
+        "readability": 1.0,
+        "score": 8.75,
+        "target": 9.0,
+        "passes": false,
+        "weights": {
+          "groundedness": 0.35,
+          "accuracy": 0.2,
+          "coverage": 0.25,
+          "readability": 0.2
+        }
+      },
+      "support_rate": 0.8,
       "minimums_checks": {
         "verified_claims": true,
         "corroborated_claims": true,
@@ -1221,12 +1382,12 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.115,
+      "wall_sec": 0.163,
       "topic": "finetune",
-      "llm_calls": 11
+      "llm_calls": 13
     },
     {
       "id": "decision-nuclear-investment",
@@ -1298,21 +1459,34 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 54,
+        "overall": 68,
         "passed": false,
-        "accuracy": 68,
-        "relevance": 35,
-        "evidence": 54,
-        "clarity": 71,
-        "reasoning": 32,
-        "answer_relevance": 0.0703,
+        "accuracy": 58,
+        "relevance": 71,
+        "evidence": 64,
+        "clarity": 80,
+        "reasoning": 79,
+        "answer_relevance": 0.6787,
         "failures": [
-          "Relevance: the report's content does not match the question asked \u2014 it reads as evidence about a different topic. Restructure around the query's actual subject: 'Should Bangladesh expand nuclear energy investment over the next twenty years?'.",
           "Relevance: the answer opening does not address the query's core terms (bangladesh, expand, nuclear, energy). Answer the asked question directly in the first paragraph.",
-          "Clarity: report length (53 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Clarity: the answer exposes internal research-process detail (pipeline stages, fallbacks, evidence grades, budgets). Describe what is known; leave process provenance to the audit layer.",
+          "Reasoning: the report states no limitations \u2014 add what could not be verified."
         ]
+      },
+      "report_quality": {
+        "query_type": "analytical",
+        "groundedness": 1.0,
+        "accuracy": 0.0,
+        "coverage": 0.2,
+        "readability": 1.0,
+        "score": 7.5,
+        "target": 9.0,
+        "passes": false,
+        "weights": {
+          "groundedness": 0.43749999999999994,
+          "coverage": 0.3125,
+          "readability": 0.25
+        }
       },
       "support_rate": 0.5,
       "minimums_checks": {
@@ -1328,12 +1502,13 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "summarizer",
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.034,
+      "wall_sec": 0.073,
       "topic": "nuclear",
-      "llm_calls": 11
+      "llm_calls": 14
     },
     {
       "id": "decision-carbon-policy",
@@ -1367,8 +1542,8 @@
       ],
       "sections_present": 2,
       "section_presence_rate": 0.4,
-      "detected_shape": "thematic",
-      "structural_adaptive": true,
+      "detected_shape": "mechanism_chain",
+      "structural_adaptive": false,
       "process_noise": 0,
       "citation": {
         "markers_total": 3,
@@ -1405,20 +1580,34 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 66,
-        "passed": false,
-        "accuracy": 78,
-        "relevance": 63,
-        "evidence": 54,
-        "clarity": 76,
-        "reasoning": 45,
-        "answer_relevance": 0.4579,
+        "overall": 71,
+        "passed": true,
+        "accuracy": 66,
+        "relevance": 79,
+        "evidence": 60,
+        "clarity": 80,
+        "reasoning": 79,
+        "answer_relevance": 0.7684,
         "failures": [
           "Relevance: the answer opening does not address the query's core terms (policymakers, prioritize, carbon, pricing). Answer the asked question directly in the first paragraph.",
-          "Clarity: report length (80 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Clarity: the answer exposes internal research-process detail (pipeline stages, fallbacks, evidence grades, budgets). Describe what is known; leave process provenance to the audit layer.",
+          "Reasoning: the report states no limitations \u2014 add what could not be verified."
         ]
+      },
+      "report_quality": {
+        "query_type": "analytical",
+        "groundedness": 1.0,
+        "accuracy": 0.0,
+        "coverage": 0.667,
+        "readability": 1.0,
+        "score": 8.96,
+        "target": 9.0,
+        "passes": false,
+        "weights": {
+          "groundedness": 0.43749999999999994,
+          "coverage": 0.3125,
+          "readability": 0.25
+        }
       },
       "support_rate": 0.6666666666666666,
       "minimums_checks": {
@@ -1434,12 +1623,12 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.059,
+      "wall_sec": 0.089,
       "topic": "carbon_policy",
-      "llm_calls": 11
+      "llm_calls": 12
     },
     {
       "id": "ambiguous-transformer",
@@ -1453,7 +1642,7 @@
         "mechanism",
         "evidence"
       ],
-      "dimensions_hit": 2,
+      "dimensions_hit": 3,
       "dimensions_min": 2,
       "dimensions_ok": true,
       "forbidden_hits": [],
@@ -1510,19 +1699,35 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 59,
+        "overall": 64,
         "passed": false,
         "accuracy": 57,
-        "relevance": 74,
-        "evidence": 39,
+        "relevance": 87,
+        "evidence": 50,
         "clarity": 72,
-        "reasoning": 45,
+        "reasoning": 39,
         "answer_relevance": 0.5671,
         "failures": [
           "Clarity: report length (58 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
           "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says.",
+          "Reasoning 39/100 is below the 40/100 floor."
         ]
+      },
+      "report_quality": {
+        "query_type": "factual",
+        "groundedness": 1.0,
+        "accuracy": 0.0,
+        "coverage": 1.0,
+        "readability": 1.0,
+        "score": 10.0,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.6,
+          "coverage": 0.19999999999999998,
+          "readability": 0.19999999999999998
+        }
       },
       "support_rate": 0.3333333333333333,
       "minimums_checks": {
@@ -1539,122 +1744,17 @@
       "minimums_ok": true,
       "degraded": [
         "router",
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.053,
+      "wall_sec": 0.03,
       "topic": "transformer_ambiguous",
-      "llm_calls": 12
+      "llm_calls": 9
     },
     {
       "id": "ambiguous-apple",
       "category": "ambiguous_term",
       "query": "What is Apple?",
-      "query_type": "factual",
-      "query_type_required": "factual",
-      "query_type_ok": true,
-      "dimensions_required": [
-        "definition",
-        "evidence"
-      ],
-      "dimensions_hit": 2,
-      "dimensions_min": 2,
-      "dimensions_ok": true,
-      "forbidden_hits": [],
-      "forbidden_ok": true,
-      "required_sections": [
-        "Executive Summary",
-        "Key Findings",
-        "Evidence Strength",
-        "Limitations & Unknowns",
-        "Counterarguments & Disputed Points"
-      ],
-      "missing_sections": [
-        "Evidence Strength",
-        "Limitations & Unknowns",
-        "Counterarguments & Disputed Points"
-      ],
-      "sections_present": 2,
-      "section_presence_rate": 0.4,
-      "detected_shape": "thematic",
-      "structural_adaptive": true,
-      "process_noise": 0,
-      "citation": {
-        "markers_total": 2,
-        "markers_resolved": 2,
-        "markers_unresolved": [],
-        "legend_entries": 1,
-        "legend_unused": [],
-        "resolution_rate": 1.0,
-        "no_dangling": true,
-        "no_unsupported_numbers": true,
-        "unsupported_numbers": 0,
-        "production_support_rate": 0.0,
-        "production_uncited": 1
-      },
-      "evidence": {
-        "grade_distribution": {
-          "A": 1,
-          "B": 1,
-          "C": 0,
-          "D": 0
-        },
-        "grade_ab_share": 1.0,
-        "verified_claims": 2,
-        "corroborated_claims": 1,
-        "needs_corroboration": 1,
-        "distinct_domains": 1,
-        "primary_share": 0.0,
-        "total_claims": 2
-      },
-      "contradictions": {
-        "total": 0,
-        "resolved": 0,
-        "unresolved": 0,
-        "independent_scan_count": 0
-      },
-      "answer_quality": {
-        "overall": 55,
-        "passed": false,
-        "accuracy": 68,
-        "relevance": 50,
-        "evidence": 39,
-        "clarity": 68,
-        "reasoning": 45,
-        "answer_relevance": 0.5139,
-        "failures": [
-          "Relevance: the answer opening does not address the query's core terms (apple). Answer the asked question directly in the first paragraph.",
-          "Clarity: report length (39 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
-        ]
-      },
-      "support_rate": 0.5,
-      "minimums_checks": {
-        "verified_claims": true,
-        "corroborated_claims": true,
-        "distinct_domains": true,
-        "primary_share": true
-      },
-      "invariant_checks": {
-        "every_marker_resolves": true,
-        "no_dangling_markers": true,
-        "no_unsupported_numbers": true
-      },
-      "minimums_ok": true,
-      "degraded": [
-        "router",
-        "planner_dimensions"
-      ],
-      "error": null,
-      "wall_sec": 0.038,
-      "topic": "apple",
-      "llm_calls": 12
-    },
-    {
-      "id": "ambiguous-bank",
-      "category": "ambiguous_term",
-      "query": "What is a bank?",
       "query_type": "factual",
       "query_type_required": "factual",
       "query_type_ok": true,
@@ -1719,19 +1819,35 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 62,
+        "overall": 65,
         "passed": false,
         "accuracy": 68,
         "relevance": 78,
-        "evidence": 39,
+        "evidence": 54,
         "clarity": 68,
-        "reasoning": 45,
-        "answer_relevance": 0.5845,
+        "reasoning": 39,
+        "answer_relevance": 0.5892,
         "failures": [
           "Clarity: report length (41 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
           "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says.",
+          "Reasoning 39/100 is below the 40/100 floor."
         ]
+      },
+      "report_quality": {
+        "query_type": "factual",
+        "groundedness": 1.0,
+        "accuracy": 0.0,
+        "coverage": 1.0,
+        "readability": 1.0,
+        "score": 10.0,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.6,
+          "coverage": 0.19999999999999998,
+          "readability": 0.19999999999999998
+        }
       },
       "support_rate": 0.5,
       "minimums_checks": {
@@ -1748,12 +1864,132 @@
       "minimums_ok": true,
       "degraded": [
         "router",
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.025,
+      "wall_sec": 0.018,
+      "topic": "apple",
+      "llm_calls": 10
+    },
+    {
+      "id": "ambiguous-bank",
+      "category": "ambiguous_term",
+      "query": "What is a bank?",
+      "query_type": "factual",
+      "query_type_required": "factual",
+      "query_type_ok": true,
+      "dimensions_required": [
+        "definition",
+        "evidence"
+      ],
+      "dimensions_hit": 2,
+      "dimensions_min": 2,
+      "dimensions_ok": true,
+      "forbidden_hits": [],
+      "forbidden_ok": true,
+      "required_sections": [
+        "Executive Summary",
+        "Key Findings",
+        "Evidence Strength",
+        "Limitations & Unknowns",
+        "Counterarguments & Disputed Points"
+      ],
+      "missing_sections": [
+        "Evidence Strength",
+        "Limitations & Unknowns",
+        "Counterarguments & Disputed Points"
+      ],
+      "sections_present": 2,
+      "section_presence_rate": 0.4,
+      "detected_shape": "thematic",
+      "structural_adaptive": true,
+      "process_noise": 0,
+      "citation": {
+        "markers_total": 3,
+        "markers_resolved": 3,
+        "markers_unresolved": [],
+        "legend_entries": 2,
+        "legend_unused": [],
+        "resolution_rate": 1.0,
+        "no_dangling": true,
+        "no_unsupported_numbers": true,
+        "unsupported_numbers": 0,
+        "production_support_rate": 0.0,
+        "production_uncited": 1
+      },
+      "evidence": {
+        "grade_distribution": {
+          "A": 1,
+          "B": 1,
+          "C": 0,
+          "D": 0
+        },
+        "grade_ab_share": 1.0,
+        "verified_claims": 2,
+        "corroborated_claims": 1,
+        "needs_corroboration": 0,
+        "distinct_domains": 2,
+        "primary_share": 1.0,
+        "total_claims": 2
+      },
+      "contradictions": {
+        "total": 0,
+        "resolved": 0,
+        "unresolved": 0,
+        "independent_scan_count": 0
+      },
+      "answer_quality": {
+        "overall": 63,
+        "passed": false,
+        "accuracy": 57,
+        "relevance": 74,
+        "evidence": 64,
+        "clarity": 73,
+        "reasoning": 39,
+        "answer_relevance": 0.5657,
+        "failures": [
+          "Clarity: report length (63 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
+          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
+          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says.",
+          "Reasoning 39/100 is below the 40/100 floor."
+        ]
+      },
+      "report_quality": {
+        "query_type": "factual",
+        "groundedness": 1.0,
+        "accuracy": 0.0,
+        "coverage": 1.0,
+        "readability": 1.0,
+        "score": 10.0,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.6,
+          "coverage": 0.19999999999999998,
+          "readability": 0.19999999999999998
+        }
+      },
+      "support_rate": 0.3333333333333333,
+      "minimums_checks": {
+        "verified_claims": true,
+        "corroborated_claims": true,
+        "distinct_domains": true,
+        "primary_share": true
+      },
+      "invariant_checks": {
+        "every_marker_resolves": true,
+        "no_dangling_markers": true,
+        "no_unsupported_numbers": true
+      },
+      "minimums_ok": true,
+      "degraded": [
+        "router",
+        "analyst"
+      ],
+      "error": null,
+      "wall_sec": 0.021,
       "topic": "bank",
-      "llm_calls": 12
+      "llm_calls": 10
     },
     {
       "id": "causal-rag-hallucination",
@@ -1767,7 +2003,7 @@
         "causal",
         "evidence"
       ],
-      "dimensions_hit": 1,
+      "dimensions_hit": 2,
       "dimensions_min": 1,
       "dimensions_ok": true,
       "forbidden_hits": [],
@@ -1824,19 +2060,396 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 67,
-        "passed": false,
-        "accuracy": 63,
-        "relevance": 79,
-        "evidence": 54,
+        "overall": 76,
+        "passed": true,
+        "accuracy": 87,
+        "relevance": 83,
+        "evidence": 62,
         "clarity": 85,
-        "reasoning": 45,
+        "reasoning": 39,
         "answer_relevance": 0.7218,
         "failures": [
           "Clarity: report length (123 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
           "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says.",
+          "Reasoning 39/100 is below the 40/100 floor."
         ]
+      },
+      "report_quality": {
+        "query_type": "factual",
+        "groundedness": 1.0,
+        "accuracy": 1.0,
+        "coverage": 0.833,
+        "readability": 1.0,
+        "score": 9.75,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.45,
+          "accuracy": 0.25,
+          "coverage": 0.15,
+          "readability": 0.15
+        }
+      },
+      "support_rate": 0.8,
+      "minimums_checks": {
+        "verified_claims": true,
+        "corroborated_claims": true,
+        "distinct_domains": true,
+        "primary_share": true
+      },
+      "invariant_checks": {
+        "every_marker_resolves": true,
+        "no_dangling_markers": true,
+        "no_unsupported_numbers": true
+      },
+      "minimums_ok": true,
+      "degraded": [
+        "router",
+        "analyst"
+      ],
+      "error": null,
+      "wall_sec": 0.129,
+      "topic": "rag",
+      "llm_calls": 14
+    },
+    {
+      "id": "causal-battery-costs",
+      "category": "causal",
+      "query": "Why have lithium-ion battery prices fallen, and what drove the decline?",
+      "query_type": "analytical",
+      "query_type_required": "analytical",
+      "query_type_ok": true,
+      "dimensions_required": [
+        "mechanism",
+        "causal",
+        "statistical"
+      ],
+      "dimensions_hit": 2,
+      "dimensions_min": 2,
+      "dimensions_ok": true,
+      "forbidden_hits": [],
+      "forbidden_ok": true,
+      "required_sections": [
+        "Executive Summary",
+        "Key Findings",
+        "Evidence Strength",
+        "Limitations & Unknowns",
+        "Counterarguments & Disputed Points"
+      ],
+      "missing_sections": [
+        "Evidence Strength",
+        "Limitations & Unknowns",
+        "Counterarguments & Disputed Points"
+      ],
+      "sections_present": 2,
+      "section_presence_rate": 0.4,
+      "detected_shape": "chronological",
+      "structural_adaptive": false,
+      "process_noise": 0,
+      "citation": {
+        "markers_total": 2,
+        "markers_resolved": 2,
+        "markers_unresolved": [],
+        "legend_entries": 1,
+        "legend_unused": [],
+        "resolution_rate": 1.0,
+        "no_dangling": true,
+        "no_unsupported_numbers": true,
+        "unsupported_numbers": 0,
+        "production_support_rate": 0.0,
+        "production_uncited": 1
+      },
+      "evidence": {
+        "grade_distribution": {
+          "A": 3,
+          "B": 0,
+          "C": 0,
+          "D": 0
+        },
+        "grade_ab_share": 1.0,
+        "verified_claims": 3,
+        "corroborated_claims": 3,
+        "needs_corroboration": 0,
+        "distinct_domains": 2,
+        "primary_share": 0.5,
+        "total_claims": 3
+      },
+      "contradictions": {
+        "total": 0,
+        "resolved": 0,
+        "unresolved": 0,
+        "independent_scan_count": 0
+      },
+      "answer_quality": {
+        "overall": 69,
+        "passed": false,
+        "accuracy": 63,
+        "relevance": 81,
+        "evidence": 49,
+        "clarity": 80,
+        "reasoning": 79,
+        "answer_relevance": 0.7372,
+        "failures": [
+          "Clarity: the answer exposes internal research-process detail (pipeline stages, fallbacks, evidence grades, budgets). Describe what is known; leave process provenance to the audit layer.",
+          "Reasoning: the report states no limitations \u2014 add what could not be verified."
+        ]
+      },
+      "report_quality": {
+        "query_type": "analytical",
+        "groundedness": 1.0,
+        "accuracy": 1.0,
+        "coverage": 0.625,
+        "readability": 1.0,
+        "score": 9.06,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.35,
+          "accuracy": 0.2,
+          "coverage": 0.25,
+          "readability": 0.2
+        }
+      },
+      "support_rate": 0.5,
+      "minimums_checks": {
+        "verified_claims": true,
+        "corroborated_claims": true,
+        "distinct_domains": true,
+        "primary_share": true
+      },
+      "invariant_checks": {
+        "every_marker_resolves": true,
+        "no_dangling_markers": true,
+        "no_unsupported_numbers": true
+      },
+      "minimums_ok": true,
+      "degraded": [
+        "analyst"
+      ],
+      "error": null,
+      "wall_sec": 0.086,
+      "topic": "lithium",
+      "llm_calls": 13
+    },
+    {
+      "id": "causal-solar-growth",
+      "category": "causal",
+      "query": "What caused the rapid growth in solar photovoltaic deployment?",
+      "query_type": "analytical",
+      "query_type_required": "analytical",
+      "query_type_ok": true,
+      "dimensions_required": [
+        "mechanism",
+        "causal",
+        "statistical"
+      ],
+      "dimensions_hit": 2,
+      "dimensions_min": 2,
+      "dimensions_ok": true,
+      "forbidden_hits": [],
+      "forbidden_ok": true,
+      "required_sections": [
+        "Executive Summary",
+        "Key Findings",
+        "Evidence Strength",
+        "Limitations & Unknowns",
+        "Counterarguments & Disputed Points"
+      ],
+      "missing_sections": [
+        "Evidence Strength",
+        "Limitations & Unknowns",
+        "Counterarguments & Disputed Points"
+      ],
+      "sections_present": 2,
+      "section_presence_rate": 0.4,
+      "detected_shape": "mechanism_chain",
+      "structural_adaptive": true,
+      "process_noise": 0,
+      "citation": {
+        "markers_total": 6,
+        "markers_resolved": 6,
+        "markers_unresolved": [],
+        "legend_entries": 5,
+        "legend_unused": [],
+        "resolution_rate": 1.0,
+        "no_dangling": true,
+        "no_unsupported_numbers": true,
+        "unsupported_numbers": 0,
+        "production_support_rate": 0.0,
+        "production_uncited": 1
+      },
+      "evidence": {
+        "grade_distribution": {
+          "A": 5,
+          "B": 3,
+          "C": 0,
+          "D": 0
+        },
+        "grade_ab_share": 1.0,
+        "verified_claims": 8,
+        "corroborated_claims": 5,
+        "needs_corroboration": 0,
+        "distinct_domains": 4,
+        "primary_share": 0.6,
+        "total_claims": 8
+      },
+      "contradictions": {
+        "total": 0,
+        "resolved": 0,
+        "unresolved": 0,
+        "independent_scan_count": 0
+      },
+      "answer_quality": {
+        "overall": 68,
+        "passed": false,
+        "accuracy": 61,
+        "relevance": 66,
+        "evidence": 53,
+        "clarity": 100,
+        "reasoning": 79,
+        "answer_relevance": 0.6823,
+        "failures": [
+          "Relevance: the answer opening does not address the query's core terms (caused, rapid, growth, solar). Answer the asked question directly in the first paragraph.",
+          "Reasoning: the report states no limitations \u2014 add what could not be verified."
+        ]
+      },
+      "report_quality": {
+        "query_type": "analytical",
+        "groundedness": 1.0,
+        "accuracy": 1.0,
+        "coverage": 0.5,
+        "readability": 1.0,
+        "score": 8.75,
+        "target": 9.0,
+        "passes": false,
+        "weights": {
+          "groundedness": 0.35,
+          "accuracy": 0.2,
+          "coverage": 0.25,
+          "readability": 0.2
+        }
+      },
+      "support_rate": 0.5,
+      "minimums_checks": {
+        "verified_claims": true,
+        "corroborated_claims": true,
+        "distinct_domains": true,
+        "primary_share": true
+      },
+      "invariant_checks": {
+        "every_marker_resolves": true,
+        "no_dangling_markers": true,
+        "no_unsupported_numbers": true
+      },
+      "minimums_ok": true,
+      "degraded": [
+        "analyst"
+      ],
+      "error": null,
+      "wall_sec": 0.132,
+      "topic": "renewables",
+      "llm_calls": 11
+    },
+    {
+      "id": "quant-renewable",
+      "category": "quantitative",
+      "query": "How much renewable energy capacity was added globally in 2023?",
+      "query_type": "factual",
+      "query_type_required": "factual",
+      "query_type_ok": true,
+      "dimensions_required": [
+        "statistical",
+        "evidence"
+      ],
+      "dimensions_hit": 2,
+      "dimensions_min": 2,
+      "dimensions_ok": true,
+      "forbidden_hits": [],
+      "forbidden_ok": true,
+      "required_sections": [
+        "Executive Summary",
+        "Key Findings",
+        "Evidence Strength",
+        "Limitations & Unknowns",
+        "Counterarguments & Disputed Points"
+      ],
+      "missing_sections": [
+        "Evidence Strength",
+        "Limitations & Unknowns",
+        "Counterarguments & Disputed Points"
+      ],
+      "sections_present": 2,
+      "section_presence_rate": 0.4,
+      "detected_shape": "criterion_comparison",
+      "structural_adaptive": false,
+      "process_noise": 0,
+      "citation": {
+        "markers_total": 5,
+        "markers_resolved": 5,
+        "markers_unresolved": [],
+        "legend_entries": 4,
+        "legend_unused": [],
+        "resolution_rate": 1.0,
+        "no_dangling": true,
+        "no_unsupported_numbers": true,
+        "unsupported_numbers": 0,
+        "production_support_rate": 0.0,
+        "production_uncited": 1
+      },
+      "evidence": {
+        "grade_distribution": {
+          "A": 3,
+          "B": 1,
+          "C": 0,
+          "D": 0
+        },
+        "grade_ab_share": 1.0,
+        "verified_claims": 4,
+        "corroborated_claims": 3,
+        "needs_corroboration": 1,
+        "distinct_domains": 4,
+        "primary_share": 0.5,
+        "total_claims": 4
+      },
+      "contradictions": {
+        "total": 0,
+        "resolved": 0,
+        "unresolved": 0,
+        "independent_scan_count": 0
+      },
+      "answer_quality": {
+        "overall": 64,
+        "passed": false,
+        "accuracy": 70,
+        "relevance": 63,
+        "evidence": 53,
+        "clarity": 85,
+        "reasoning": 37,
+        "answer_relevance": 0.3809,
+        "failures": [
+          "Relevance: the answer opening does not address the query's core terms (much, renewable, energy, capacity). Answer the asked question directly in the first paragraph.",
+          "Clarity: report length (124 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
+          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
+          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says.",
+          "Reasoning 37/100 is below the 40/100 floor."
+        ]
+      },
+      "report_quality": {
+        "query_type": "factual",
+        "groundedness": 1.0,
+        "accuracy": 1.0,
+        "coverage": 0.571,
+        "readability": 1.0,
+        "score": 9.36,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.45,
+          "accuracy": 0.25,
+          "coverage": 0.15,
+          "readability": 0.15
+        }
       },
       "support_rate": 0.6,
       "minimums_checks": {
@@ -1852,24 +2465,23 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.113,
-      "topic": "rag",
-      "llm_calls": 11
+      "wall_sec": 0.057,
+      "topic": "renewables",
+      "llm_calls": 8
     },
     {
-      "id": "causal-battery-costs",
-      "category": "causal",
-      "query": "Why have lithium-ion battery prices fallen, and what drove the decline?",
-      "query_type": "analytical",
-      "query_type_required": "analytical",
+      "id": "quant-battery-price",
+      "category": "quantitative",
+      "query": "What was the price of lithium-ion battery packs and how much did it decline?",
+      "query_type": "factual",
+      "query_type_required": "factual",
       "query_type_ok": true,
       "dimensions_required": [
-        "mechanism",
-        "causal",
-        "statistical"
+        "statistical",
+        "evidence"
       ],
       "dimensions_hit": 2,
       "dimensions_min": 2,
@@ -1908,18 +2520,18 @@
       },
       "evidence": {
         "grade_distribution": {
-          "A": 2,
-          "B": 1,
+          "A": 1,
+          "B": 3,
           "C": 0,
           "D": 0
         },
         "grade_ab_share": 1.0,
-        "verified_claims": 3,
-        "corroborated_claims": 2,
+        "verified_claims": 4,
+        "corroborated_claims": 1,
         "needs_corroboration": 0,
-        "distinct_domains": 2,
-        "primary_share": 1.0,
-        "total_claims": 3
+        "distinct_domains": 3,
+        "primary_share": 0.6666666666666666,
+        "total_claims": 4
       },
       "contradictions": {
         "total": 0,
@@ -1928,19 +2540,36 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 59,
+        "overall": 60,
         "passed": false,
         "accuracy": 57,
-        "relevance": 59,
+        "relevance": 68,
         "evidence": 54,
         "clarity": 77,
-        "reasoning": 45,
-        "answer_relevance": 0.4507,
+        "reasoning": 38,
+        "answer_relevance": 0.4174,
         "failures": [
           "Clarity: report length (84 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
           "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says.",
+          "Reasoning 38/100 is below the 40/100 floor."
         ]
+      },
+      "report_quality": {
+        "query_type": "factual",
+        "groundedness": 1.0,
+        "accuracy": 1.0,
+        "coverage": 0.571,
+        "readability": 1.0,
+        "score": 9.36,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.45,
+          "accuracy": 0.25,
+          "coverage": 0.15,
+          "readability": 0.15
+        }
       },
       "support_rate": 0.3333333333333333,
       "minimums_checks": {
@@ -1956,325 +2585,13 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "router",
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.044,
+      "wall_sec": 0.034,
       "topic": "lithium",
-      "llm_calls": 11
-    },
-    {
-      "id": "causal-solar-growth",
-      "category": "causal",
-      "query": "What caused the rapid growth in solar photovoltaic deployment?",
-      "query_type": "analytical",
-      "query_type_required": "analytical",
-      "query_type_ok": true,
-      "dimensions_required": [
-        "mechanism",
-        "causal",
-        "statistical"
-      ],
-      "dimensions_hit": 2,
-      "dimensions_min": 2,
-      "dimensions_ok": true,
-      "forbidden_hits": [],
-      "forbidden_ok": true,
-      "required_sections": [
-        "Executive Summary",
-        "Key Findings",
-        "Evidence Strength",
-        "Limitations & Unknowns",
-        "Counterarguments & Disputed Points"
-      ],
-      "missing_sections": [
-        "Evidence Strength",
-        "Limitations & Unknowns",
-        "Counterarguments & Disputed Points"
-      ],
-      "sections_present": 2,
-      "section_presence_rate": 0.4,
-      "detected_shape": "thematic",
-      "structural_adaptive": true,
-      "process_noise": 0,
-      "citation": {
-        "markers_total": 2,
-        "markers_resolved": 2,
-        "markers_unresolved": [],
-        "legend_entries": 1,
-        "legend_unused": [],
-        "resolution_rate": 1.0,
-        "no_dangling": true,
-        "no_unsupported_numbers": true,
-        "unsupported_numbers": 0,
-        "production_support_rate": 0.0,
-        "production_uncited": 1
-      },
-      "evidence": {
-        "grade_distribution": {
-          "A": 1,
-          "B": 0,
-          "C": 0,
-          "D": 0
-        },
-        "grade_ab_share": 1.0,
-        "verified_claims": 1,
-        "corroborated_claims": 1,
-        "needs_corroboration": 0,
-        "distinct_domains": 1,
-        "primary_share": 1.0,
-        "total_claims": 1
-      },
-      "contradictions": {
-        "total": 0,
-        "resolved": 0,
-        "unresolved": 0,
-        "independent_scan_count": 0
-      },
-      "answer_quality": {
-        "overall": 54,
-        "passed": false,
-        "accuracy": 68,
-        "relevance": 35,
-        "evidence": 54,
-        "clarity": 69,
-        "reasoning": 33,
-        "answer_relevance": 0.0936,
-        "failures": [
-          "Relevance: the report's content does not match the question asked \u2014 it reads as evidence about a different topic. Restructure around the query's actual subject: 'What caused the rapid growth in solar photovoltaic deployment?'.",
-          "Relevance: the answer opening does not address the query's core terms (caused, rapid, growth, solar). Answer the asked question directly in the first paragraph.",
-          "Clarity: report length (45 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
-        ]
-      },
-      "support_rate": 0.5,
-      "minimums_checks": {
-        "verified_claims": true,
-        "corroborated_claims": true,
-        "distinct_domains": true,
-        "primary_share": true
-      },
-      "invariant_checks": {
-        "every_marker_resolves": true,
-        "no_dangling_markers": true,
-        "no_unsupported_numbers": true
-      },
-      "minimums_ok": true,
-      "degraded": [
-        "planner_dimensions"
-      ],
-      "error": null,
-      "wall_sec": 0.026,
-      "topic": "renewables",
-      "llm_calls": 11
-    },
-    {
-      "id": "quant-renewable",
-      "category": "quantitative",
-      "query": "How much renewable energy capacity was added globally in 2023?",
-      "query_type": "factual",
-      "query_type_required": "factual",
-      "query_type_ok": true,
-      "dimensions_required": [
-        "statistical",
-        "evidence"
-      ],
-      "dimensions_hit": 2,
-      "dimensions_min": 2,
-      "dimensions_ok": true,
-      "forbidden_hits": [],
-      "forbidden_ok": true,
-      "required_sections": [
-        "Executive Summary",
-        "Key Findings",
-        "Evidence Strength",
-        "Limitations & Unknowns",
-        "Counterarguments & Disputed Points"
-      ],
-      "missing_sections": [
-        "Evidence Strength",
-        "Limitations & Unknowns",
-        "Counterarguments & Disputed Points"
-      ],
-      "sections_present": 2,
-      "section_presence_rate": 0.4,
-      "detected_shape": "criterion_comparison",
-      "structural_adaptive": false,
-      "process_noise": 0,
-      "citation": {
-        "markers_total": 4,
-        "markers_resolved": 4,
-        "markers_unresolved": [],
-        "legend_entries": 3,
-        "legend_unused": [],
-        "resolution_rate": 1.0,
-        "no_dangling": true,
-        "no_unsupported_numbers": true,
-        "unsupported_numbers": 0,
-        "production_support_rate": 0.0,
-        "production_uncited": 1
-      },
-      "evidence": {
-        "grade_distribution": {
-          "A": 2,
-          "B": 1,
-          "C": 0,
-          "D": 0
-        },
-        "grade_ab_share": 1.0,
-        "verified_claims": 3,
-        "corroborated_claims": 2,
-        "needs_corroboration": 1,
-        "distinct_domains": 3,
-        "primary_share": 0.6666666666666666,
-        "total_claims": 3
-      },
-      "contradictions": {
-        "total": 0,
-        "resolved": 0,
-        "unresolved": 0,
-        "independent_scan_count": 0
-      },
-      "answer_quality": {
-        "overall": 60,
-        "passed": false,
-        "accuracy": 63,
-        "relevance": 62,
-        "evidence": 49,
-        "clarity": 80,
-        "reasoning": 43,
-        "answer_relevance": 0.3808,
-        "failures": [
-          "Relevance: the answer opening does not address the query's core terms (much, renewable, energy, capacity). Answer the asked question directly in the first paragraph.",
-          "Clarity: report length (99 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
-        ]
-      },
-      "support_rate": 0.5,
-      "minimums_checks": {
-        "verified_claims": true,
-        "corroborated_claims": true,
-        "distinct_domains": true,
-        "primary_share": true
-      },
-      "invariant_checks": {
-        "every_marker_resolves": true,
-        "no_dangling_markers": true,
-        "no_unsupported_numbers": true
-      },
-      "minimums_ok": true,
-      "degraded": [
-        "planner_dimensions"
-      ],
-      "error": null,
-      "wall_sec": 0.061,
-      "topic": "renewables",
-      "llm_calls": 11
-    },
-    {
-      "id": "quant-battery-price",
-      "category": "quantitative",
-      "query": "What was the price of lithium-ion battery packs and how much did it decline?",
-      "query_type": "factual",
-      "query_type_required": "factual",
-      "query_type_ok": true,
-      "dimensions_required": [
-        "statistical",
-        "evidence"
-      ],
-      "dimensions_hit": 2,
-      "dimensions_min": 2,
-      "dimensions_ok": true,
-      "forbidden_hits": [],
-      "forbidden_ok": true,
-      "required_sections": [
-        "Executive Summary",
-        "Key Findings",
-        "Evidence Strength",
-        "Limitations & Unknowns",
-        "Counterarguments & Disputed Points"
-      ],
-      "missing_sections": [
-        "Evidence Strength",
-        "Limitations & Unknowns",
-        "Counterarguments & Disputed Points"
-      ],
-      "sections_present": 2,
-      "section_presence_rate": 0.4,
-      "detected_shape": "thematic",
-      "structural_adaptive": true,
-      "process_noise": 0,
-      "citation": {
-        "markers_total": 2,
-        "markers_resolved": 2,
-        "markers_unresolved": [],
-        "legend_entries": 1,
-        "legend_unused": [],
-        "resolution_rate": 1.0,
-        "no_dangling": true,
-        "no_unsupported_numbers": true,
-        "unsupported_numbers": 0,
-        "production_support_rate": 0.0,
-        "production_uncited": 1
-      },
-      "evidence": {
-        "grade_distribution": {
-          "A": 2,
-          "B": 0,
-          "C": 0,
-          "D": 0
-        },
-        "grade_ab_share": 1.0,
-        "verified_claims": 2,
-        "corroborated_claims": 2,
-        "needs_corroboration": 0,
-        "distinct_domains": 1,
-        "primary_share": 1.0,
-        "total_claims": 2
-      },
-      "contradictions": {
-        "total": 0,
-        "resolved": 0,
-        "unresolved": 0,
-        "independent_scan_count": 0
-      },
-      "answer_quality": {
-        "overall": 63,
-        "passed": false,
-        "accuracy": 68,
-        "relevance": 65,
-        "evidence": 54,
-        "clarity": 73,
-        "reasoning": 45,
-        "answer_relevance": 0.4605,
-        "failures": [
-          "Clarity: report length (63 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
-        ]
-      },
-      "support_rate": 0.5,
-      "minimums_checks": {
-        "verified_claims": true,
-        "corroborated_claims": true,
-        "distinct_domains": true,
-        "primary_share": true
-      },
-      "invariant_checks": {
-        "every_marker_resolves": true,
-        "no_dangling_markers": true,
-        "no_unsupported_numbers": true
-      },
-      "minimums_ok": true,
-      "degraded": [
-        "planner_dimensions"
-      ],
-      "error": null,
-      "wall_sec": 0.033,
-      "topic": "lithium",
-      "llm_calls": 11
+      "llm_calls": 9
     },
     {
       "id": "quant-ai-investment",
@@ -2310,10 +2627,10 @@
       "structural_adaptive": true,
       "process_noise": 0,
       "citation": {
-        "markers_total": 2,
-        "markers_resolved": 2,
+        "markers_total": 3,
+        "markers_resolved": 3,
         "markers_unresolved": [],
-        "legend_entries": 1,
+        "legend_entries": 2,
         "legend_unused": [],
         "resolution_rate": 1.0,
         "no_dangling": true,
@@ -2325,17 +2642,17 @@
       "evidence": {
         "grade_distribution": {
           "A": 1,
-          "B": 0,
+          "B": 1,
           "C": 0,
           "D": 0
         },
         "grade_ab_share": 1.0,
-        "verified_claims": 1,
+        "verified_claims": 2,
         "corroborated_claims": 1,
         "needs_corroboration": 0,
-        "distinct_domains": 1,
-        "primary_share": 1.0,
-        "total_claims": 1
+        "distinct_domains": 2,
+        "primary_share": 0.5,
+        "total_claims": 2
       },
       "contradictions": {
         "total": 0,
@@ -2344,23 +2661,39 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 58,
+        "overall": 56,
         "passed": false,
-        "accuracy": 68,
-        "relevance": 51,
-        "evidence": 54,
-        "clarity": 69,
-        "reasoning": 38,
-        "answer_relevance": 0.2518,
+        "accuracy": 57,
+        "relevance": 56,
+        "evidence": 53,
+        "clarity": 73,
+        "reasoning": 34,
+        "answer_relevance": 0.302,
         "failures": [
           "Relevance: the answer opening does not address the query's core terms (large, global, investment, artificial). Answer the asked question directly in the first paragraph.",
-          "Clarity: report length (43 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
+          "Clarity: report length (63 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
           "Reasoning: the report states no limitations \u2014 add what could not be verified.",
           "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says.",
-          "Reasoning 38/100 is below the 40/100 floor."
+          "Reasoning 34/100 is below the 40/100 floor."
         ]
       },
-      "support_rate": 0.5,
+      "report_quality": {
+        "query_type": "factual",
+        "groundedness": 1.0,
+        "accuracy": 1.0,
+        "coverage": 0.333,
+        "readability": 1.0,
+        "score": 9.0,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.45,
+          "accuracy": 0.25,
+          "coverage": 0.15,
+          "readability": 0.15
+        }
+      },
+      "support_rate": 0.3333333333333333,
       "minimums_checks": {
         "verified_claims": true,
         "corroborated_claims": true,
@@ -2374,12 +2707,12 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.032,
+      "wall_sec": 0.025,
       "topic": "ai_adoption",
-      "llm_calls": 11
+      "llm_calls": 9
     },
     {
       "id": "factual-heat-pumps",
@@ -2416,10 +2749,10 @@
       "structural_adaptive": true,
       "process_noise": 0,
       "citation": {
-        "markers_total": 2,
-        "markers_resolved": 2,
+        "markers_total": 4,
+        "markers_resolved": 4,
         "markers_unresolved": [],
-        "legend_entries": 1,
+        "legend_entries": 3,
         "legend_unused": [],
         "resolution_rate": 1.0,
         "no_dangling": true,
@@ -2431,17 +2764,17 @@
       "evidence": {
         "grade_distribution": {
           "A": 2,
-          "B": 0,
+          "B": 3,
           "C": 0,
           "D": 0
         },
         "grade_ab_share": 1.0,
-        "verified_claims": 2,
+        "verified_claims": 5,
         "corroborated_claims": 2,
-        "needs_corroboration": 0,
-        "distinct_domains": 1,
+        "needs_corroboration": 2,
+        "distinct_domains": 3,
         "primary_share": 1.0,
-        "total_claims": 2
+        "total_claims": 5
       },
       "contradictions": {
         "total": 0,
@@ -2450,19 +2783,32 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 62,
-        "passed": false,
+        "overall": 75,
+        "passed": true,
         "accuracy": 68,
-        "relevance": 63,
-        "evidence": 54,
-        "clarity": 72,
-        "reasoning": 45,
-        "answer_relevance": 0.4372,
+        "relevance": 81,
+        "evidence": 59,
+        "clarity": 100,
+        "reasoning": 79,
+        "answer_relevance": 0.6988,
         "failures": [
-          "Clarity: report length (60 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Reasoning: the report states no limitations \u2014 add what could not be verified."
         ]
+      },
+      "report_quality": {
+        "query_type": "analytical",
+        "groundedness": 1.0,
+        "accuracy": 0.0,
+        "coverage": 0.75,
+        "readability": 1.0,
+        "score": 9.22,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.43749999999999994,
+          "coverage": 0.3125,
+          "readability": 0.25
+        }
       },
       "support_rate": 0.5,
       "minimums_checks": {
@@ -2478,12 +2824,12 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.047,
+      "wall_sec": 0.077,
       "topic": "heat_pumps",
-      "llm_calls": 11
+      "llm_calls": 9
     },
     {
       "id": "trend-ev-adoption",
@@ -2520,10 +2866,10 @@
       "structural_adaptive": false,
       "process_noise": 0,
       "citation": {
-        "markers_total": 2,
-        "markers_resolved": 2,
+        "markers_total": 3,
+        "markers_resolved": 3,
         "markers_unresolved": [],
-        "legend_entries": 1,
+        "legend_entries": 2,
         "legend_unused": [],
         "resolution_rate": 1.0,
         "no_dangling": true,
@@ -2535,17 +2881,17 @@
       "evidence": {
         "grade_distribution": {
           "A": 1,
-          "B": 1,
+          "B": 2,
           "C": 0,
           "D": 0
         },
         "grade_ab_share": 1.0,
-        "verified_claims": 2,
+        "verified_claims": 3,
         "corroborated_claims": 1,
-        "needs_corroboration": 1,
+        "needs_corroboration": 2,
         "distinct_domains": 1,
         "primary_share": 1.0,
-        "total_claims": 2
+        "total_claims": 3
       },
       "contradictions": {
         "total": 0,
@@ -2556,19 +2902,36 @@
       "answer_quality": {
         "overall": 60,
         "passed": false,
-        "accuracy": 68,
-        "relevance": 58,
-        "evidence": 54,
-        "clarity": 70,
-        "reasoning": 41,
-        "answer_relevance": 0.3408,
+        "accuracy": 53,
+        "relevance": 68,
+        "evidence": 60,
+        "clarity": 74,
+        "reasoning": 35,
+        "answer_relevance": 0.3425,
         "failures": [
-          "Clarity: report length (49 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
+          "Clarity: report length (72 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
           "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says."
+          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says.",
+          "Reasoning 35/100 is below the 40/100 floor."
         ]
       },
-      "support_rate": 0.5,
+      "report_quality": {
+        "query_type": "factual",
+        "groundedness": 1.0,
+        "accuracy": 1.0,
+        "coverage": 0.5,
+        "readability": 1.0,
+        "score": 9.25,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.45,
+          "accuracy": 0.25,
+          "coverage": 0.15,
+          "readability": 0.15
+        }
+      },
+      "support_rate": 0.3333333333333333,
       "minimums_checks": {
         "verified_claims": true,
         "corroborated_claims": true,
@@ -2582,12 +2945,12 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.039,
+      "wall_sec": 0.048,
       "topic": "ev",
-      "llm_calls": 11
+      "llm_calls": 9
     },
     {
       "id": "comparison-wind-solar",
@@ -2658,21 +3021,34 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 55,
+        "overall": 67,
         "passed": false,
-        "accuracy": 57,
-        "relevance": 51,
-        "evidence": 54,
-        "clarity": 73,
-        "reasoning": 39,
-        "answer_relevance": 0.2721,
+        "accuracy": 48,
+        "relevance": 77,
+        "evidence": 60,
+        "clarity": 90,
+        "reasoning": 79,
+        "answer_relevance": 0.7024,
         "failures": [
           "Relevance: the answer opening does not address the query's core terms (compare, wind, solar, power). Answer the asked question directly in the first paragraph.",
-          "Clarity: report length (66 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says.",
-          "Reasoning 39/100 is below the 40/100 floor."
+          "Clarity: the answer exposes internal research-process detail (pipeline stages, fallbacks, evidence grades, budgets). Describe what is known; leave process provenance to the audit layer.",
+          "Reasoning: the report states no limitations \u2014 add what could not be verified."
         ]
+      },
+      "report_quality": {
+        "query_type": "comparative",
+        "groundedness": 1.0,
+        "accuracy": 0.0,
+        "coverage": 0.429,
+        "readability": 1.0,
+        "score": 8.21,
+        "target": 9.0,
+        "passes": false,
+        "weights": {
+          "groundedness": 0.43749999999999994,
+          "coverage": 0.3125,
+          "readability": 0.25
+        }
       },
       "support_rate": 0.3333333333333333,
       "minimums_checks": {
@@ -2688,12 +3064,12 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.053,
+      "wall_sec": 0.075,
       "topic": "wind_solar",
-      "llm_calls": 11
+      "llm_calls": 12
     },
     {
       "id": "causal-nuclear-cost",
@@ -2730,10 +3106,10 @@
       "structural_adaptive": true,
       "process_noise": 0,
       "citation": {
-        "markers_total": 3,
-        "markers_resolved": 3,
+        "markers_total": 6,
+        "markers_resolved": 6,
         "markers_unresolved": [],
-        "legend_entries": 2,
+        "legend_entries": 5,
         "legend_unused": [],
         "resolution_rate": 1.0,
         "no_dangling": true,
@@ -2744,18 +3120,18 @@
       },
       "evidence": {
         "grade_distribution": {
-          "A": 1,
-          "B": 1,
+          "A": 4,
+          "B": 2,
           "C": 0,
           "D": 0
         },
         "grade_ab_share": 1.0,
-        "verified_claims": 2,
-        "corroborated_claims": 1,
+        "verified_claims": 6,
+        "corroborated_claims": 4,
         "needs_corroboration": 1,
-        "distinct_domains": 2,
-        "primary_share": 0.5,
-        "total_claims": 2
+        "distinct_domains": 5,
+        "primary_share": 0.6,
+        "total_claims": 6
       },
       "contradictions": {
         "total": 0,
@@ -2764,22 +3140,35 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 55,
+        "overall": 68,
         "passed": false,
-        "accuracy": 57,
-        "relevance": 53,
-        "evidence": 46,
-        "clarity": 78,
-        "reasoning": 39,
-        "answer_relevance": 0.2783,
+        "accuracy": 58,
+        "relevance": 75,
+        "evidence": 53,
+        "clarity": 90,
+        "reasoning": 79,
+        "answer_relevance": 0.6861,
         "failures": [
-          "Clarity: report length (88 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says.",
-          "Reasoning 39/100 is below the 40/100 floor."
+          "Clarity: the answer exposes internal research-process detail (pipeline stages, fallbacks, evidence grades, budgets). Describe what is known; leave process provenance to the audit layer.",
+          "Reasoning: the report states no limitations \u2014 add what could not be verified."
         ]
       },
-      "support_rate": 0.3333333333333333,
+      "report_quality": {
+        "query_type": "analytical",
+        "groundedness": 1.0,
+        "accuracy": 0.0,
+        "coverage": 0.75,
+        "readability": 1.0,
+        "score": 9.22,
+        "target": 9.0,
+        "passes": true,
+        "weights": {
+          "groundedness": 0.43749999999999994,
+          "coverage": 0.3125,
+          "readability": 0.25
+        }
+      },
+      "support_rate": 0.5,
       "minimums_checks": {
         "verified_claims": true,
         "corroborated_claims": true,
@@ -2793,12 +3182,12 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.063,
+      "wall_sec": 0.194,
       "topic": "nuclear",
-      "llm_calls": 11
+      "llm_calls": 13
     },
     {
       "id": "decision-ai-regulation",
@@ -2812,7 +3201,7 @@
         "evidence",
         "policy"
       ],
-      "dimensions_hit": 2,
+      "dimensions_hit": 3,
       "dimensions_min": 2,
       "dimensions_ok": true,
       "forbidden_hits": [],
@@ -2831,8 +3220,8 @@
       ],
       "sections_present": 2,
       "section_presence_rate": 0.4,
-      "detected_shape": "thematic",
-      "structural_adaptive": true,
+      "detected_shape": "chronological",
+      "structural_adaptive": false,
       "process_noise": 0,
       "citation": {
         "markers_total": 2,
@@ -2869,21 +3258,35 @@
         "independent_scan_count": 0
       },
       "answer_quality": {
-        "overall": 56,
+        "overall": 69,
         "passed": false,
-        "accuracy": 68,
-        "relevance": 45,
-        "evidence": 54,
-        "clarity": 69,
-        "reasoning": 36,
-        "answer_relevance": 0.182,
+        "accuracy": 63,
+        "relevance": 70,
+        "evidence": 64,
+        "clarity": 80,
+        "reasoning": 79,
+        "answer_relevance": 0.6606,
         "failures": [
           "Relevance: the answer opening does not address the query's core terms (governments, regulate, frontier, artificial). Answer the asked question directly in the first paragraph.",
-          "Clarity: report length (43 words) is outside the standard band \u2014 tighten or expand to the appropriate depth.",
-          "Reasoning: the report states no limitations \u2014 add what could not be verified.",
-          "Reasoning: the report states no conclusion \u2014 say explicitly what the evidence collectively supports, not just what each source says.",
-          "Reasoning: the answer does not directly answer the question asked \u2014 state the conclusion in terms of the query's own subject."
+          "Clarity: the answer exposes internal research-process detail (pipeline stages, fallbacks, evidence grades, budgets). Describe what is known; leave process provenance to the audit layer.",
+          "Reasoning: the report states no limitations \u2014 add what could not be verified."
         ]
+      },
+      "report_quality": {
+        "query_type": "analytical",
+        "groundedness": 1.0,
+        "accuracy": 1.0,
+        "coverage": 0.182,
+        "readability": 1.0,
+        "score": 7.95,
+        "target": 9.0,
+        "passes": false,
+        "weights": {
+          "groundedness": 0.35,
+          "accuracy": 0.2,
+          "coverage": 0.25,
+          "readability": 0.2
+        }
       },
       "support_rate": 0.5,
       "minimums_checks": {
@@ -2899,12 +3302,13 @@
       },
       "minimums_ok": true,
       "degraded": [
-        "planner_dimensions"
+        "summarizer",
+        "analyst"
       ],
       "error": null,
-      "wall_sec": 0.03,
+      "wall_sec": 0.081,
       "topic": "ai_regulation",
-      "llm_calls": 11
+      "llm_calls": 14
     }
   ],
   "depth": null,
@@ -2931,6 +3335,7 @@
       "grade_ab_share": 0.95,
       "answer_quality_mean": 57.0,
       "answer_relevance_mean": 0.3,
+      "report_quality_mean": 8.6,
       "support_rate_mean": 0.4,
       "minimums_pass_rate": 0.9,
       "process_clean_rate": 1.0
@@ -2942,7 +3347,8 @@
         "forbidden_clean_rate": 1.0,
         "answer_quality_mean": 62.0,
         "minimums_pass_rate": 0.9,
-        "process_clean_rate": 1.0
+        "process_clean_rate": 1.0,
+        "report_quality_mean": 8.8
       },
       "current_trend": {
         "query_type_accuracy": 1.0,
@@ -2950,7 +3356,8 @@
         "forbidden_clean_rate": 1.0,
         "answer_quality_mean": 55.0,
         "minimums_pass_rate": 0.9,
-        "process_clean_rate": 1.0
+        "process_clean_rate": 1.0,
+        "report_quality_mean": 8.9
       },
       "comparison": {
         "query_type_accuracy": 1.0,
@@ -2958,7 +3365,8 @@
         "forbidden_clean_rate": 1.0,
         "answer_quality_mean": 55.0,
         "minimums_pass_rate": 0.9,
-        "process_clean_rate": 1.0
+        "process_clean_rate": 1.0,
+        "report_quality_mean": 7.8
       },
       "decision_policy": {
         "query_type_accuracy": 1.0,
@@ -2966,7 +3374,8 @@
         "forbidden_clean_rate": 1.0,
         "answer_quality_mean": 55.0,
         "minimums_pass_rate": 0.9,
-        "process_clean_rate": 1.0
+        "process_clean_rate": 1.0,
+        "report_quality_mean": 7.5
       },
       "ambiguous_term": {
         "query_type_accuracy": 1.0,
@@ -2974,7 +3383,8 @@
         "forbidden_clean_rate": 1.0,
         "answer_quality_mean": 55.0,
         "minimums_pass_rate": 0.9,
-        "process_clean_rate": 1.0
+        "process_clean_rate": 1.0,
+        "report_quality_mean": 9.3
       },
       "causal": {
         "query_type_accuracy": 1.0,
@@ -2982,7 +3392,8 @@
         "forbidden_clean_rate": 1.0,
         "answer_quality_mean": 55.0,
         "minimums_pass_rate": 0.9,
-        "process_clean_rate": 1.0
+        "process_clean_rate": 1.0,
+        "report_quality_mean": 8.6
       },
       "quantitative": {
         "query_type_accuracy": 1.0,
@@ -2990,7 +3401,8 @@
         "forbidden_clean_rate": 1.0,
         "answer_quality_mean": 57.0,
         "minimums_pass_rate": 0.9,
-        "process_clean_rate": 1.0
+        "process_clean_rate": 1.0,
+        "report_quality_mean": 8.7
       }
     }
   },

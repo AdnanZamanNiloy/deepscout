@@ -13,14 +13,16 @@ Regression targets (measured on real deep reports):
 The layer is deterministic (claim-key tracking + a fuzzy anchor match), so
 these tests exercise it with no LLM at all — the fallback IS the mechanism.
 """
-from app.core.synthesis_intelligence import (
-    MOVES,
+from app.core.synthesis_intel.constants import MOVES
+from app.core.synthesis_intel.ledger import (
     ClaimLedger,
-    analytical_dimensions,
     apply_synthesis_intelligence,
+)
+from app.core.synthesis_intel.moves import refine_restatement
+from app.core.synthesis_intel.tokens import (
+    analytical_dimensions,
     claim_key,
     claim_polarity,
-    refine_restatement,
 )
 
 MACHINE = ("## Sources", "## Evidence integrity", "## Source ledger")
@@ -396,7 +398,7 @@ def test_causal_query_selects_causal_move():
 def test_each_move_is_reachable_and_signal_driven():
     """Every declared move is reachable from a real signal combination, and the
     chosen move is exactly the one the top-precedence rule implies."""
-    from app.core.synthesis_intelligence import _choose_move
+    from app.core.synthesis_intel.moves import _choose_move
 
     cases = [
         ("uncertainty", "Rooppur costs $13 billion [1].", {"contradicted": True}),
@@ -458,7 +460,7 @@ def test_no_person_or_entity_is_invented():
 def test_refinement_is_length_bounded():
     """A transformation must not inflate the sentence beyond a fixed bound over
     the source claim + a short clause."""
-    from app.core.synthesis_intelligence import MAX_APPENDED_WORDS
+    from app.core.synthesis_intel.constants import MAX_APPENDED_WORDS
 
     source = "Nuclear plants have high capacity factors."
     for move in MOVES:
@@ -595,7 +597,7 @@ _LABEL_BULLETS = (
 def test_label_bullets_are_not_refined():
     """Bug 1: a label/value bullet (no finite verb before the delimiter) is a
     fragment, not a prose restatement, and must never receive a move clause."""
-    from app.core.synthesis_intelligence import _is_refinable_sentence
+    from app.core.synthesis_intel.units import _is_refinable_sentence
 
     for bullet in _LABEL_BULLETS:
         assert _is_refinable_sentence(bullet) is False, bullet
@@ -603,7 +605,7 @@ def test_label_bullets_are_not_refined():
 
 def test_bold_label_bullet_is_not_refined():
     """Bug 1: a bold label + value/title bullet is left intact."""
-    from app.core.synthesis_intelligence import _is_refinable_sentence
+    from app.core.synthesis_intel.units import _is_refinable_sentence
 
     assert _is_refinable_sentence(
         "**$12.65 billion** — reported cost of the project [1]."
@@ -665,7 +667,7 @@ def test_genuine_prose_restatement_is_still_refined():
     topic-specific move available is still refined. A prose restatement with no
     applicable topic clause is instead left byte-for-byte unchanged (see the
     generic-fallback removal test below)."""
-    from app.core.synthesis_intelligence import _is_refinable_sentence
+    from app.core.synthesis_intel.units import _is_refinable_sentence
 
     prose = (
         "The project costs about US$13 billion and the financing shapes the "
@@ -681,7 +683,7 @@ def test_genuine_prose_restatement_is_still_refined():
 def test_already_refined_sentence_is_not_refined_twice():
     """Bug 1: a sentence that already carries a move transition must not be
     refined again (no double-appending)."""
-    from app.core.synthesis_intelligence import _is_refinable_sentence
+    from app.core.synthesis_intel.units import _is_refinable_sentence
 
     refined = refine_restatement(
         "Rooppur costs about US$13 billion [3].",
@@ -769,3 +771,50 @@ def test_inscope_filter_never_starves_limitations():
 
     facts = [{"claim": c} for c in _OFF_TOPIC_FACTS]
     assert _query_inscope_facts(facts, "What is a transformer?", []) == facts
+
+
+def test_critic_blocking_findings_reach_the_limitations():
+    """The critic's blocking findings must reach the answer, not only the audit.
+
+    Live defect: the critic said "2 planned angle(s) still unsourced ... drift"
+    and marked it blocking, yet the delivered answer carried no such caveat —
+    the finding lived only in the trace. The measured coverage gaps now fold
+    the critic's own gaps/gate_failures in, so the Limitations section names
+    them.
+    """
+    from app.graph.evidence import _critic_blocking_limitations
+
+    state = {
+        "critique": {
+            "is_sufficient": False,
+            "gaps": ["no evidence for angle: which skills are most demanding"],
+            "gate_failures": [
+                "planned_axis_uncovered=interpretation",
+                "drift=0.74",
+            ],
+        }
+    }
+    limitations = _critic_blocking_limitations(state)
+    joined = " ".join(limitations).lower()
+    assert "which skills are most demanding" in joined
+    assert "interpretation" in joined
+    assert "drift" in joined or "loosely on-topic" in joined
+
+
+def test_critic_blocking_limitations_deduped_and_fail_safe():
+    """De-dup repeated gaps; a missing/malformed critique yields no limitation."""
+    from app.graph.evidence import _critic_blocking_limitations
+
+    assert _critic_blocking_limitations({}) == []
+    assert _critic_blocking_limitations({"critique": None}) == []
+    assert _critic_blocking_limitations({"critique": "not-a-dict"}) == []
+
+    state = {
+        "critique": {
+            "gaps": ["same gap", "same gap"],
+            "gate_failures": ["drift=0.5", "drift=0.5"],
+        }
+    }
+    limitations = _critic_blocking_limitations(state)
+    assert len(limitations) == len(set(limitations))
+    assert len(limitations) == 2

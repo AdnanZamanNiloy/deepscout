@@ -34,7 +34,7 @@ from app.agents.convergence import (
     manufactured_winner,
     render_convergence_contract,
 )
-from app.core.depth_controller import decide_with_checks
+from app.core.depth.controller import decide_with_checks
 
 QUERY = "what is the most demanding job in 2027"
 

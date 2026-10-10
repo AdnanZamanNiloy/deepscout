@@ -84,6 +84,8 @@ AGGREGATE_METRICS = (
     "grade_ab_share",
     "answer_quality_mean",
     "answer_relevance_mean",
+    "report_quality_mean",
+    "report_quality_pass_rate",
     "support_rate_mean",
     "minimums_pass_rate",
     # Populated only when --with-depth is set; absent otherwise (the markdown
@@ -348,8 +350,32 @@ def evaluate_query_run(query: Dict[str, Any], final: Dict[str, Any],
     detected_shape = detect_shape(answer)
     expected_shapes = category_shapes.get(query.get("category"), set())
     adaptive = detected_shape in expected_shapes if expected_shapes else True
-    process_noise = len(_PROCESS_NOISE_RE.findall(answer or ""))
+    # Process noise is measured on the DELIVERED report, not the synthesis
+    # intermediate. `synthesized_answer` carries machine sections that
+    # `build_markdown_report` strips before delivery, so scoring noise there
+    # flagged "single-source after 2 corroboration attempt" as reader-visible
+    # process leakage when the delivered answer never contained it — the
+    # benchmark penalised an artifact no user sees.
+    delivered = report or answer
+    process_noise = len(_PROCESS_NOISE_RE.findall(delivered))
     relevance = score_answer_relevance(query["query"], answer)
+
+    # -- report quality (0-10, per query type) ------------------------------
+    # The scorer the product promises "9 out of 10" against. Graded on the
+    # DELIVERED answer against the evidence pool the run actually had, using
+    # the query's own type for weighting. This is the metric the quality goal
+    # is stated in, so it must be produced per query and aggregated per type.
+    from bench.eval_report_quality import score_report
+
+    evidence_texts = [
+        str(f.get("claim", "") or "") for f in facts if str(f.get("claim", "") or "").strip()
+    ]
+    quality_10 = score_report(
+        query["query"],
+        delivered,
+        evidence_texts,
+        query_type=str(query.get("query_type_required", "") or ""),
+    )
     q_eval = evaluate_answer(
         query["query"],
         intent=final.get("intent") or {},
@@ -451,6 +477,10 @@ def evaluate_query_run(query: Dict[str, Any], final: Dict[str, Any],
             "answer_relevance": round(relevance, 4),
             "failures": q_eval.failures[:5],
         },
+        # 0-10 per-type report quality — the metric the "9/10" goal is stated
+        # in. Kept separate from `answer_quality` (a 0-100 structural gate) so
+        # the two scales are never conflated in the report.
+        "report_quality": quality_10.to_dict(),
         "support_rate": support.get("rate") if support.get("rate") is not None else 1.0,
         "minimums_checks": min_checks,
         "invariant_checks": invariant_checks,
@@ -562,6 +592,12 @@ def aggregate(per_query: List[Dict[str, Any]]) -> Dict[str, Any]:
         "grade_ab_share": mean(lambda r: float(r["evidence"]["grade_ab_share"])),
         "answer_quality_mean": mean(lambda r: float(r["answer_quality"]["overall"])),
         "answer_relevance_mean": mean(lambda r: float(r["answer_quality"]["answer_relevance"])),
+        "report_quality_mean": mean(
+            lambda r: float((r.get("report_quality") or {}).get("score", 0.0))
+        ),
+        "report_quality_pass_rate": mean(
+            lambda r: 1.0 if (r.get("report_quality") or {}).get("passes") else 0.0
+        ),
         "support_rate_mean": mean(lambda r: float(r["support_rate"])),
         "minimums_pass_rate": mean(lambda r: 1.0 if r["minimums_ok"] else 0.0),
     }

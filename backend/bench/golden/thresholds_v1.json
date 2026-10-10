@@ -18,6 +18,7 @@
     "grade_ab_share": 0.95,
     "answer_quality_mean": 57.0,
     "answer_relevance_mean": 0.3,
+    "report_quality_mean": 8.6,
     "support_rate_mean": 0.4,
     "minimums_pass_rate": 0.9,
     "process_clean_rate": 1.0
@@ -29,7 +30,8 @@
       "forbidden_clean_rate": 1.0,
       "answer_quality_mean": 62.0,
       "minimums_pass_rate": 0.9,
-      "process_clean_rate": 1.0
+      "process_clean_rate": 1.0,
+      "report_quality_mean": 8.8
     },
     "current_trend": {
       "query_type_accuracy": 1.0,
@@ -37,7 +39,8 @@
       "forbidden_clean_rate": 1.0,
       "answer_quality_mean": 55.0,
       "minimums_pass_rate": 0.9,
-      "process_clean_rate": 1.0
+      "process_clean_rate": 1.0,
+      "report_quality_mean": 8.9
     },
     "comparison": {
       "query_type_accuracy": 1.0,
@@ -45,7 +48,8 @@
       "forbidden_clean_rate": 1.0,
       "answer_quality_mean": 55.0,
       "minimums_pass_rate": 0.9,
-      "process_clean_rate": 1.0
+      "process_clean_rate": 1.0,
+      "report_quality_mean": 7.8
     },
     "decision_policy": {
       "query_type_accuracy": 1.0,
@@ -53,7 +57,8 @@
       "forbidden_clean_rate": 1.0,
       "answer_quality_mean": 55.0,
       "minimums_pass_rate": 0.9,
-      "process_clean_rate": 1.0
+      "process_clean_rate": 1.0,
+      "report_quality_mean": 7.5
     },
     "ambiguous_term": {
       "query_type_accuracy": 1.0,
@@ -61,7 +66,8 @@
       "forbidden_clean_rate": 1.0,
       "answer_quality_mean": 55.0,
       "minimums_pass_rate": 0.9,
-      "process_clean_rate": 1.0
+      "process_clean_rate": 1.0,
+      "report_quality_mean": 9.3
     },
     "causal": {
       "query_type_accuracy": 1.0,
@@ -69,7 +75,8 @@
       "forbidden_clean_rate": 1.0,
       "answer_quality_mean": 55.0,
       "minimums_pass_rate": 0.9,
-      "process_clean_rate": 1.0
+      "process_clean_rate": 1.0,
+      "report_quality_mean": 8.6
     },
     "quantitative": {
       "query_type_accuracy": 1.0,
@@ -77,7 +84,8 @@
       "forbidden_clean_rate": 1.0,
       "answer_quality_mean": 57.0,
       "minimums_pass_rate": 0.9,
-      "process_clean_rate": 1.0
+      "process_clean_rate": 1.0,
+      "report_quality_mean": 8.7
     }
   }
 }

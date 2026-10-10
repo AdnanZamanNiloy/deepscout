@@ -54,6 +54,14 @@ DECISION_MARKERS = (
     "should we", "should i", "should our", "should the", "worth investing",
     "invest", "recommend", "decide", "decision", "choose between",
     "go ahead", "buy or", "build or buy", "prioritize", "budget for",
+    # Recommendation/advice framing. "recommend" was here but its synonyms were
+    # not, so "suggest me some highly demanding research topics" was classified
+    # as plain factual and the router answered it from model recall — no
+    # sources. These are requests for guidance, which need evidence and
+    # corroboration, not a memory dump (see AGENTS.md on ungrounded answers).
+    "suggest", "advise", "advice", "recommendation", "guidance on",
+    "give me ideas", "give me some", "some ideas for", "what topics",
+    "which topics", "topic suggestions", "good topics", "ideas for",
 )
 
 # Recency: an answer that is 3 years stale is a wrong answer.

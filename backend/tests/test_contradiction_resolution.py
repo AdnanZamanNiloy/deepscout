@@ -16,7 +16,7 @@ from app.core.contradiction_resolution import (
     unresolved_contradictions,
 )
 from app.core.contradictions import find_contradictions
-from app.core.depth_controller import _severe_contradictions
+from app.core.depth.signals import _severe_contradictions
 from app.core.evidence_grade import grade_claim
 
 

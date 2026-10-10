@@ -95,6 +95,7 @@ from app.agents.evidence.cleaning import (  # noqa: F401
     looks_truncated,
     clean_snippet_text,
     claim_query_overlap,
+    claim_matches_only_a_generic_head,
     MIN_QUERY_OVERLAP,
     select_diverse,
 )

@@ -142,7 +142,7 @@ def test_known_entity_named_in_evidence_survives():
 def test_fact_axis_fallback_prevents_false_uncovered_axes():
     """A fully-researched pool whose URL->axis map is absent must not report
     every planned axis as an uncovered hole."""
-    from app.core.depth_controller import _uncovered_axes
+    from app.core.depth.signals import _uncovered_axes
 
     state = {
         "facts": [

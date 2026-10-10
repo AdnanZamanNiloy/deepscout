@@ -450,7 +450,7 @@ def test_epistemics_adjust_the_live_confidence_path():
     unused app.agents.confidence wrapper. A genuine unresolved conflict must
     lower the score when epistemics are supplied, and the breakdown must still
     carry engine_version."""
-    from app.agents.epistemics import assess_epistemics
+    from app.agents.epistemic.asymmetry import assess_epistemics
     from app.core.confidence import ENGINE_VERSION
 
     facts = [

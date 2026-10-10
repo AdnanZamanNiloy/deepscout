@@ -146,35 +146,53 @@ def numeric_accuracy(answer: str, evidence_texts: Sequence[str]) -> float:
     An answer that states NOTHING returns 0.0, not 1.0: "no numbers" is not
     "every number correct", and returning 1.0 handed a free 25% of the score to
     an empty or purely qualitative answer — including the empty answer itself.
-    """
-    def nums(text: str) -> set:
-        out = set()
-        # Citation markers are not claims. A report is REQUIRED to carry [n]
-        # references, so counting them as numbers made every well-cited answer
-        # look like it fabricated figures — the exact inverse of the check's
-        # purpose.
-        text = _CITATION_RE.sub(" ", text or "")
-        for raw in _NUMBER_RE.findall(text):
-            digits = re.sub(r"[^\d.]", "", raw)
-            if not digits or digits == ".":
-                continue
-            digits = digits.rstrip(".")
-            # A bare 4-digit year is a DATE, not a measured quantity. Counting
-            # it penalised a correct report for saying "2027" when the evidence
-            # phrased the same year differently, and rewarded a fragment dump
-            # for containing it. Fabrication is about figures, so years are out.
-            if re.fullmatch(r"(?:19|20)\d\d", digits):
-                continue
-            out.add(digits)
-        return out
 
-    stated = nums(answer)
+    NOTE FOR CALLERS: this 0.0 is an "unmeasured" signal, not a "wrong" one.
+    `score_report` distinguishes the two: a number-free answer has the accuracy
+    dimension REMOVED and its weight redistributed, while an answer with wrong
+    numbers keeps this 0.0 and is debited in full. Use `numeric_accuracy_applicable`
+    to tell the two apart.
+    """
+    stated = _stated_numbers(answer)
     if not stated:
         return 0.0
     known: set = set()
     for e in evidence_texts:
-        known |= nums(e)
+        known |= _stated_numbers(e)
     return len(stated & known) / len(stated)
+
+
+def numeric_accuracy_applicable(answer: str) -> bool:
+    """Does the answer state any checkable figure at all?
+
+    False means the accuracy dimension cannot be measured — there is nothing to
+    be right or wrong about — so `score_report` must drop it rather than score
+    it zero. A qualitative answer ("what does this mean?") is not inaccurate for
+    declining to invent statistics.
+    """
+    return bool(_stated_numbers(answer))
+
+
+def _stated_numbers(text: str) -> set:
+    out: set = set()
+    # Citation markers are not claims. A report is REQUIRED to carry [n]
+    # references, so counting them as numbers made every well-cited answer
+    # look like it fabricated figures — the exact inverse of the check's
+    # purpose.
+    text = _CITATION_RE.sub(" ", text or "")
+    for raw in _NUMBER_RE.findall(text):
+        digits = re.sub(r"[^\d.]", "", raw)
+        if not digits or digits == ".":
+            continue
+        digits = digits.rstrip(".")
+        # A bare 4-digit year is a DATE, not a measured quantity. Counting
+        # it penalised a correct report for saying "2027" when the evidence
+        # phrased the same year differently, and rewarded a fragment dump
+        # for containing it. Fabrication is about figures, so years are out.
+        if re.fullmatch(r"(?:19|20)\d\d", digits):
+            continue
+        out.add(digits)
+    return out
 
 
 def coverage(query: str, answer: str) -> float:
@@ -284,16 +302,41 @@ def score_report(
     `evidence_texts` is the pool the run actually had (claim text or source
     content). Groundedness and accuracy are measured against THAT, not a rubric,
     so an answer cannot score well by being plausible.
+
+    ACCURACY IS CONDITIONAL. When the answer states no checkable figures there
+    is nothing to be accurate about, so the accuracy dimension is REMOVED and
+    its weight redistributed across the others. Scoring it zero instead capped a
+    perfect qualitative factual answer at 7.5-8.5 and a data-analysis answer at
+    6.5 — an unreachable target for reasons unrelated to quality. An answer with
+    figures that are absent from the evidence still takes the full accuracy
+    debit; `numeric_accuracy_applicable` is what tells the two cases apart.
     """
     ev = [str(e) for e in (evidence_texts or []) if str(e).strip()]
+    # An empty answer is not "unmeasured accuracy", it is a total failure. Short-
+    # circuit before renormalization can hand it free coverage points (an empty
+    # or stopword-only query makes `coverage` return 1.0).
+    if not (answer or "").strip():
+        return QualityScore(
+            query_type=query_type or "default",
+            groundedness=0.0, accuracy=0.0, coverage=0.0, readability=0.0,
+            score=0.0, weights=weights_for(query_type),
+        )
     g = groundedness(answer, ev)
     a = numeric_accuracy(answer, ev)
     c = coverage(query, answer)
     r = readability(answer)
     w = weights_for(query_type)
+    if not numeric_accuracy_applicable(answer):
+        # Renormalize the remaining weights so the score is still on a 0-10
+        # scale and accuracy contributes nothing rather than zero.
+        remaining = {k: v for k, v in w.items() if k != "accuracy"}
+        total = sum(remaining.values()) or 1.0
+        w = {k: v / total for k, v in remaining.items()}
     score = 10.0 * (
-        w["groundedness"] * g + w["accuracy"] * a
-        + w["coverage"] * c + w["readability"] * r
+        w.get("groundedness", 0.0) * g
+        + w.get("accuracy", 0.0) * a
+        + w.get("coverage", 0.0) * c
+        + w.get("readability", 0.0) * r
     )
     return QualityScore(
         query_type=query_type or "default",

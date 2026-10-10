@@ -566,3 +566,42 @@ def test_the_report_announces_the_assumed_reading_not_the_classifier_order():
     # Without a policy (older payload / no decision) the raw order is still used
     # rather than crashing.
     assert _deterministic_disambiguation(intent)
+
+
+def test_guidance_query_suppresses_the_disambiguation_framing():
+    """A "suggest me X" request is not made ambiguous by a multi-reading term.
+
+    Live defect: "suggest me some highly demanding research topic for M.sc..."
+    opened with a three-reading disambiguation of "demanding" and answered none
+    of them directly. The ask (give me suggestions) is unambiguous, so the
+    disambiguation/interpretation blocks must be suppressed while the ambiguity
+    machinery itself stays intact for genuinely ambiguous terms.
+    """
+    from app.agents.synthesis.context_blocks import (
+        _render_ambiguity_block,
+        _render_interpretations_block,
+    )
+
+    guidance_intent = {
+        "query": "suggest me some highly demanding research topic for M.sc in computer science",
+        "ambiguity": True,
+        "recommended_action": "research_dominant",
+        "senses": [
+            {"label": "Research-level CSE topics spanning ML/AI and systems", "note": "x"},
+            {"label": "Research methodology and topic-selection guidance", "note": "y"},
+        ],
+        "interpretations": [
+            {"label": "Stressful or difficult (high strain)", "description": "burnout"},
+            {"label": "Requiring high skill (high complexity)", "description": "expertise"},
+        ],
+    }
+    policy = {"action": "separate", "interpretations": ["Stressful or difficult (high strain)"]}
+    assert _render_ambiguity_block(guidance_intent, policy) == ""
+    assert _render_interpretations_block(guidance_intent, policy) == ""
+
+    # A genuinely ambiguous term question is NOT a guidance query and keeps its
+    # disambiguation block.
+    ambiguous_intent = dict(guidance_intent)
+    ambiguous_intent["query"] = "what is a transformer?"
+    assert _render_ambiguity_block(ambiguous_intent, policy) != ""
+

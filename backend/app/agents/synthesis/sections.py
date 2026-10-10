@@ -215,26 +215,6 @@ def _dedupe_canonical_sections(text: str) -> str:
     return _render_report(preamble, kept)
 
 
-def _merge_into_section(text: str, key: str, block: str) -> str:
-    """Append a measured block to an existing canonical section, or create it.
-
-    This is what keeps the evidence accounting in ONE place. The previous
-    version appended a separate `## Source ledger` next to whatever the writer
-    had already called "Evidence & Confidence".
-    """
-    block = (block or "").strip()
-    if not block:
-        return text
-    preamble, sections = _split_sections(text)
-    for section in sections:
-        if section.key == key:
-            section.blocks.append(block)
-            return _render_report(preamble, sections)
-    heading = f"## {_CANONICAL_HEADING.get(key, key.title())}"
-    sections.append(_Section(heading=heading, title=heading[3:], blocks=[block], key=key))
-    return _render_report(preamble, sections)
-
-
 def _strip_canonical_sections(text: str, keys: Iterable[str]) -> str:
     """Remove whole sections by canonical key (used before auditing)."""
     drop = {k for k in keys}

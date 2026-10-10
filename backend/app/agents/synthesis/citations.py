@@ -14,7 +14,7 @@ import re
 from typing import TYPE_CHECKING, Any, Dict, List, Sequence, Set, Tuple
 
 if TYPE_CHECKING:
-    from app.agents.epistemics import EpistemicReport
+    from app.agents.epistemic.asymmetry import EpistemicReport
 
 from app.core.logging import get_logger
 from app.agents.contradiction import numeric_ranges
@@ -24,7 +24,7 @@ from app.agents.evidence_utils import (
     semantic_similarity,
     split_into_sentences,
 )
-from app.agents.research_quality import is_factual_sentence
+from app.agents.quality.factual import is_factual_sentence
 from app.agents.sources import canonical_url, classify_source
 
 from app.agents.synthesis.primitives import (

@@ -5,6 +5,38 @@
  * (budget rides on `critic` and `final_report`, not its own event.)
  */
 
+/* Turn a FastAPI error body's `detail` into a readable string.
+ *
+ * `detail` is a string for our own HTTPExceptions, but a LIST OF OBJECTS for a
+ * request-validation failure (422): [{type, loc, msg, input}]. `String(detail)`
+ * on that list yields "[object Object]", which is what a user saw as the whole
+ * error message ("Research interrupted: [object Object]") — the UI rendered the
+ * stringified object instead of the validation reason. This handles both shapes
+ * and always returns something a person can read. */
+export function describeDetail(detail, fallback) {
+  if (detail == null) return fallback;
+  if (typeof detail === "string") return detail.trim() || fallback;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((d) => {
+        if (typeof d === "string") return d;
+        if (d && typeof d === "object") {
+          const loc = Array.isArray(d.loc) ? d.loc.filter((p) => p !== "body").join(".") : "";
+          const msg = d.msg || d.message || "";
+          if (loc && msg) return `${loc}: ${msg}`;
+          return msg || loc || JSON.stringify(d);
+        }
+        return String(d);
+      })
+      .filter(Boolean);
+    return parts.length ? parts.join("; ") : fallback;
+  }
+  if (typeof detail === "object") {
+    return detail.message || detail.msg || JSON.stringify(detail);
+  }
+  return String(detail);
+}
+
 async function streamNDJSON(url, { method = "POST", body, signal, onEvent, onHttpError }) {
   const response = await fetch(url, {
     method,
@@ -17,7 +49,7 @@ async function streamNDJSON(url, { method = "POST", body, signal, onEvent, onHtt
     let detail = `Request failed (${response.status})`;
     try {
       const data = await response.json();
-      if (data && data.detail) detail = String(data.detail);
+      detail = describeDetail(data && data.detail, detail);
     } catch {
       /* keep generic message */
     }
@@ -84,7 +116,7 @@ export async function fetchTrace(runId, signal) {
     let detail = `Trace request failed (${response.status})`;
     try {
       const data = await response.json();
-      if (data && data.detail) detail = String(data.detail);
+      detail = describeDetail(data && data.detail, detail);
     } catch {
       /* keep generic */
     }
@@ -104,7 +136,7 @@ export async function downloadReport(runId, format) {
     let detail = `Export failed (${response.status})`;
     try {
       const data = await response.json();
-      if (data && data.detail) detail = String(data.detail);
+      detail = describeDetail(data && data.detail, detail);
     } catch {
       /* keep generic */
     }
@@ -140,7 +172,7 @@ export async function fetchSession(sessionId, signal) {
     let detail = `Session request failed (${response.status})`;
     try {
       const data = await response.json();
-      if (data && data.detail) detail = String(data.detail);
+      detail = describeDetail(data && data.detail, detail);
     } catch {
       /* keep generic */
     }
@@ -164,7 +196,7 @@ async function apiJSON(url, { method = "GET", body } = {}) {
     /* non-JSON error body */
   }
   if (!response.ok) {
-    throw new Error((data && data.detail) || `Request failed (${response.status})`);
+    throw new Error(describeDetail(data && data.detail, `Request failed (${response.status})`));
   }
   return data;
 }

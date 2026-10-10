@@ -618,6 +618,27 @@ def select_reading(
     if not scored:
         return None, []
 
+    # A reading that scores ZERO on both meaning dimensions has no support in the
+    # user's own wording: none of the query's content words appear in its label
+    # or description, and its prior is zero. Adopting it means answering a
+    # question the evidence of the phrasing does not point to. This is the
+    # "most demanding skill in 2027" case exactly: once the off-meaning demand
+    # readings are removed by the boundary guard, only "Stressful or difficult
+    # (high strain)" remains choosable — and it shares NO word with the query, so
+    # it scored 0.00/0.00 yet was adopted (the single-candidate early return
+    # below admitted it), while the report announced a different reading. A
+    # zero-fit winner is not a winner: return None so the caller separates or
+    # asks rather than assuming a reading the question's wording never implied.
+    top_candidate = max(
+        scored,
+        key=lambda c: (W_SEMANTIC_FIT * c.semantic_fit + W_CONTEXTUAL_FIT * c.contextual_fit),
+    )
+    if (
+        top_candidate.semantic_fit <= 0.0
+        and top_candidate.contextual_fit <= 0.0
+    ):
+        return None, scored
+
     top = scored[0]
     if len(scored) == 1:
         return top, scored

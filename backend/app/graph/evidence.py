@@ -183,6 +183,11 @@ def _corroboration_queries(
     facts = [f for f in state.get("facts", []) or [] if isinstance(f, dict)]
     if not facts:
         return [], {}
+    # Only procurement-seed from claims about the ORIGINAL query: an off-topic
+    # claim's text becomes an off-topic web search (see `_on_topic_facts`).
+    facts = _on_topic_facts(state)
+    if not facts:
+        return [], {}
     try:
         from app.core.evidence_grade import grade_facts, registrable_domain
     except Exception as exc:
@@ -402,6 +407,13 @@ def _counter_evidence_queries(state: ResearchState, limit: int = 2) -> List[str]
     facts = [f for f in state.get("facts", []) or [] if isinstance(f, dict)]
     if not facts:
         return []
+    # Only counter-evidence-seed from on-topic claims: see `_on_topic_facts`.
+    # Otherwise a single off-topic paper's claim ("Our results highlight
+    # reliance brittle artifacts...") rides improved_queries into the next pass
+    # as a nonsense search.
+    facts = _on_topic_facts(state)
+    if not facts:
+        return []
     try:
         from app.core.evidence_grade import grade_facts
 
@@ -541,6 +553,35 @@ def _query_inscope_facts(
         return facts
 
 
+def _on_topic_facts(state: ResearchState) -> List[Dict[str, Any]]:
+    """The pool's facts that are topically about the ORIGINAL query.
+
+    Claim-specific procurement and counter-evidence queries embed the CLAIM
+    text they target (`"{claim} independent corroboration official data..."`).
+    Built from EVERY graded fact they inherited whatever off-topic papers a
+    search pass happened to fetch: on a "most demanding skill" query, single-
+    source claims from soccer-physiology, fake-news-detection and Mexican-
+    automotive papers each seeded a web search, whose results fed more
+    off-topic claims back into the pool — a self-amplifying drift, visible on
+    the wire as searches for "Central midfielders covered most total distance
+    817 HIR official report...". Filtering the seeds to the query's OWN
+    evidence pool stops the loop at its source; `_query_inscope_facts` is the
+    same all-or-nothing-safe relevance filter the limitations and scoring paths
+    already use. Falls back to the full pool when the filter would empty it, so
+    a genuinely thin run still gets its one honest expansion attempt.
+    """
+    facts = [f for f in state.get("facts", []) or [] if isinstance(f, dict)]
+    if not facts:
+        return []
+    intent = state.get("intent") or {}
+    senses = [
+        str(s.get("label", "") or "")
+        for s in (intent.get("senses") or [])
+        if isinstance(s, dict)
+    ]
+    return _query_inscope_facts(facts, str(state.get("query", "") or ""), senses)
+
+
 def _measured_coverage_gaps(state: ResearchState) -> List[str]:
     """Human-readable evidence gaps for the mandatory Limitations section.
 
@@ -607,7 +648,56 @@ def _measured_coverage_gaps(state: ResearchState) -> List[str]:
                 )
     except Exception as exc:
         logger.warning("reading_gap_limitations_failed", error=str(exc), exc_info=exc)
+    # CRITIC BLOCKING FINDINGS. The critic already computes exactly which gaps
+    # block finalization — uncovered planned angles and drift against the
+    # original question (app/agents/critic.py). Those findings previously
+    # reached ONLY the audit/trace, so a run that finalized with the critic
+    # having said "2 planned angle(s) still unsourced ... drift=0.74" shipped
+    # an answer that never told the reader. Folding them into the measured
+    # limitations closes that: an answer with blocking findings can no longer
+    # pass as a healthy one (AGENTS.md 2, degraded-run rule).
+    gaps.extend(_critic_blocking_limitations(state))
     return gaps[:8]
+
+
+def _critic_blocking_limitations(state: ResearchState) -> List[str]:
+    """Human-readable limitations from the critic's own blocking findings.
+
+    Reads the persisted critique (its `gaps` for angles that produced no
+    evidence, and its `gate_failures` for uncovered planned axes and drift)
+    and renders them as reader-facing sentences. Deterministic and total: a
+    missing or malformed critique yields no limitation, never an error.
+    """
+    critique = state.get("critique") or {}
+    if not isinstance(critique, dict):
+        return []
+    out: List[str] = []
+    for gap in critique.get("gaps") or ():
+        text = str(gap or "").strip()
+        if text:
+            # The critic's gap strings already read "no evidence for angle: X"
+            # or "angle under-sourced (n/m): X"; use them as-is rather than
+            # prefixing a second label onto them.
+            out.append(text)
+    for failure in critique.get("gate_failures") or ():
+        text = str(failure or "").strip()
+        if text.startswith("planned_axis_uncovered="):
+            axis = text.split("=", 1)[1].strip()
+            if axis:
+                out.append(f"planned dimension '{axis}' produced no evidence")
+        elif text.startswith("drift="):
+            out.append(
+                "evidence drifted from the original question; some material is "
+                "only loosely on-topic"
+            )
+    # De-dup while preserving order, so the audit and the answer name a gap once.
+    seen: set = set()
+    unique: List[str] = []
+    for item in out:
+        if item not in seen:
+            seen.add(item)
+            unique.append(item)
+    return unique
 
 
 

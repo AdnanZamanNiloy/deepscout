@@ -142,6 +142,59 @@ def test_corroborated_claim_yields_no_procurement_query():
     assert queries == []
 
 
+def test_off_topic_claims_do_not_seed_procurement_queries():
+    """An off-topic claim must never become a web search.
+
+    Live defect: on a workforce-skills query, single-source claims from soccer-
+    physiology, fake-news-detection and Mexican-automotive papers each seeded a
+    claim-text query ("Central midfielders covered most total distance 817 HIR
+    official report government data...") which returned more off-topic pages and
+    amplified the drift. Procurement seeds are now filtered to the query's own
+    evidence pool.
+    """
+    state = _state(
+        query="which skills are most demanding in 2027",
+        facts=[
+            {
+                "claim": "Employers most demand analytical thinking and AI skills in 2027.",
+                "source": "https://weforum.org/report",
+                "verified": True,
+            },
+            {
+                "claim": "Central midfielders covered most total distance 817 HIR during matches.",
+                "source": "https://sportjournal.org/study",
+                "verified": True,
+            },
+            {
+                "claim": "Our results highlight reliance brittle artifacts current detectors.",
+                "source": "https://fakenews.example/paper",
+                "verified": True,
+            },
+        ],
+    )
+    queries, _ = _corroboration_queries(state)
+    joined = " ".join(queries).lower()
+    assert "midfielder" not in joined
+    assert "brittle artifacts" not in joined
+
+
+def test_all_off_topic_pool_still_yields_a_query():
+    """The filter is all-or-nothing-safe: a fully off-topic pool is not emptied,
+    so a genuinely thin run still gets its one honest expansion attempt."""
+    state = _state(
+        query="which skills are most demanding in 2027",
+        facts=[
+            {
+                "claim": "Central midfielders covered most total distance 817 HIR during matches.",
+                "source": "https://sportjournal.org/study",
+                "verified": True,
+            },
+        ],
+    )
+    queries, _ = _corroboration_queries(state)
+    assert queries, "must not starve procurement when the whole pool is off-topic"
+
+
 # ---------------------------------------------------------------------------
 # 3. procurement queries are actually EXECUTED by search_node
 # ---------------------------------------------------------------------------

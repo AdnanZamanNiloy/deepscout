@@ -48,7 +48,7 @@ from app.agents.summarizer import summarizer_agent
 from app.agents.synthesizer import synthesizer_agent
 from app.agents.thesis_fidelity import check_thesis_fidelity  # noqa: F401
 from app.agents.verifier import verify_facts
-from app.core import depth_controller
+from app.core.depth import controller as depth_controller
 from app.core.confidence import compute_confidence  # noqa: F401
 from app.core.contradictions import find_contradictions  # noqa: F401
 from app.core.degradation import has_provider_degradation, take_fallbacks  # noqa: F401

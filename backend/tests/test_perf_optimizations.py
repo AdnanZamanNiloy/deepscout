@@ -16,7 +16,7 @@ Invariants these tests protect:
 * the full mocked pipeline keeps the same verified-fact footprint.
 """
 from app.core.config import Settings
-from app.core.depth_controller import _searched_queries
+from app.core.depth.checks import _searched_queries
 
 
 def _settings(**kw):

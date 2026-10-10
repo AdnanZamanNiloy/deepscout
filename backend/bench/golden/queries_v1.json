@@ -33,7 +33,7 @@
         "verified_claims": 4,
         "corroborated_claims": 2,
         "distinct_domains": 3,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -68,7 +68,7 @@
         "verified_claims": 2,
         "corroborated_claims": 1,
         "distinct_domains": 1,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -103,7 +103,7 @@
         "verified_claims": 2,
         "corroborated_claims": 0,
         "distinct_domains": 2,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -138,7 +138,7 @@
         "verified_claims": 1,
         "corroborated_claims": 1,
         "distinct_domains": 1,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -173,7 +173,7 @@
         "verified_claims": 3,
         "corroborated_claims": 2,
         "distinct_domains": 2,
-        "primary_share": 0.57,
+        "primary_share": 0.4,
         "sections": 5
       }
     },
@@ -208,7 +208,7 @@
         "verified_claims": 0,
         "corroborated_claims": 0,
         "distinct_domains": 1,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -243,7 +243,7 @@
         "verified_claims": 0,
         "corroborated_claims": 0,
         "distinct_domains": 1,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -313,7 +313,7 @@
         "verified_claims": 2,
         "corroborated_claims": 2,
         "distinct_domains": 1,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -348,7 +348,7 @@
         "verified_claims": 3,
         "corroborated_claims": 2,
         "distinct_domains": 3,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -384,7 +384,7 @@
         "verified_claims": 0,
         "corroborated_claims": 0,
         "distinct_domains": 1,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -420,7 +420,7 @@
         "verified_claims": 2,
         "corroborated_claims": 2,
         "distinct_domains": 1,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -549,7 +549,7 @@
         "verified_claims": 4,
         "corroborated_claims": 2,
         "distinct_domains": 3,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -584,7 +584,7 @@
         "verified_claims": 2,
         "corroborated_claims": 1,
         "distinct_domains": 1,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -619,7 +619,7 @@
         "verified_claims": 0,
         "corroborated_claims": 0,
         "distinct_domains": 1,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -653,7 +653,7 @@
         "verified_claims": 2,
         "corroborated_claims": 1,
         "distinct_domains": 2,
-        "primary_share": 0.57,
+        "primary_share": 0.4,
         "sections": 5
       }
     },
@@ -687,7 +687,7 @@
         "verified_claims": 1,
         "corroborated_claims": 1,
         "distinct_domains": 1,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -721,7 +721,7 @@
         "verified_claims": 0,
         "corroborated_claims": 0,
         "distinct_domains": 1,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -756,7 +756,7 @@
         "verified_claims": 1,
         "corroborated_claims": 1,
         "distinct_domains": 1,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -791,7 +791,7 @@
         "verified_claims": 1,
         "corroborated_claims": 0,
         "distinct_domains": 1,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -826,7 +826,7 @@
         "verified_claims": 2,
         "corroborated_claims": 1,
         "distinct_domains": 1,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     },
@@ -896,7 +896,7 @@
         "verified_claims": 0,
         "corroborated_claims": 0,
         "distinct_domains": 1,
-        "primary_share": 0.9,
+        "primary_share": 0.5,
         "sections": 5
       }
     }

@@ -17,10 +17,11 @@ What changed and why
    still surfaces limitations and conflicts whenever they actually exist.
 
 2. QUESTION-TYPE AWARE WRITING. A comparison, a how-to, a causal "why", a
-   decision and a definition are five different documents. `_format_guidance`
-   injects the shape the reader expects (criteria + verdict; ordered steps;
-   mechanism chains; options + recommendation; plain definition + analogy)
-   instead of the single "angle per section" template.
+   decision, a definition and a recommendation request are six different
+   documents. `_format_guidance` injects the shape the reader expects (criteria
+   + verdict; ordered steps; mechanism chains; options + recommendation; plain
+   definition + analogy; ranked actionable suggestions with method and
+   feasibility) instead of the single "angle per section" template.
 
 3. SECTIONS ARE ORDERED, NOT APPENDED. Missing sections used to be appended at
    the END in dict order — a report could end with its Executive Summary.

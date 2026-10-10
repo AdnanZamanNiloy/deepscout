@@ -8,7 +8,7 @@ expansion-cap) still wins, and the decision must be explainable.
 
 Mirrors the fixtures in test_depth_controller_v2.py / test_research_loop.py.
 """
-from app.core import depth_controller
+from app.core.depth import controller as depth_controller
 from app.core.config import Settings
 from app.core.investigation_state import (
     STATUS_ATTEMPTED,
