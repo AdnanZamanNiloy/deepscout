@@ -47,6 +47,10 @@ colorama>=0.4.6
 json-repair>=0.29.8
 json5>=0.9.25
 mistune>=3.0.2
+# Optional engine capability (MCP retrievers). The engine imports these
+# lazily and degrades cleanly if absent; listed so startup logs stay clean.
+mcp>=1.9.1,<2.0.0
+langchain-mcp-adapters>=0.1.0
 
 pytest==9.1.1
 pytest-asyncio==1.4.0
