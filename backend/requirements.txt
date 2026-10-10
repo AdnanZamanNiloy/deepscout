@@ -1,6 +1,9 @@
 fastapi==0.116.1
 uvicorn[standard]==0.35.0
-langgraph==0.6.5
+# langgraph v1 backs both the existing workflow (during the engine migration)
+# and the vendored multi-agent engine under backend/engine/, which requires
+# langchain-core v1 + langgraph>=1.0. One shared resolution serves both.
+langgraph>=1.0.0
 httpx==0.28.1
 cryptography==50.0.1
 pydantic==2.11.7
@@ -17,6 +20,34 @@ pymupdf>=1.24  # optional at runtime: PDF extraction only; missing lib skips PDF
 python-docx>=1.1  # optional at runtime: DOCX report export
 weasyprint>=60  # optional at runtime: PDF report export (HTML/CSS -> PDF)
 Markdown>=3.5  # report markdown parsing helpers
+
+# Engine dependencies (backend/engine/) -------------------------------------
+# The multi-agent research engine under backend/engine/ builds on the
+# LangChain v1 / LangGraph stack and a small set of research utilities.
+# langgraph is pinned to the same version the existing workflow already uses
+# so a single resolution satisfies both.
+langchain>=1.0.0
+langchain-classic>=1.0.0
+langchain-community>=0.4.0
+langchain-core>=1.0.0
+langchain-openai>=1.0.0
+langchain-text-splitters>=1.0.0
+langgraph>=0.2.76
+openai>=1.3.3
+tavily-python>=0.7.12
+ddgs>=9.0.0
+arxiv>=2.0.0
+beautifulsoup4>=4.12.2
+tiktoken>=0.7.0
+aiofiles>=23.2.1
+requests>=2.31.0
+pyyaml>=6.0.1
+loguru>=0.7.2
+colorama>=0.4.6
+json-repair>=0.29.8
+json5>=0.9.25
+mistune>=3.0.2
+
 pytest==9.1.1
 pytest-asyncio==1.4.0
 respx==0.23.1
