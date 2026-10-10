@@ -138,7 +138,6 @@ def build_initial_state(
     from app.agents.orchestrator import MODE_PRESETS, scaled_max_iterations
     from app.agents.orchestrator import resolve_mode
 
-    requested = mode
     mode = resolve_mode(mode)
 
     preset = MODE_PRESETS.get(mode)
