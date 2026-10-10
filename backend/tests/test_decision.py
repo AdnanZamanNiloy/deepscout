@@ -116,3 +116,59 @@ def test_decision_layer_lives_in_audit_not_in_the_answer():
     # The audit carries the options and their recommendation.
     assert "Decision layer" in audit
     assert "(RECOMMENDED)" in audit
+
+
+# --- Feature 18 completeness: citations, feasibility, uncertainty ---------
+# A recommendation must carry its reasoning (rationale), its evidence
+# (supporting_sources), a feasibility assessment, and an honest uncertainty
+# band — not just a support count. These fields are additive; the existing
+# contract (label, description, rationale, risk_note, is_recommended) is
+# unchanged.
+
+
+def test_every_option_carries_supporting_sources():
+    options = build_decision_layer(_comparative_state())
+    for o in options:
+        assert isinstance(o.get("supporting_sources"), list)
+    # The cost axis has two verified claims from iea.org and arxiv.org.
+    cost = next(o for o in options if o["description"].startswith("Frame the decision primarily around the 'cost'"))
+    assert any("iea.org" in s for s in cost["supporting_sources"])
+
+
+def test_every_option_carries_feasibility_and_uncertainty():
+    options = build_decision_layer(_comparative_state())
+    for o in options:
+        assert o.get("feasibility")
+        assert o.get("uncertainty") in ("low", "medium", "high")
+
+
+def test_uncertainty_reflects_conflicts_and_primary_support():
+    # Unresolved contradiction present + no explicit primary flag -> not "low".
+    options = build_decision_layer(_comparative_state())
+    assert all(o["uncertainty"] in ("medium", "high") for o in options)
+
+
+def test_option_with_no_support_is_high_uncertainty():
+    state = _comparative_state()
+    # Drop all verified facts: an axis with zero support must read high
+    # uncertainty and an honest feasibility note, never a confident tone.
+    state["facts"] = []
+    state["contradictions"] = []
+    options = build_decision_layer(state)
+    assert options, "comparative query with axes still yields options"
+    for o in options:
+        assert o["uncertainty"] == "high"
+        assert "No verified claim" in o["feasibility"]
+
+
+def test_recommendation_rationale_is_evidence_traceable():
+    """The audit must render the feasibility/uncertainty/evidence lines."""
+    import app.graph.workflow as wf
+
+    state = _comparative_state()
+    state["synthesized_answer"] = "answer"
+    state["critique"] = {"is_sufficient": True}
+    audit = wf.build_answer_audit(state)
+    assert "Feasibility:" in audit
+    assert "Uncertainty:" in audit
+    assert "Evidence:" in audit
