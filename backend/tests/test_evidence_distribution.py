@@ -5,8 +5,6 @@ state update; the writer brief consumes it to set claim register. The UI
 grade widget was removed, so the distribution is no longer streamed on the
 `final_report` NDJSON event.
 """
-import pytest
-
 from app.core.config import Settings
 
 

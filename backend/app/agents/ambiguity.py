@@ -47,22 +47,6 @@ ASSUME = "assume"
 ASK = "ask"
 SEPARATE = "separate"
 
-# A reading at or above this probability, with the runner-up far below, is
-# dominant enough to research alone. Mirrors intent's own confidence vocabulary
-# so the two layers cannot disagree about what "clearly dominant" means.
-DOMINANT_PROBABILITY = 0.70
-# Top-two gap at or above this: one reading safely wins.
-DOMINANT_GAP = 0.40
-# Looser bar for ASSUMING a reading rather than asking. The question is not
-# "is this certain?" but "is this reasonable enough to research with a stated
-# assumption?" — a moderately leading reading clears it. Asking is reserved for
-# a genuine tie, because stopping to interrogate the user is the expensive
-# failure here, not proceeding on a defensible reading.
-ASSUME_PROBABILITY = 0.45
-ASSUME_GAP = 0.10
-# Top-two gap BELOW this, with both readings plausible: they diverge enough that
-# answering one would miss the question.
-DIVERGENT_GAP = 0.25
 # How many readings a single report can cover before covering all of them stops
 # being responsive and starts being needlessly broad.
 #
@@ -128,15 +112,6 @@ _DISAMBIGUATING_MARKERS: Tuple[str, ...] = (
     "referring to", "you know", "of the two", "out of these", "specifically the",
     "interms of", "defin", "namely",
 )
-# "X or Y?" / "X vs Y" — the user names two things to compare. NOTE this is a
-# SEPARATE signal, never a RESOLUTION signal: "nursing or teaching" compares two
-# ENTITIES and leaves the term under comparison ("demanding") exactly as
-# ambiguous as before. Treating it as resolution made every comparison query
-# silently pick one reading of its own key term.
-_ENUMERATED_CHOICE_RE = re.compile(
-    r"\b(or|versus|vs\.?)\b", re.IGNORECASE
-)
-
 # Words that signal the query is ALREADY a request for a choice among readings
 # ("which of", "either"). Their presence means the readings are the question, so
 # separating them in the answer is exactly right.

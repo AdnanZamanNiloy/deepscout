@@ -71,25 +71,6 @@ _RANKING_WORDS: Tuple[str, ...] = (
     "beats out",
 )
 
-# Phrases that HEDGE the ranking language legitimately: "cannot rank", "no single
-# #1", "not a ranking". Their presence means the ranking word is being denied,
-# not asserted, so it must not be reported as a violation.
-_NEGATING_PHRASES: Tuple[str, ...] = (
-    "no single",
-    "no defensible",
-    "cannot rank",
-    "cannot be ranked",
-    "not ranked",
-    "not a ranking",
-    "no ranking",
-    "not comparable",
-    "no #1",
-    "without ranking",
-    "no occupation ranks first",
-    "no clear",
-)
-
-
 def _tokens(text: str) -> List[str]:
     return re.findall(r"[a-z0-9#][a-z0-9#]*", (text or "").lower())
 

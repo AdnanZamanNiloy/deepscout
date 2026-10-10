@@ -281,9 +281,6 @@ _BULLET_RE = re.compile(r"^\s*[-*]\s+")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
 
-_TRIVIAL_RE = re.compile(r"^(?:[-*]\s*)?$")
-
-
 _MIN_CONTENT_TOKENS = 3
 
 

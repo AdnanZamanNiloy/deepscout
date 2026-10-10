@@ -250,11 +250,10 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
     async def event_stream() -> AsyncGenerator[str, None]:
         bind_request_context(request_id=request_id)
         reset_fallbacks()
-        # Run ledger (Feature 12): per-run budget + usage accounting. LLM
-        # calls, searches and cache hits record here; the depth controller
-        # consults it before every expansion; the final event persists the
-        # estimated cost (previously always None).
-        usage = start_run_usage(request_id, settings, mode=str(payload.mode or "standard"))
+        # Run ledger (Feature 12): installs the per-run budget guard. LLM calls,
+        # searches and cache hits record into it; the depth controller consults
+        # it before every expansion.
+        start_run_usage(request_id, settings, mode=str(payload.mode or "standard"))
         try:
             state = build_initial_state(
                 payload.query,

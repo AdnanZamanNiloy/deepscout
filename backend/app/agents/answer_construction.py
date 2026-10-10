@@ -66,13 +66,6 @@ ANSWER_SYNTHESIZED = "synthesized"
 ANSWER_PARTIAL = "partial"
 ANSWER_INSUFFICIENT = "insufficient"
 
-ALL_ANSWER_MODES = (
-    ANSWER_DIRECT,
-    ANSWER_SYNTHESIZED,
-    ANSWER_PARTIAL,
-    ANSWER_INSUFFICIENT,
-)
-
 # Inference levels. How far the delivered answer stands from a source that
 # states it outright. Surfaced so the writer (and the audit) can calibrate
 # language instead of treating every supported answer as equally direct.
