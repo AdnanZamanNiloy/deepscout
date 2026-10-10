@@ -207,6 +207,16 @@ R4 — If the query is a DECISION ("should we", "should X"), include a
    causal-mechanism dimension and a counterfactual/alternative-explanation
    dimension. If it is CONTESTED, include a strongest-counter-evidence
    dimension.
+   If it is a RECOMMENDATION request ("suggest", "recommend", "give me ideas",
+   "what should I study/research") the user wants CANDIDATE OPTIONS, not a
+   survey of the topic: include a "candidate options" dimension (the specific
+   things to recommend), a "selection criteria" dimension (what makes one a good
+   fit), and an "authoritative recommendations" dimension (bodies that rank or
+   recommend them). A recommendation query also needs feasibility/limitations if
+   the options are projects, so include a risk-or-feasibility dimension when the
+   options are things the user would have to carry out. Do NOT answer a
+   recommendation request with definitional dimensions — "what is the topic" is
+   not "which topic should I pick".
 
 R5 — 3 to 6 dimensions. More is not better: each one becomes a research
    contract and a search budget. Name ONLY what this query needs.

@@ -205,6 +205,16 @@ def classify_query_type(query: str) -> str:
         return "analytical"
     if any(m in q for m in EXPLORATORY_MARKERS):
         return "exploratory"
+    # A RECOMMENDATION / GUIDANCE request ("suggest me some topics") is not a
+    # definitional factual lookup: it asks for candidate suggestions, so it owes
+    # no definitional "X is Y" claim and must not be planned as a survey of the
+    # subject. Typing it `exploratory` keeps it out of the definition gate and
+    # out of the "what is X" dimension set. The predicate is shared with the
+    # ambiguity policy so the two never drift.
+    from app.core.primitives import is_guidance_query
+
+    if is_guidance_query(query):
+        return "exploratory"
     return "factual"
 
 
