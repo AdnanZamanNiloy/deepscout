@@ -121,7 +121,6 @@ export type CriticEvent = Base & {
   reason?: string;
   breakdown?: Record<string, unknown>;
   redteam?: Record<string, unknown>;
-  budget?: Record<string, unknown>;
 };
 
 export type FinalReportEvent = Base & {
@@ -133,7 +132,6 @@ export type FinalReportEvent = Base & {
   answer_support?: number | null;
   citation_health?: Record<string, unknown>;
   capabilities?: Record<string, unknown>;
-  budget?: Record<string, unknown>;
 };
 
 export type ErrorEvent = Base & {

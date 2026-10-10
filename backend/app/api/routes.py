@@ -606,8 +606,7 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                             critique = snapshot.get("critique", {})
                             reason = critique.get("reason", "No reason provided")
                             yield event_line("critic", iteration=iteration, reason=reason,
-                                             breakdown=snapshot.get("confidence_breakdown") or {},
-                                             budget=usage.snapshot())
+                                             breakdown=snapshot.get("confidence_breakdown") or {})
                             last_iteration = iteration
                             await _persist(record_event(
                                 settings.database_url, request_id, "critic", "end",
@@ -712,7 +711,6 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
             final_state: Dict[str, Any] = last_snapshot
             report = str(final_state.get("final_report", ""))
             confidence = float(final_state.get("confidence", 0.0))
-            budget_snapshot = usage.snapshot()
 
             await _finish_run("completed", confidence)
             # Challenged flags land once contradictions are known (end of run).
@@ -761,21 +759,18 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                                  provider_degraded=degradation["provider_degraded"],
                                  provider_kinds=degradation["provider_kinds"],
                                  answer_support=support.get("rate"),
-                                 budget=budget_snapshot,
                                  wave_report=last_snapshot.get("wave_report") or [],
                                  citation_health=last_snapshot.get("citation_health") or {},
                                  quality=last_snapshot.get("quality") or {},
                                  outline=last_snapshot.get("outline") or {},
-                                 section_wise=bool(last_snapshot.get("section_wise")),
-                                 evidence_distribution=last_snapshot.get("evidence_distribution") or {})
+                                 section_wise=bool(last_snapshot.get("section_wise")))
             else:
                 _degradation = degradation_summary()
                 yield event_line("final_report", report="No final report generated.", confidence=confidence,
                                  degraded=_degradation["agents"],
                                  degraded_reasons=_degradation["reasons"],
                                  provider_degraded=_degradation["provider_degraded"],
-                                 provider_kinds=_degradation["provider_kinds"],
-                                 budget=budget_snapshot)
+                                 provider_kinds=_degradation["provider_kinds"])
 
             # Decision Layer rows (3.5): persisted for the audit/trace, NOT
             # surfaced in the user-facing answer stream. The internal decision

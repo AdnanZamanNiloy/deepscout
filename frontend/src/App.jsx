@@ -109,11 +109,10 @@ function blankRun(query, mode) {
     providerDegraded: false,
     providerKinds: [],
     answerSupport: null,
-    // v2 signals: dependency-wave plan shape, live budget ledger,
-    // per-source citation health, contradiction count.
+    // v2 signals: dependency-wave plan shape, per-source citation health,
+    // contradiction count.
     waves: [],
     waveReport: [],
-    budget: null,
     citationHealth: null,
     contradictions: 0,
     // v2.1: resolved intent (senses, domain, explanation level).
@@ -124,7 +123,6 @@ function blankRun(query, mode) {
     // without research.
     directAnswer: null,
     quality: null,
-    evidenceDistribution: null,
     // Answer-first outline: the section shape the writer targeted.
     outline: null,
     sectionWise: false,
@@ -590,7 +588,6 @@ export default function App() {
               ? { ...m, run: { ...m.run,
                   critiques: [...m.run.critiques, { iteration: evt.iteration, reason: evt.reason || "" }],
                   breakdown: evt.breakdown && typeof evt.breakdown === "object" ? evt.breakdown : m.run.breakdown,
-                  budget: evt.budget && typeof evt.budget === "object" ? evt.budget : m.run.budget,
                 } }
               : m
           ));
@@ -635,13 +632,10 @@ export default function App() {
             providerDegraded: evt.provider_degraded === true,
             providerKinds: Array.isArray(evt.provider_kinds) ? evt.provider_kinds : [],
             answerSupport: typeof evt.answer_support === "number" ? evt.answer_support : null,
-            budget: evt.budget && typeof evt.budget === "object" ? evt.budget : m.run.budget,
             waveReport: Array.isArray(evt.wave_report) ? evt.wave_report : m.run.waveReport,
             citationHealth: evt.citation_health && typeof evt.citation_health === "object"
               ? evt.citation_health : m.run.citationHealth,
             quality: evt.quality && typeof evt.quality === "object" ? evt.quality : m.run.quality,
-            evidenceDistribution: evt.evidence_distribution && typeof evt.evidence_distribution === "object"
-              ? evt.evidence_distribution : m.run.evidenceDistribution,
             outline: evt.outline && typeof evt.outline === "object" ? evt.outline : m.run.outline,
             sectionWise: typeof evt.section_wise === "boolean" ? evt.section_wise : m.run.sectionWise,
             done: true,
