@@ -166,7 +166,6 @@ _COMPILED: Dict[str, Tuple[Tuple[re.Pattern[str], float], ...]] = {
 # concept: capitalised words that are not sentence-initial, digits, and short
 # all-caps acronyms. Used to spot a result that matches the question's wording
 # while missing its subject entirely.
-_SENTENCE_START = re.compile(r"^\s*\S")
 _ENTITY = re.compile(
     r"\b(?:"
     r"[A-Z][a-zA-Z0-9]*(?:[ -][A-Z][a-zA-Z0-9]*)*"   # Camel / spaced proper nouns
