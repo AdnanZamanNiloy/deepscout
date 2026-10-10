@@ -101,17 +101,46 @@ def _kind_for_failure(failure: str) -> Optional[str]:
 
 
 def _target_for_failure(failure: str) -> str:
-    """The axis/dimension a failure names, else '' (pure, total)."""
+    """The STABLE axis/dimension a failure names, else '' (pure, total).
+
+    Only axis-shaped failures carry a meaningful, per-item target. A
+    run-singleton condition (drift, concentration, single-domain, severe
+    conflict, unverified pool, unsourced-angle) must NOT take its value as a
+    target: `drift=0.50` -> `drift=0.61` and `concentration_on=_unassigned=0.61`
+    would otherwise mint a NEW task every round, and the previous task would be
+    marked "resolved" simply because its exact string vanished — falsely
+    clearing a criticism that is still firing. Stability of the key is what
+    makes "verify the criticism was resolved" trustworthy.
+    """
     f = (failure or "").strip()
     for prefix in (
         "planned_axis_uncovered=",
         "missing_primary_source=primary_source_for:",
         "missing_primary_source=",
-        "concentration_on=",
     ):
         if f.startswith(prefix):
-            return f[len(prefix):].strip()
+            return _stable_axis(f[len(prefix):])
+    # drift=..., concentration_on=..., domains=..., verified=..., facts=...,
+    # severe_conflicts=..., uncovered_angles=... — run-level conditions with a
+    # single task per run regardless of the measured value.
     return ""
+
+
+# Values that are NOT a dimension name even though they appear after a "=" —
+# the focus layer's placeholder for facts attributed to no planned dimension.
+_NON_DIMENSION_TARGETS = {"_unassigned", "unassigned", ""}
+
+
+def _stable_axis(raw: str) -> str:
+    """Normalize an axis token so cosmetic variation can't fork the key.
+
+    Lower-cased and whitespace-collapsed; the focus layer's `_unassigned`
+    placeholder is treated as no target (run-singleton) rather than a name.
+    """
+    token = " ".join(str(raw or "").strip().lower().split())
+    if token in _NON_DIMENSION_TARGETS:
+        return ""
+    return token
 
 
 def _key(kind: str, target: str) -> str:
