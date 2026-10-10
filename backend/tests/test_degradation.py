@@ -66,23 +66,37 @@ def test_synthesizer_fallback_records():
         clear_fallbacks()
 
 
-def test_final_report_event_carries_degraded_list(tmp_path):
-    """Route drains the per-request recorder into the final_report event and
-    persists one fallback row per agent in agent_events."""
+def test_final_report_event_carries_degraded_list(tmp_path, monkeypatch):
+    """The route drains the per-request fallback recorder into the final_report
+    event and persists one fallback row per agent in agent_events.
+
+    The engine route is driven by monkeypatching the orchestrator runner so no
+    provider or network is touched; a fallback is recorded mid-run, exactly as
+    a deterministic-fallback path would.
+    """
     from app.db.sqlite import init_db
+    from app.engine import orchestrator as orch
 
     db_path = str(tmp_path / "deg.db")
     asyncio.run(init_db(db_path))
 
-    class StubDegradedWorkflow:
-        async def astream(self, state, stream_mode=None, config=None):
+    class StubRunner:
+        def __init__(self, **kwargs):
+            pass
+
+        async def run(self):
             record_fallback("planner")
-            yield {"final_report": "# Final Answer\nok", "confidence": 0.5}
+            yield {"engine_node": "publisher", "stage": "finalize"}
+
+        def final_state(self):
+            return {"final_report": "# Final Answer\nok", "sources": []}
+
+    monkeypatch.setattr(orch, "MultiAgentRunner", StubRunner)
 
     settings = Settings(groq_api_key="k", database_url=db_path, _env_file=None)
     app = FastAPI()
-    app.state.workflow = StubDegradedWorkflow()
     app.state.settings = settings
+    app.state.llm = None  # skip the pre-flight provider probe
     app.state.limiter = limiter
     app.include_router(api_router, prefix="/api")
     limiter.reset()
