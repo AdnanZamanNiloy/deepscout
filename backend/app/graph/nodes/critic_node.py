@@ -293,6 +293,49 @@ def make_critic_node(llm, critic_agent):
             if q not in improved:
                 improved.append(q)
 
+        # EVIDENCE RECOVERY. When validation failed because the evidence is
+        # irrelevant, concentrated in one domain, or missing a primary source,
+        # the critic's finding is converted here into TARGETED replacement
+        # queries aimed at that specific defect — a publisher-excluding
+        # substitution for concentration, a re-scope onto the uncovered plan
+        # axis for drift, a `site:`-scoped primary-source query for a thin
+        # dimension. Without this the next pass re-searched the same area in
+        # the same place and failed the same gate again.
+        #
+        # They are placed at the FRONT of the list so a validation failure is
+        # answered before generic gap-filling, and every query is deduplicated
+        # against what this run already searched (inside the module), so a
+        # recovery can never re-spend an executed search.
+        recovery: List[Dict[str, Any]] = []
+        recovery_queries: List[str] = []
+        if not critique.get("is_sufficient"):
+            try:
+                from app.core.evidence_recovery import replacement_queries
+
+                recovery = replacement_queries(
+                    critique,
+                    state.get("facts", []),
+                    plan=state.get("sub_questions", []),
+                    query=state["query"],
+                    executed=[
+                        *(state.get("executed_queries") or []),
+                        *(state.get("coverage_searched") or []),
+                    ],
+                    limit=4,
+                )
+                if recovery:
+                    logger.info(
+                        "evidence_recovery",
+                        queries=len(recovery),
+                        kinds=[str(r.get("kind", "")) for r in recovery],
+                    )
+                for item in recovery:
+                    q = str(item.get("query", "") or "").strip()
+                    if q and q not in recovery_queries:
+                        recovery_queries.append(q)
+            except Exception as exc:
+                logger.warning("evidence_recovery_failed", error=str(exc), exc_info=exc)
+
         # CRITICISM LEDGER (critic -> targeted task -> verify resolved). Each
         # gate failure and gap this critic raised becomes a tracked task; on the
         # next pass it is re-checked against the NEW pool and marked
@@ -335,7 +378,20 @@ def make_critic_node(llm, critic_agent):
         # controller's novel-query check sees the counter-evidence queries too;
         # previously they existed only in critique_feedback and were invisible
         # to the stopping policy.
-        critique["improved_queries"] = improved
+        # Recovery queries come FIRST: a validation failure must be answered
+        # before generic gap-filling competes for the per-pass search budget.
+        critique["improved_queries"] = [*recovery_queries, *improved]
+        # The reason each recovery query was issued rides the critique for the
+        # audit/trace, so a reader can see which defect each search targeted.
+        if recovery:
+            critique["recovery"] = [
+                {
+                    "query": str(r.get("query", "") or ""),
+                    "reason": str(r.get("reason", "") or ""),
+                    "kind": str(r.get("kind", "") or ""),
+                }
+                for r in recovery
+            ]
         # Persist the focus assessment so the trace shows WHERE the run was
         # researching, not only how much it found. Kept out of the primary
         # answer: this is process metadata and belongs to the audit.
@@ -368,6 +424,16 @@ def make_critic_node(llm, critic_agent):
         critique_feedback = critique.get("reason", "")
         if improved:
             critique_feedback = f"{critique_feedback} Improved search focus: {'; '.join(improved)}"
+        if recovery:
+            # Name the defect each recovery search targets, so the trace shows
+            # WHY the loop is searching again rather than only that it is.
+            critique_feedback += (
+                " Evidence recovery: "
+                + "; ".join(
+                    f"{r.get('reason', '')} -> {str(r.get('query', ''))[:70]}"
+                    for r in recovery
+                )
+            )
         if focus_report and (focus_report.get("concentrated") or focus_report.get("drifted")):
             critique_feedback = (
                 f"{critique_feedback} "

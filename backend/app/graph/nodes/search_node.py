@@ -99,20 +99,35 @@ def make_search_node(search_client):
                     corroboration_to_run.append(text)
                     answered.add(key)
 
+        # EVIDENCE-RECOVERY ALLOCATION. Queries the critic generated to answer a
+        # specific evidence-validation failure (app/core/evidence_recovery.py)
+        # are protected by the cap exactly like gap contracts. Without this they
+        # competed for the per-pass budget with every other channel and were
+        # crowded out — measured live: 2 targeted recovery queries generated,
+        # 0 executed, so the pass re-searched the same ground and failed the
+        # same gate again. A recovery that cannot run is not a recovery.
+        recovery_to_run: List[str] = []
+        if int(state.get("iteration", 0)) > 0:
+            for item in (state.get("critique") or {}).get("recovery") or []:
+                text = (
+                    str(item.get("query", "") or "").strip()
+                    if isinstance(item, dict) else str(item or "").strip()
+                )
+                if not text:
+                    continue
+                key = normalize_text(text)
+                if key in answered:
+                    continue
+                answered.add(key)
+                recovery_to_run.append(text)
+
         # GAP-FIRST ALLOCATION of the per-pass query cap.
         #
-        # The plan's own questions used to be truncated to `cap - len(
-        # corroboration_to_run)` BEFORE corroboration was appended, so a pass
-        # with many corroboration queries left almost no room for the plan.
-        # Measured in a live run: 3 dimensions were reported missing, 3
-        # gap contracts were planned, and only 2 reached search_node — the third
-        # was crowded out by `(attempt 2)` / `site:arxiv.org` queries aimed at
-        # the dimension that was ALREADY covered. That is the reported symptom
-        # of searches continuing to concentrate on the covered direction.
-        #
-        # So contracts for dimensions the focus report named as missing get first
-        # claim on the cap. Domain-agnostic: the protected set is read from the
-        # focus report, which derives it from the plan.
+        # Contracts for dimensions the focus report named as missing get first
+        # claim on the cap, so a pass that exists to close a coverage gap cannot
+        # have its gap contracts crowded out by corroboration work on an
+        # already-covered dimension (the symptom of searches continuing to
+        # concentrate on the covered direction).
         gap_axes = {
             str(a)
             for a in ((state.get("focus") or {}).get("report") or {}).get("missing", ())
@@ -131,14 +146,18 @@ def make_search_node(search_client):
         else:
             gap_fresh, other_fresh = [], list(fresh)
 
-        # Gap-closing queries are never truncated by the cap: they are the
-        # reason this pass exists, and dropping them re-creates the
-        # non-convergence being fixed. Everything else competes for what is left,
-        # corroboration included.
-        gap_fresh = gap_fresh[:cap]
-        remaining = max(0, cap - len(gap_fresh))
-        room = max(0, remaining - len(corroboration_to_run))
-        fresh = [*gap_fresh, *other_fresh[:room]]
+        # Protected order: evidence recovery > gap contracts > everything else.
+        # Recovery leads because this pass exists to resolve the validation
+        # failure that produced it; the cap still bounds total spend as before.
+        protected = [*recovery_to_run, *[f[0] for f in gap_fresh]][:cap]
+        protected_keys = {normalize_text(q) for q in protected}
+        room = max(0, cap - len(protected) - len(corroboration_to_run))
+        others = [
+            f for f in other_fresh + gap_fresh
+            if normalize_text(f[0]) not in protected_keys
+        ][:room]
+        fresh = [(q, "general") for q in protected]
+        fresh.extend(others)
         fresh.extend((q, "general") for q in corroboration_to_run)
         if not fresh:
             if previous:
