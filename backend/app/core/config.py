@@ -142,6 +142,14 @@ class Settings(BaseSettings):
     # angled searches that both fail are strong evidence the material is not
     # there, and the gap is then reported as a limitation.
     max_dimension_attempts: int = 2
+    # How many times a specific CRITIC-RAISED criticism (a gate failure or gap,
+    # tracked in app/core/criticism_ledger.py) may be re-raised before it is
+    # marked exhausted and disclosed as a limitation. The critic-to-task
+    # counterpart of the other attempt budgets: without it, a criticism the
+    # critic keeps raising could either be silently dropped (if nothing tracked
+    # it) or looped on forever (if it blocked every stop). When the budget is
+    # spent the criticism stops blocking finalization and is reported instead.
+    max_criticism_attempts: int = 2
     # ------------------------------------------------------------------
     # SearXNG: the self-hosted metasearch backend (primary web search).
     #
