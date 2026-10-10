@@ -26,6 +26,7 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 from app.core.config import Settings
 from app.core import llm_cache
 from app.core.llmkit.jsonparse import (
+    payload_is_empty_container as _payload_is_empty_container,
     payload_says_nothing as _payload_says_nothing,
 )
 from app.core.degradation import PROVIDER_HARD, PROVIDER_TRANSIENT, record_provider_failure  # noqa: F401
@@ -121,6 +122,7 @@ class LLMClient(ProviderInvocationMixin, JSONParseMixin, UsageAccountingMixin, P
         user_prompt: str,
         retries: int = 3,
         response_model: Type[BaseModel] | None = None,
+        empty_ok: bool = False,
     ) -> Dict[str, Any]:
         """Call an LLM and return the parsed JSON as a dict.
 
@@ -128,10 +130,16 @@ class LLMClient(ProviderInvocationMixin, JSONParseMixin, UsageAccountingMixin, P
         against the Pydantic model; validation failures are treated like any
         other failed attempt and trigger a retry instead of returning garbage.
 
-        Timeouts are never retried at this level: every provider already had
-        its single budgeted chance inside _generate_with_fallback, so
-        re-running the whole chain would multiply slow-provider time past
-        the research timeout. The caller falls back immediately instead.
+        `empty_ok` accepts a WELL-FORMED but empty result (e.g. `{"facts": []}`)
+        as a legitimate answer instead of raising. Use it where "the model found
+        nothing" is a real, expected outcome — an extraction pass over sources
+        that contain nothing on-topic. It does NOT excuse a genuinely empty
+        model output (no fields at all), which remains a failure.
+
+        Timeouts are never retried at this level: every provider already had its
+        single budgeted chance inside _generate_with_fallback, so re-running the
+        whole chain would multiply slow-provider time past the research timeout.
+        The caller falls back immediately instead.
         AllProvidersFailedError is likewise never retried: providers did not
         become healthy 0.7s later inside the same request. Neither is
         NoProviderConfiguredError — a backend with no provider yet (keys get
@@ -154,7 +162,25 @@ class LLMClient(ProviderInvocationMixin, JSONParseMixin, UsageAccountingMixin, P
                     # filled dump is what makes this correct: defaults are
                     # exactly what the model failed to supply, so comparing
                     # against them would call every real answer empty.
-                    if _payload_says_nothing(payload):
+                    #
+                    # BUT: a WELL-FORMED container with an empty collection
+                    # (`{"facts": []}`) is a DIFFERENT thing and must NOT be
+                    # treated as the same failure. A model asked to extract
+                    # claims from sources that contain nothing on-topic is
+                    # correctly reporting "there is nothing here" — that is an
+                    # ANSWER, not a failure. Treating it as failure made the
+                    # summarizer walk its whole shrink ladder re-asking the
+                    # same irrelevant sources, then degrade the run and run the
+                    # extractive fallback over those same irrelevant sources
+                    # (measured live: 48 empty-object events alongside 3
+                    # successful extractions of 11/42/13 facts).
+                    #
+                    # `empty_ok` lets a caller opt into accepting that answer:
+                    # the model answered, and an empty answer is the truth.
+                    if (
+                        _payload_says_nothing(payload)
+                        and not (empty_ok and _payload_is_empty_container(payload))
+                    ):
                         raise ValueError(
                             "model returned an empty object; every field is default"
                         )

@@ -116,7 +116,7 @@ def test_summarizer_quote_grounding_end_to_end(tmp_path):
                 groq_api_key="k", database_url=str(tmp_path / "q.db"), _env_file=None
             )
 
-        async def generate_json(self, system_prompt, user_prompt, response_model=None):
+        async def generate_json(self, system_prompt, user_prompt, response_model=None, **kwargs):
             payload = {"facts": [
                 {"claim": "Solar capacity in Bangladesh doubled in 2025",
                  "source": "https://example.com/solar",

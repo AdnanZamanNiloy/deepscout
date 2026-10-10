@@ -99,6 +99,46 @@ class JSONParseMixin:
             return None
 
 
+def payload_is_empty_container(payload: Any) -> bool:
+    """True when a well-formed container carries an EMPTY collection.
+
+    `{"facts": []}` is the shape a model returns when it was asked to extract
+    from sources that contain nothing relevant: it answered the question, and
+    the answer is "nothing here". That is information — a correct, honest "no"
+    — and must be distinguished from a model that emitted no fields at all
+    (which is what `payload_says_nothing` covers).
+
+    Specifically: the payload has at least one key whose value is a list/tuple,
+    and every value is empty (empty collection, "", or None). A payload with a
+    non-empty string (e.g. `{"reason": "no sources matched"}`) is NOT an empty
+    container — it carries prose and must be treated as a real answer.
+    """
+    if not isinstance(payload, dict) or not payload:
+        return False
+    has_collection = False
+    for value in payload.values():
+        if isinstance(value, (list, tuple, set)):
+            has_collection = True
+            if any(
+                (item.strip() if isinstance(item, str) else bool(item))
+                for item in value
+            ):
+                return False
+        elif isinstance(value, dict):
+            if len(value) > 0:
+                return False
+        elif isinstance(value, str):
+            if value.strip():
+                return False
+        elif isinstance(value, bool):
+            return False
+        elif isinstance(value, (int, float)):
+            return False
+        elif value is not None:
+            return False
+    return has_collection
+
+
 def payload_says_nothing(payload: Any) -> bool:
     """True when a model's JSON carries no information.
 
