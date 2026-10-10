@@ -657,6 +657,18 @@ def _measured_coverage_gaps(state: ResearchState) -> List[str]:
     # limitations closes that: an answer with blocking findings can no longer
     # pass as a healthy one (AGENTS.md 2, degraded-run rule).
     gaps.extend(_critic_blocking_limitations(state))
+    # CRITIC-LEDGER LIMITATIONS. A criticism the critic raised, that the loop
+    # then FAILED to resolve within its attempt budget, is a property of the
+    # question/sources rather than a slow run — it must be disclosed, not
+    # hidden. This is the "explicitly disclose the limitations rather than
+    # pretending the research is complete" contract, made concrete: every
+    # unresolved tracked criticism appears here by name.
+    try:
+        from app.core.criticism_ledger import exhausted_limitations as _crit_limits
+
+        gaps.extend(_crit_limits(state.get("criticism_ledger")))
+    except Exception as exc:
+        logger.warning("criticism_limitations_failed", error=str(exc), exc_info=exc)
     return gaps[:8]
 
 

@@ -219,6 +219,34 @@ def _actionable_uncovered_axes(
     return [a for a in uncovered_axes if _dimension_attempts_left(state, a)]
 
 
+def _criticism_checks(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Critic-raised tasks that are still actionable (app/core/criticism_ledger).
+
+    The critic ledger tracks each gate-failure/gap as a task and marks it
+    resolved when the specific condition no longer holds. A task still
+    open/attempted is an UNFINISHED criticism: it must block a soft stop while
+    budget remains, exactly as an uncovered axis does. A task marked exhausted
+    (its attempt budget spent without closure) is an acknowledged limitation and
+    must NOT block — otherwise an unclosable criticism loops forever.
+
+    Reads only what critic_node already wrote to state; empty/absent ledger =>
+    no criticism constraint (behaviour identical to before this existed).
+    """
+    try:
+        from app.core.criticism_ledger import active_tasks, summary
+
+        ledger = state.get("criticism_ledger") or {}
+        active = active_tasks(ledger)
+        return {
+            "active_count": len(active),
+            "targets": [str(t.get("target", "") or "") for t in active if t.get("target")],
+            "summary": summary(ledger),
+        }
+    except Exception as exc:  # a ledger bug must not stop a run
+        logger.warning("criticism_checks_failed", error=str(exc), exc_info=exc)
+        return {"active_count": 0, "targets": [], "summary": {}}
+
+
 def _confidence_target(state: Dict[str, Any], settings: Settings) -> float:
     """Mode-aware target: audit demands more proof than quick by design."""
     try:

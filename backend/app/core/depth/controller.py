@@ -13,6 +13,7 @@ from app.core.depth.checks import (
     _budget_checks,
     _confidence_target,
     _convergence_checks,
+    _criticism_checks,
     _focus_checks,
     _min_iterations,
     _novel_followups,
@@ -67,6 +68,7 @@ def evaluate(state: Dict[str, Any], settings: Settings | None = None) -> Dict[st
     severe_contradictions = _severe_contradictions(state)
     high_impact = _high_impact_uncorroborated(state)
     thin = _thin_dimensions(state)
+    criticism = _criticism_checks(state)
 
     # Exhausted claims are acknowledged limitations, not actionable gaps. Only
     # the ACTIVE (non-exhausted) high-impact gaps may drive expansion or block
@@ -214,6 +216,10 @@ def evaluate(state: Dict[str, Any], settings: Settings | None = None) -> Dict[st
         # Query-anchored focus: drift and concentration against the ORIGINAL
         # question, which no evidence-size signal above can express.
         "focus": focus,
+        # Critic-to-task ledger: unfinished criticisms (open/attempted) that
+        # still have budget block a soft stop; exhausted ones are limitations.
+        "criticism": criticism,
+        "active_criticism_count": int(criticism.get("active_count", 0) or 0),
         # Explainability: the ordered trigger list behind the decision.
         "decision_reasons": reasons,
     }
@@ -406,6 +412,32 @@ def decide_with_checks(
         return _with_reason(
             "expand",
             "critic reported insufficient evidence and proposed novel follow-up queries",
+        )
+
+    # CRITIC-LEDGER GATE. The critic raised specific, tracked criticisms
+    # (app/core/criticism_ledger.py) that are still open/attempted — i.e. the
+    # condition it named has NOT been resolved by any pass so far. While such a
+    # criticism is actionable (budget remains) it blocks a soft stop, so a
+    # criticism the model raised cannot be silently dropped just because
+    # aggregate confidence drifted up. A criticism whose attempt budget is spent
+    # is EXHAUSTED and deliberately does NOT block here — it is disclosed as a
+    # limitation instead, which is what prevents an unclosable criticism from
+    # looping forever.
+    if checks["active_criticism_count"] > 0:
+        if checks["novel_followups"]:
+            targets = ", ".join(checks["criticism"].get("targets", [])[:3])
+            return _with_reason(
+                "expand",
+                f"{checks['active_criticism_count']} unresolved critic-raised "
+                f"evidence gap(s) still actionable"
+                + (f": {targets}" if targets else ""),
+            )
+        # No novel query left to act on the criticism: disclose rather than loop.
+        return _with_reason(
+            "finalize",
+            f"{checks['active_criticism_count']} critic-raised evidence gap(s) "
+            "remain but no novel query is left to close them; recorded as "
+            "limitations",
         )
 
     # ------------------------------------------------------------------

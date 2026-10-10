@@ -292,6 +292,45 @@ def make_critic_node(llm, critic_agent):
         for q in corroboration_queries:
             if q not in improved:
                 improved.append(q)
+
+        # CRITICISM LEDGER (critic -> targeted task -> verify resolved). Each
+        # gate failure and gap this critic raised becomes a tracked task; on the
+        # next pass it is re-checked against the NEW pool and marked
+        # resolved/attempted/exhausted. This is what makes the critic
+        # ACTIONABLE rather than advisory: an unaddressed criticism keeps the
+        # loop open while budget remains, and an unclosable one is disclosed as
+        # a limitation instead of vanishing. Targets are appended to
+        # improved_queries so the search layer aims directly at the criticism,
+        # not only at generic gap-filling.
+        criticism_ledger: Dict[str, Any] = {}
+        try:
+            from app.core.criticism_ledger import (
+                update as _update_ledger,
+                unresolved_targets as _unresolved_targets,
+            )
+
+            settings_for_ledger = getattr(llm, "settings", None)
+            ledger_max = max(
+                1, int(getattr(settings_for_ledger, "max_criticism_attempts", 2) or 2)
+            )
+            criticism_ledger = _update_ledger(
+                state.get("criticism_ledger"),
+                critique,
+                state.get("facts", []),
+                iteration=int(state.get("iteration", 0)),
+                max_attempts=ledger_max,
+            )
+            state["criticism_ledger"] = criticism_ledger
+            for target in _unresolved_targets(criticism_ledger):
+                # A target is the axis/dimension name; make it a search-ready
+                # query rather than a bare token so the search layer can use it.
+                q = f"{target} {state['query']}"
+                q = " ".join(q.split())
+                if q and q not in improved:
+                    improved.append(q)
+        except Exception as exc:
+            logger.warning("criticism_ledger_failed", error=str(exc), exc_info=exc)
+
         # Freeze the augmented follow-ups on the critique so the depth
         # controller's novel-query check sees the counter-evidence queries too;
         # previously they existed only in critique_feedback and were invisible
@@ -337,5 +376,6 @@ def make_critic_node(llm, critic_agent):
             },
             "convergence": convergence_diagnosis,
             "gap_history": gap_history,
+            "criticism_ledger": criticism_ledger,
         }
     return _node

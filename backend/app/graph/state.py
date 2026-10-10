@@ -134,6 +134,11 @@ class ResearchState(TypedDict, total=False):
     # state (no module-level counter).
     convergence: Dict[str, Any]
     gap_history: List[str]
+    # Critic-to-task ledger (app/core/criticism_ledger.py): run-scoped map of
+    # structured research tasks derived from critic gate-failures/gaps, each
+    # tracked to resolution. Threaded through state so the stopping policy and
+    # the Limitations section both read the same record (no module-level store).
+    criticism_ledger: Dict[str, Any]
 
 
 class PlannerUpdate(TypedDict):
@@ -185,6 +190,10 @@ class CriticUpdate(TypedDict):
     # repetition detectable (see ResearchState.gap_history).
     convergence: Dict[str, Any]
     gap_history: List[str]
+    # Critic-to-task ledger: each critic gate-failure/gap is tracked as a
+    # structured task and re-checked for resolution on the next pass
+    # (app/core/criticism_ledger.py). Additive.
+    criticism_ledger: Dict[str, Dict[str, Any]]
 
 
 class SynthesizerUpdate(TypedDict):
