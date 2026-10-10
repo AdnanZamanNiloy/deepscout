@@ -21,6 +21,59 @@ def _split_query(query: Any) -> tuple[str, str]:
     return (str(query or "").strip(), "")
 
 
+# A search engine matches keywords, not essay-length interrogatives. A live run
+# showed the planner emitting 30-50 word compound questions
+# ("What are the highest-strain open research problems in computer science as of
+# 2026, ranked by community urgency and resource intensity, according to
+# authoritative sources such as ACM, IEEE, CRA, and major conference
+# keynote/roadmap reports?") which were sent VERBATIM to the provider, returned
+# generic noise, and left the same angle unsourced across every critic round
+# until the run degraded. The full question stays in the plan/UI; the search
+# gets a compact keyword query derived from it.
+_MAX_SEARCH_WORDS = 14
+
+# Clause boundaries: a compound question is split here and the FIRST clause
+# (the actual ask) is kept, with the trailing qualifiers dropped. Sentence
+# punctuation, parenthetical citations, and the "according to / such as / with
+# evidence such as" tails are the usual noise.
+_CLAUSE_SPLIT_RE = re.compile(r"\s*[;?]\s*|\s+[—–]\s+|\s+\((?:e\.g\.|i\.e\.|such as)[^)]*\)")
+_TAIL_RE = re.compile(
+    r"\s*,?\s*(?:according to|as (?:reported|documented|measured|distinct)|"
+    r"with (?:quantitative )?evidence|based on|ranked by|including)\b.*$",
+    re.IGNORECASE,
+)
+_LEAD_RE = re.compile(
+    r"^\s*(?:what|which|who|where|when|why|how)\s+"
+    r"(?:are|is|was|were|does|do|did|can|could|would|should|has|have|will)\s+",
+    re.IGNORECASE,
+)
+
+
+def _compact_search_query(question: str) -> str:
+    """A search-ready keyword query derived from an over-long question.
+
+    Keeps the subject and the ask, drops the trailing qualifier clauses that no
+    search engine can match. Only compacts when the question is over the word
+    cap; a short, already-search-ready question is returned unchanged.
+    """
+    text = re.sub(r"\s+", " ", (question or "")).strip()
+    if len(text.split()) <= _MAX_SEARCH_WORDS:
+        return text
+    head = _CLAUSE_SPLIT_RE.split(text, maxsplit=1)[0].strip()
+    head = _TAIL_RE.sub("", head).strip().rstrip(" ,")
+    # Strip a leading interrogative ("What are ..." -> "...") so the query reads
+    # as a keyword phrase; keep it when stripping would leave too little.
+    stripped = _LEAD_RE.sub("", head, count=1).strip()
+    if len(stripped.split()) >= 3:
+        head = stripped
+    if not head:
+        return text
+    words = head.split()
+    if len(words) > _MAX_SEARCH_WORDS:
+        head = " ".join(words[:_MAX_SEARCH_WORDS])
+    return head.strip(" ,;?.")
+
+
 def contract_queries(contract: Any, max_queries: int = 3) -> List[str]:
     """Every query one delegation contract should actually run.
 
@@ -44,7 +97,9 @@ def contract_queries(contract: Any, max_queries: int = 3) -> List[str]:
     question, _ = _split_query(contract)
     queries: List[str] = []
     if question:
-        queries.append(question)
+        # Issue a search-ready query, not an essay-length interrogative (see
+        # `_compact_search_query`). The full question is preserved in the plan.
+        queries.append(_compact_search_query(question))
     primary = ""
     if isinstance(contract, dict):
         primary = re.sub(r"\s+", " ", str(contract.get("primary_source_query", "") or "")).strip()
