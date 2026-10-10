@@ -19,9 +19,8 @@ guarded by `tests/test_agents_facade.py::test_every_lazy_export_resolves`.
     coverage_gaps                                — dynamic depth
     ResearchBudget, retry/breaker helpers        — operational limits + reliability
 
-Executive decision (`app.core.decision`), scenarios (`app.core.scenarios`),
-self-diagnosis (`app.core.diagnose`) and the benchmark suite (`bench/`) live
-outside this package; this facade re-exports agent modules only.
+Executive decision (`app.core.decision`) lives outside this package; this
+facade re-exports agent modules only.
 """
 from __future__ import annotations
 
