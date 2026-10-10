@@ -133,6 +133,8 @@ class FakeLLM:
         user_prompt: str,
         retries: int = 3,
         response_model: Type | None = None,
+        empty_ok: bool = False,
+        **_kwargs: Any,
     ) -> Dict[str, Any]:
         stage = self._detect_stage(system_prompt, user_prompt)
         self.calls.append({"stage": stage, "user": user_prompt[:120]})
@@ -440,6 +442,8 @@ class GoldenFakeLLM(FakeLLM):
         user_prompt: str,
         retries: int = 3,
         response_model: Type | None = None,
+        empty_ok: bool = False,
+        **_kwargs: Any,
     ) -> Dict[str, Any]:
         stage = self._detect_stage(system_prompt, user_prompt)
         self.calls.append({"stage": stage, "user": user_prompt[:120]})

@@ -430,8 +430,17 @@ def create_workflow(llm: LLMClient, search_client: SearchClient, entry_node: str
         # hard walls. The evidence gate is now baked into `decide`'s priority
         # order, so a soft stop (marginal gain / no-novel-queries) can no
         # longer defeat an outstanding coverage or corroboration gap.
-        decision = depth_controller.decide(state)
-        logger.info("depth_decision", decision=decision, iteration=int(state.get("iteration", 0)))
+        decision, checks = depth_controller.decide_with_checks(state)
+        # Log the reason alongside the decision: an "expand" with no visible
+        # cause is indistinguishable from a stuck loop, and these fields make
+        # the stopping policy auditable in the trace.
+        logger.info(
+            "depth_decision", decision=decision,
+            iteration=int(state.get("iteration", 0)),
+            reason=checks.get("decision_reason", ""),
+            active_criticism=checks.get("active_criticism_count", 0),
+            uncovered_axes=len(checks.get("uncovered_axes", [])),
+        )
         if decision == "expand":
             return "planner"
         return "synthesizer"

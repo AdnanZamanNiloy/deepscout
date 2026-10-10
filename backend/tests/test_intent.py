@@ -14,7 +14,7 @@ class FakeLLM:
         self.error = error
         self.calls = []
 
-    async def generate_json(self, system_prompt, user_prompt, retries=3, response_model=None):
+    async def generate_json(self, system_prompt, user_prompt, retries=3, response_model=None, **kwargs):
         self.calls.append({"system_prompt": system_prompt, "user_prompt": user_prompt})
         if self.error is not None:
             raise self.error
@@ -406,7 +406,7 @@ async def test_summarizer_shrinks_prompt_when_provider_rejects_size(tmp_path):
             self.settings = settings
             self.prompt_lengths = []
 
-        async def generate_json(self, system_prompt, user_prompt, retries=3, response_model=None):
+        async def generate_json(self, system_prompt, user_prompt, retries=3, response_model=None, **kwargs):
             self.prompt_lengths.append(len(user_prompt))
             if len(user_prompt) > 8000:
                 raise PromptTooLargeError("too large")
@@ -448,7 +448,7 @@ async def test_summarizer_does_not_shrink_on_timeouts(tmp_path):
             self.settings = settings
             self.calls = 0
 
-        async def generate_json(self, system_prompt, user_prompt, retries=3, response_model=None):
+        async def generate_json(self, system_prompt, user_prompt, retries=3, response_model=None, **kwargs):
             self.calls += 1
             raise AllProvidersFailedError(
                 "Active provider 'sleepy' failed: ReadTimeout. No fallback providers run."
@@ -480,7 +480,7 @@ async def test_summarizer_timeout_gets_one_budgeted_second_chance(tmp_path):
             self.settings = settings
             self.calls = []
 
-        async def generate_json(self, system_prompt, user_prompt, retries=3, response_model=None):
+        async def generate_json(self, system_prompt, user_prompt, retries=3, response_model=None, **kwargs):
             self.calls.append(len(user_prompt))
             if len(self.calls) == 1:
                 raise AllProvidersFailedError("Active provider failed: ReadTimeout.")

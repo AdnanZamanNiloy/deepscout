@@ -529,10 +529,22 @@ async def summarizer_agent(
                     system_prompt,
                     user_prompt,
                     response_model=SummarizerFactsModel,
+                    # A well-formed `{"facts": []}` is accepted here as an
+                    # answer rather than raising, but the ladder still RETRIES
+                    # it with the tightened prompt below — a model that emits
+                    # the wrapper with no claims is often failing format
+                    # adherence rather than reporting a genuinely empty source,
+                    # and the stricter ask recovers real claims
+                    # (test_summarizer_tightened_retry_recovers_unusable_output).
+                    # Only after that retry also comes back empty is it an honest
+                    # "nothing relevant here".
+                    empty_ok=True,
                 )
                 facts = payload.get("facts", []) if isinstance(payload, dict) else []
                 if not facts:
                     fallback_reason = "llm_returned_no_facts"
+                break
+
                 break
             except PromptTooLargeError:
                 logger.warning(
@@ -638,8 +650,16 @@ async def summarizer_agent(
         # not reporting a genuinely empty source, and the stricter ask
         # recovers real claims (see test_summarizer_tightened_retry_*). That
         # recovery value is why this is NOT skipped by a "valid JSON" check.
+        #
+        # EXCEPT when the model ALREADY reported `no_facts_in_sources` (it
+        # answered, correctly, that these sources hold nothing relevant):
+        # re-asking the same off-topic sources with a stricter format recovers
+        # nothing and only spends the budget, and the extractive fallback that
+        # follows would inject exactly the contamination the model declined to
+        # extract. An honest "no" is the end of this pass.
         if not facts and fallback_reason not in (
             "provider_timeout", "providers_unavailable", "payload_too_large",
+            "no_facts_in_sources",
         ):
             compact_results = _allocate_excerpts(
                 quality_results, _EXCERPT_BUDGET_LADDER[-1], max_sources_per_call
@@ -663,18 +683,33 @@ async def summarizer_agent(
                     system_prompt,
                     strict_prompt,
                     response_model=SummarizerFactsModel,
+                    # The tightened ask has now confirmed the emptiness in a
+                    # format-strict prompt, so a still-empty `{"facts": []}`
+                    # here IS the model's honest answer: these sources hold
+                    # nothing relevant. Accept it as such.
+                    empty_ok=True,
                 )
                 facts = payload.get("facts", []) if isinstance(payload, dict) else []
                 if facts:
                     logger.info(
                         "[Summarizer] strict JSON retry recovered %d fact(s)", len(facts)
                     )
+                else:
+                    # The stricter format produced the same honest empty. This
+                    # pass is COMPLETE with no facts — not a degradation, and
+                    # not a licence for the extractive fallback to scrape the
+                    # same off-topic pages.
+                    fallback_reason = "no_facts_in_sources"
+                    logger.info(
+                        "[Summarizer] no relevant facts in these sources after "
+                        "the tightened retry"
+                    )
             except Exception as exc:
                 logger.warning(
                     "[Summarizer] strict JSON retry failed: %s", str(exc)[:140],
                     exc_info=exc,
                 )
-        if not facts:
+        if not facts and fallback_reason != "no_facts_in_sources":
             logger.warning("[Summarizer] LLM contributed nothing usable, using heuristic fallback")
         # Cache only successful, non-empty extractions: caching the empty list on
         # provider failure poisoned the key for a full TTL, so the summarizer kept
@@ -765,6 +800,14 @@ async def summarizer_agent(
 
     if cleaned:
         return dedupe_semantic_facts(cleaned)
+
+    # An honest "no facts here" is a COMPLETED pass, not a degraded one: return
+    # an empty list without recording a fallback and without running the
+    # extractive path over the same off-topic sources (which is how unrelated
+    # claims leaked into the pool and the report).
+    if fallback_reason == "no_facts_in_sources":
+        logger.info("[Summarizer] no relevant facts in these sources; nothing extracted")
+        return []
 
     # ------------------------------------------------------------------
     # Heuristic fallback: the model contributed nothing usable.
