@@ -60,6 +60,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from app.agents.evidence_utils import split_into_sentences
 from app.agents.sources import strip_machine_sections
 from app.core.logging import get_logger
+from app.core.primitives import normalize_key as _norm
 
 logger = get_logger(__name__)
 
@@ -169,10 +170,6 @@ _CONTENT_STOPWORDS = {
     "which", "who", "whom", "whose", "what", "when", "where", "why", "how",
     "also", "both", "each", "other", "some", "any", "all", "one", "two",
 }
-
-
-def _norm(text: Any) -> str:
-    return " ".join(str(text or "").lower().split())
 
 
 def _sentences(answer: str) -> List[str]:

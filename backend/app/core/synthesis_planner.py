@@ -48,6 +48,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from app.core.logging import get_logger
+from app.core.primitives import normalize_key as _norm
 
 logger = get_logger(__name__)
 
@@ -170,10 +171,6 @@ def required_dimensions_from_plan(
 # Grade weights reused for ordering (A best). Kept local and identical to the
 # scales in reasoning_engine / evidence_grade so nothing disagrees.
 _GRADE_WEIGHT = {"A": 3, "B": 2, "C": 1, "D": 0}
-
-
-def _norm(text: Any) -> str:
-    return " ".join(str(text or "").lower().split())
 
 
 @dataclass

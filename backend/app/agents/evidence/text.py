@@ -22,12 +22,6 @@ def _tokenize(text: str) -> Set[str]:
     return {token for token in re.findall(r"[a-z0-9]+", text.lower()) if token}
 
 
-def _jaccard(a: Set[str], b: Set[str]) -> float:
-    if not a or not b:
-        return 0.0
-    return len(a & b) / len(a | b)
-
-
 def _semantic_similarity(a: str, b: str) -> float:
     """Hybrid char-ratio + token-Jaccard + TF-IDF similarity in [0, 1].
 

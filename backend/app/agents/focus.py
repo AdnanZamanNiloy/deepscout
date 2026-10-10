@@ -42,6 +42,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from app.core.primitives import jaccard as _jaccard
+
 # ---------------------------------------------------------------------------
 # Thresholds
 # ---------------------------------------------------------------------------
@@ -111,12 +113,6 @@ def _subject_tokens(text: str) -> frozenset[str]:
         w for w in _TOKEN_RE.findall((text or "").lower())
         if w not in _QUESTION_WORDS and len(w) > 1
     )
-
-
-def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
-    if not a or not b:
-        return 0.0
-    return len(a & b) / len(a | b)
 
 
 # Coordinators that join two SUBJECTS. "outcomes and costs" asks for two things;
