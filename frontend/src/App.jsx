@@ -638,6 +638,9 @@ export default function App() {
             quality: evt.quality && typeof evt.quality === "object" ? evt.quality : m.run.quality,
             outline: evt.outline && typeof evt.outline === "object" ? evt.outline : m.run.outline,
             sectionWise: typeof evt.section_wise === "boolean" ? evt.section_wise : m.run.sectionWise,
+            // The real source count for the run. The backend reports it here;
+            // the panel's "Sources analyzed" reads it instead of guessing.
+            snippets: typeof evt.source_count === "number" ? evt.source_count : m.run.snippets,
             done: true,
             resuming: false,
           };

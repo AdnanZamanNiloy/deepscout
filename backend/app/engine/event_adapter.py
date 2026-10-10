@@ -52,7 +52,6 @@ class EngineEventAdapter:
     def __init__(self, query: str):
         self.query = query
         self._emitted_plan = False
-        self._last_snippets = -1
         self._emitted_stages: set = set()
 
     def to_frames(self, engine_event: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -66,15 +65,29 @@ class EngineEventAdapter:
             frames.append(frame("plan", items=list(engine_event["sections"]), orchestration={}, waves=[]))
 
         elif stage == "search":
-            # The engine does not report a per-query result list; surface the
-            # progress count so the pipeline trace shows a live Search stage.
+            # The engine does not report a per-query result list, so there is no
+            # honest "N sources" number at this point. The values available are a
+            # CHARACTER count (initial research text) and a SECTION count — both
+            # meaningless as a source count. Emitting either as
+            # `search_progress.snippets` made the panel read "24229 sources"
+            # (the browser stage's character count) with no relation to the real
+            # source total. Surface them as honest progress messages instead.
             if node == "browser":
-                count = int(engine_event.get("initial_research_chars") or 0)
-            else:
-                count = int(engine_event.get("research_sections") or 0)
-            if count > self._last_snippets:
-                self._last_snippets = count
-                frames.append(frame("search_progress", snippets=count))
+                chars = int(engine_event.get("initial_research_chars") or 0)
+                if chars and "browser" not in self._emitted_stages:
+                    self._emitted_stages.add("browser")
+                    frames.append(frame(
+                        "progress",
+                        message=f"Gathered ~{chars:,} characters of initial research",
+                    ))
+            elif node == "researcher":
+                sections = int(engine_event.get("research_sections") or 0)
+                if sections and "researcher" not in self._emitted_stages:
+                    self._emitted_stages.add("researcher")
+                    frames.append(frame(
+                        "progress",
+                        message=f"Researched {sections} section{'s' if sections != 1 else ''}",
+                    ))
 
         elif stage == "verifier":
             notes = engine_event.get("fact_check_notes")
@@ -114,6 +127,7 @@ def final_report_frame(
     as empty/defaults rather than invented — the audit panel renders them as
     "not available" rather than as authoritative zeros with meaning.
     """
+    source_list = list(sources or [])
     return frame(
         "final_report",
         report=report,
@@ -129,4 +143,8 @@ def final_report_frame(
         quality={},
         outline={},
         section_wise=False,
+        # The real number of source URLs the run gathered. The panel's
+        # "Sources analyzed" reads this (via the run's snippet count) instead of
+        # the initial-research character count it was mistakenly showing.
+        source_count=len(source_list),
     )
