@@ -38,8 +38,18 @@ _MAX_SEARCH_WORDS = 14
 # evidence such as" tails are the usual noise.
 _CLAUSE_SPLIT_RE = re.compile(r"\s*[;?]\s*|\s+[—–]\s+|\s+\((?:e\.g\.|i\.e\.|such as)[^)]*\)")
 _TAIL_RE = re.compile(
-    r"\s*,?\s*(?:according to|as (?:reported|documented|measured|distinct)|"
+    r"\s*,?\s*(?:according to|as (?:reported|documented|measured|distinct|identified)|"
     r"with (?:quantitative )?evidence|based on|ranked by|including)\b.*$",
+    re.IGNORECASE,
+)
+# A trailing comma-delimited qualifier ("..., as identified by authoritative
+# sources?", "..., and what selection criteria ..."). The tail vocabulary is
+# open-ended, so rather than whitelist every phrasing, drop the FIRST
+# comma-introduced clause that starts with a subordinating/conjunctive word —
+# the leading comma clause is the subject and ask, the rest is qualifiers.
+_COMMA_TAIL_RE = re.compile(
+    r",\s*(?:as|which|who|according|based|including|such|with|ranked|"
+    r"and|or|where|when|that|while|e\.g\.|i\.e\.)\b.*$",
     re.IGNORECASE,
 )
 _LEAD_RE = re.compile(
@@ -61,6 +71,7 @@ def _compact_search_query(question: str) -> str:
         return text
     head = _CLAUSE_SPLIT_RE.split(text, maxsplit=1)[0].strip()
     head = _TAIL_RE.sub("", head).strip().rstrip(" ,")
+    head = _COMMA_TAIL_RE.sub("", head).strip().rstrip(" ,")
     # Strip a leading interrogative ("What are ..." -> "...") so the query reads
     # as a keyword phrase; keep it when stripping would leave too little.
     stripped = _LEAD_RE.sub("", head, count=1).strip()
