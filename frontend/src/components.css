@@ -148,21 +148,147 @@
   white-space: pre-wrap;
   overflow-wrap: break-word;
 }
-.answer-h {
-  margin: 26px 0 9px;
-  font-size: 17px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+
+/* Report typography — Claude/ChatGPT-style heading scale.
+ *
+ * Level classes are applied to semantic <h1>..<h6> elements, so the rendered
+ * outline matches the writer's `#`/`##`/`###` hierarchy. Sizes descend in a
+ * clear ratio (26/21/17/15/13.5/13) with tightened weights and generous top
+ * margins, and only H1/H2 carry a rule so section breaks read cleanly without
+ * a busy stack of underlines. Line-height is set per level so multi-line
+ * headings stay readable. */
+.answer-heading {
   color: var(--t1);
+  font-weight: 650;
+  letter-spacing: -0.011em;
+  line-height: 1.3;
+  scroll-margin-top: 16px;
+  overflow-wrap: break-word;
+}
+.answer-heading:first-child { margin-top: 0; }
+
+.md-h1 {
+  font-size: 26px;
+  font-weight: 680;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin: 4px 0 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.md-h2 {
+  font-size: 21px;
+  font-weight: 660;
+  line-height: 1.3;
+  margin: 32px 0 12px;
   padding-bottom: 7px;
   border-bottom: 1px solid var(--line-soft);
 }
-.answer-h:first-child { margin-top: 0; }
-.answer-subh { margin: 18px 0 6px; font-size: 14.5px; font-weight: 650; color: var(--t2); }
-.answer-para { margin: 0 0 12px; }
-.answer-list { margin: 0 0 14px; padding-left: 22px; }
-.answer-list li { margin: 0 0 8px; line-height: 1.72; }
+.md-h3 {
+  font-size: 17px;
+  font-weight: 650;
+  margin: 24px 0 9px;
+  color: var(--t1);
+}
+.md-h4 {
+  font-size: 15px;
+  font-weight: 650;
+  margin: 20px 0 7px;
+  color: var(--t1);
+}
+.md-h5 {
+  font-size: 13.5px;
+  font-weight: 650;
+  margin: 16px 0 6px;
+  color: var(--t2);
+  text-transform: none;
+}
+.md-h6 {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  margin: 14px 0 5px;
+  color: var(--t2);
+}
+/* Tighten a heading that directly follows another (never double the gap). */
+.answer-heading + .answer-heading { margin-top: 6px; }
+
+.answer-para { margin: 0 0 13px; }
+.answer-para:last-child { margin-bottom: 0; }
+.answer-list { margin: 0 0 14px; padding-left: 24px; }
+.answer-list li { margin: 0 0 7px; line-height: 1.75; }
 .answer-list li::marker { color: var(--t4); }
+.answer-list li:last-child { margin-bottom: 0; }
+
+/* Tables: horizontally scrollable container, aligned columns, wrapped cells. */
+.answer-table-wrap {
+  margin: 4px 0 16px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+.answer-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.answer-table th,
+.answer-table td {
+  border-bottom: 1px solid var(--line-soft);
+  border-right: 1px solid var(--line-soft);
+  padding: 8px 11px;
+  vertical-align: top;
+  overflow-wrap: break-word;
+  min-width: 90px;
+}
+.answer-table th:last-child,
+.answer-table td:last-child { border-right: 0; }
+.answer-table tbody tr:last-child td { border-bottom: 0; }
+.answer-table thead th {
+  background: var(--bg-soft);
+  font-weight: 650;
+  color: var(--t1);
+  white-space: nowrap;
+}
+.answer-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--bg-soft) 45%, transparent); }
+
+/* Fenced code blocks: monospace, scrollable, never wrap mid-token. */
+.answer-code {
+  margin: 4px 0 16px;
+  padding: 12px 14px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--t1);
+  /* Override the lead's pre-wrap so code keeps its own formatting. */
+  white-space: pre;
+  tab-size: 2;
+}
+.answer-code code { background: none; border: 0; padding: 0; font-size: inherit; white-space: pre; }
+
+.answer-quote {
+  margin: 4px 0 16px;
+  padding: 8px 14px;
+  border-left: 3px solid color-mix(in srgb, var(--deepscout) 55%, transparent);
+  color: var(--t2);
+  font-style: italic;
+}
+.answer-hr { margin: 20px 0; border: 0; border-top: 1px solid var(--line-soft); }
+
+/* Citation chips: "[1]" markers become small superscript references. */
+.cite-ref {
+  font-size: 0.68em;
+  font-weight: 650;
+  color: var(--deepscout);
+  padding: 0 1px;
+  line-height: 0;
+}
 .answer code {
   font-family: var(--mono);
   font-size: 0.87em;
@@ -805,6 +931,14 @@
 
 @media (max-width: 620px) {
   .bubble { max-width: 88%; }
+  /* Scale the report heading ramp down on narrow screens so long titles wrap
+     gracefully instead of dominating the viewport. */
+  .md-h1 { font-size: 22px; }
+  .md-h2 { font-size: 18.5px; margin-top: 26px; }
+  .md-h3 { font-size: 16px; }
+  .md-h4 { font-size: 14.5px; }
+  .answer-table th,
+  .answer-table td { padding: 6px 9px; font-size: 12.5px; }
 }
 
 /* ============================================================

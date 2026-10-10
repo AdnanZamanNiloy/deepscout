@@ -1,4 +1,5 @@
 import { confidenceLabel, parseReport } from "../lib";
+import { parseBlocks } from "../markdown";
 import {
   IconAlert, IconChart, IconCheckCircle, IconDoc,
 } from "./icons";
@@ -9,13 +10,16 @@ import ExportMenu from "./ExportMenu";
 /* Inline markdown renderer: the report body is markdown, so `**bold**`,
  * `*italic*`, `` `code` ``, and `[text](url)` must render as elements
  * instead of printing their markers literally. Returns an array of nodes so
- * it can nest inside <p>/<li> without wrapping in a block element. */
+ * it can nest inside <p>/<li>/<td> without wrapping in a block element.
+ * Citation markers like [1] / [12] become small chips so a reader can see the
+ * grounding instead of reading raw brackets. */
 function renderInline(text) {
-  const src = String(text ?? "");
+  // Any stray HTML break left in a single line is a space, not literal text.
+  const src = String(text ?? "").replace(/<br\s*\/?>/gi, " ");
   if (!src) return src;
   const nodes = [];
-  // Order matters: links, then bold, then italic, then code.
-  const re = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))|(\*\*([^*]+)\*\*)|(\*([^*\n]+)\*)|(`([^`]+)`)/g;
+  // Order matters: links, then bold, then italic, then code, then citations.
+  const re = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))|(\*\*([^*]+)\*\*)|(\*([^*\n]+)\*)|(`([^`]+)`)|(\[(\d{1,3})\])/g;
   let last = 0;
   let m;
   let k = 0;
@@ -31,6 +35,8 @@ function renderInline(text) {
       nodes.push(<em key={k++}>{m[7]}</em>);
     } else if (m[9] !== undefined) {
       nodes.push(<code key={k++}>{m[9]}</code>);
+    } else if (m[11] !== undefined) {
+      nodes.push(<sup key={k++} className="cite-ref">{m[11]}</sup>);
     }
     last = re.lastIndex;
   }
@@ -38,132 +44,98 @@ function renderInline(text) {
   return nodes;
 }
 
-/* A numbered block that reached us already flattened onto a single line
- * ("1. a 2. b 3. c"). Reports persisted before the backend preserved these line
- * breaks still store the run-on form, so split the inline markers back into
- * real list items instead of rendering one paragraph.
- *
- * Deliberately conservative — the inline markers must continue the same
- * consecutive run AND every recovered item must start with a bold lead-in, the
- * shape the ambiguity/coverage block uses ("N) **Label** - note"). Prose that
- * merely contains something like "phase 2) of the plan" is left alone. */
-const INLINE_ORDERED_RE = /(?:^|\s)(\d{1,2})[.)]\s+(?=\S)/g;
-
-function splitInlineOrderedItems(body, startNum) {
-  INLINE_ORDERED_RE.lastIndex = 0;
-  const marks = [];
-  let m;
-  while ((m = INLINE_ORDERED_RE.exec(body)) !== null) marks.push(m);
-  if (!marks.length) return null;
-  const nums = marks.map((mk) => Number(mk[1]));
-  if (!nums.every((n, i) => n === startNum + 1 + i)) return null;
-  const parts = [];
-  for (let i = 0; i < marks.length; i++) {
-    const from = marks[i].index + marks[i][0].length;
-    const to = i + 1 < marks.length ? marks[i + 1].index : body.length;
-    const part = body.slice(from, to).trim();
-    if (part) parts.push(part);
-  }
-  if (!parts.length || !parts.every((p) => p.startsWith("**"))) return null;
-  return parts;
+/* Render a parsed table into a scrollable, aligned <table>. Cell content still
+ * goes through renderInline so bold/links/citations inside a table cell work. */
+function renderTable(block, key) {
+  const { header, rows, aligns } = block;
+  return (
+    <div className="answer-table-wrap" key={`table-${key}`}>
+      <table className="answer-table">
+        <thead>
+          <tr>
+            {header.map((cell, j) => (
+              <th key={j} style={{ textAlign: aligns[j] || "left" }}>{renderInline(cell)}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr key={ri}>
+              {row.map((cell, ci) => (
+                <td key={ci} style={{ textAlign: aligns[ci] || "left" }}>{renderInline(cell)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
-/* Minimal rich renderer for the report body: `## ` section headers,
- * `- `/`1. ` list items, and inline markdown become real hierarchy.
- * Backend owns the words — this only maps markers to elements. */
+/* Rich renderer for the report body. All parsing/cleaning lives in the pure
+ * markdown module (testable on plain Node); this only maps the block model to
+ * React elements. Backend owns the words — this maps markers to elements and
+ * never drops content (an unclassified block is emitted as a paragraph). */
 function renderRichText(body) {
-  const blocks = String(body || "")
-    .split(/\n{2,}/)
-    .map((b) => b.trim())
-    .filter(Boolean);
-  // Line-oriented parser. A numbered/bulleted block is a SINGLE list whose
-  // items each start on their own line; continuation lines (indented or
-  // wrapped) append to the current item instead of being merged into one
-  // paragraph. This fixes "1. a 2. b 3. c" collapsing into a single line when
-  // the items are not separated by blank lines.
+  const blocks = parseBlocks(body);
   const out = [];
-  let list = [];
-  let ordered = false;
   let key = 0;
-  const flushList = () => {
-    if (!list.length) return;
-    const Tag = ordered ? "ol" : "ul";
-    out.push(
-      <Tag key={`list-${key++}`} className="answer-list">
-        {list.map((item, j) => (
-          <li key={j}>{renderInline(item)}</li>
-        ))}
-      </Tag>
-    );
-    list = [];
-    ordered = false;
-  };
-
-  const BULLET_RE = /^\s*[-*+]\s+(.*)$/;
-  const NUMBER_RE = /^\s*(\d+)[.)]\s+(.*)$/;
-
-  blocks.forEach((block) => {
-    // A blank-line-separated block may itself contain several lines (list
-    // items and/or plain wrapped text). Walk them in order.
-    const lines = block.split("\n");
-    // Whole-block headings/paragraphs (single logical block).
-    const first = block.trim();
-    if (list.length === 0) {
-      if (first.startsWith("### ")) {
-        out.push(<h5 key={`h-${key++}`} className="answer-subh">{renderInline(first.slice(4).trim())}</h5>);
-        return;
+  for (const block of blocks) {
+    switch (block.type) {
+      case "heading": {
+        // Emit a semantically correct heading element per source level so the
+        // document outline (H1 -> H2 -> H3) matches the writer's hierarchy.
+        // Styling is driven by the level class, so every level is visually
+        // distinct and consistent (Claude/ChatGPT-style, not ad-hoc sizes).
+        const level = Math.min(Math.max(block.level, 1), 6);
+        const Tag = `h${level}`;
+        out.push(
+          <Tag key={`h-${key++}`} className={`answer-heading md-h${level}`}>
+            {renderInline(block.text)}
+          </Tag>
+        );
+        break;
       }
-      if (first.startsWith("## ")) {
-        out.push(<h4 key={`h-${key++}`} className="answer-h">{renderInline(first.slice(3).trim())}</h4>);
-        return;
+      case "list": {
+        const Tag = block.ordered ? "ol" : "ul";
+        out.push(
+          <Tag key={`list-${key++}`} className="answer-list">
+            {block.items.map((item, j) => <li key={j}>{renderInline(item)}</li>)}
+          </Tag>
+        );
+        break;
       }
-      if (first.startsWith("# ")) {
-        out.push(<h4 key={`h-${key++}`} className="answer-h">{renderInline(first.slice(2).trim())}</h4>);
-        return;
-      }
-    }
-    if (/^\s*\[\d+\]\s/.test(block)) {
-      flushList();
-      out.push(<p key={`src-${key++}`} className="source-line">{renderInline(block)}</p>);
-      return;
-    }
-
-    let sawListLine = false;
-    for (const raw of lines) {
-      const line = raw.replace(/\s+$/, "");
-      const num = line.match(NUMBER_RE);
-      const bul = line.match(BULLET_RE);
-      if (num || bul) {
-        // New item. If the current list type changes, close and start fresh.
-        const lineOrdered = Boolean(num);
-        if (list.length && lineOrdered !== ordered) flushList();
-        if (!list.length) ordered = lineOrdered;
-        const itemBody = (num ? num[2] : bul[1]).trim();
-        if (num) {
-          // A block whose numbered items were flattened onto one line.
-          const split = splitInlineOrderedItems(itemBody, Number(num[1]));
-          if (split) {
-            split.forEach((part) => list.push(part));
-            sawListLine = true;
-            continue;
-          }
+      case "table":
+        out.push(renderTable(block, key++));
+        break;
+      case "code":
+        out.push(
+          <pre key={`code-${key++}`} className="answer-code">
+            <code>{block.text}</code>
+          </pre>
+        );
+        break;
+      case "quote":
+        out.push(
+          <blockquote key={`quote-${key++}`} className="answer-quote">
+            {renderInline(block.text)}
+          </blockquote>
+        );
+        break;
+      case "hr":
+        out.push(<hr key={`hr-${key++}`} className="answer-hr" />);
+        break;
+      case "paragraph":
+      default:
+        // Source legend lines ("[1] title — url") get their own tight style.
+        if (/^\[\d+\]\s/.test(block.text)) {
+          out.push(<p key={`src-${key++}`} className="source-line">{renderInline(block.text)}</p>);
+        } else {
+          out.push(<p key={`p-${key++}`} className="answer-para">{renderInline(block.text)}</p>);
         }
-        list.push(itemBody);
-        sawListLine = true;
-      } else if (list.length && line.trim() && /^\s+/.test(line)) {
-        // Indented continuation of the current item.
-        list[list.length - 1] = `${list[list.length - 1]} ${line.trim()}`;
-      } else {
-        // Plain text line: close any open list, then emit a paragraph.
-        flushList();
-        if (line.trim()) {
-          out.push(<p key={`p-${key++}`} className="answer-para">{renderInline(line.trim())}</p>);
-        }
-      }
+        break;
     }
-    if (sawListLine) flushList();
-  });
-  flushList();
+  }
   return out;
 }
 
