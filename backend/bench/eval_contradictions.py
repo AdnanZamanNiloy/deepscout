@@ -9,7 +9,7 @@ precision or resolution regression trips the gate.
 For each labeled case it runs the production pipeline on the case's claim pool:
 
     detect   app.core.contradictions.find_contradictions
-    resolve  app.core.contradiction_resolution.resolve_contradictions
+    resolve  app.core.contradictions.resolve_contradictions
 
 and maps the outcome to ONE observed label:
 
@@ -76,7 +76,7 @@ _POSITIVE_DETECTION = {"contradiction", "resolved_explained"}
 
 def classify_case(case: Dict[str, Any]) -> Dict[str, Any]:
     """Run detection + resolution on ONE case and derive the observed label."""
-    from app.core.contradiction_resolution import resolve_contradictions
+    from app.core.contradictions import resolve_contradictions
     from app.core.contradictions import find_contradictions
 
     claims = [

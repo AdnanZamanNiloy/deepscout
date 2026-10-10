@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased — Backend consolidation
+
+Continuing the reduction of the backend surface, without changing behaviour.
+
+- **Facade shims collapsed.** The synthesis/quality/depth/epistemics layers
+  each carried a module that only re-exported the package's names. Every import
+  now points at the real package and the shims are gone:
+  `agents/epistemics.py` → `agents/epistemic.*`, `agents/research_quality.py` →
+  `agents/quality.*`, `core/depth_controller.py` → `core/depth.*`,
+  `core/synthesis_intelligence.py` → `core/synthesis_intel.*`. Orphaned
+  `agents/schemas_ext.py` and never-called
+  `synthesis/sections.py::_merge_into_section` deleted.
+- **Contradiction resolution folded in.** `core/contradiction_resolution.py` is
+  merged into `core/contradictions.py` (detection + resolution now live
+  together; the resolution pass no longer imports four private helpers across a
+  module boundary). Public names `resolve_contradiction`,
+  `resolve_contradictions`, `unresolved_contradictions` are re-exported from
+  the merged module, so imports are unchanged in effect.
+
+All 1,694 tests pass; ruff clean.
+
 ## Unreleased — Question-shaped answers
 
 Synthesis no longer follows a fixed report template. The question and the

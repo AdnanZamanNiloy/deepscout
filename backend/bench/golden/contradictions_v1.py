@@ -1,7 +1,7 @@
 """Golden contradiction-resolution fixtures (v1).
 
 The contradiction engine (`app.core.contradictions.find_contradictions`) and its
-resolution pass (`app.core.contradiction_resolution.resolve_contradictions`) are
+resolution pass (`app.core.contradictions.resolve_contradictions`) are
 deterministic, LLM-free scorers with no offline regression gate of their own.
 The full-graph golden evaluator exercises them only incidentally (the scripted
 mocks rarely produce a genuine cross-source conflict), so a resolution

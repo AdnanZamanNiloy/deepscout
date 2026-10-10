@@ -33,7 +33,7 @@ def make_critic_node(llm, critic_agent):
         # genuinely conflicting (same unit/scope/period/metric, different
         # values) entries stay `resolved: false`.
         try:
-            from app.core.contradiction_resolution import resolve_contradictions
+            from app.core.contradictions import resolve_contradictions
 
             contradictions = resolve_contradictions(contradictions)
         except Exception as exc:  # resolution must never break a run

@@ -18,6 +18,12 @@ original numeric-only scan with three detectors, one output shape:
 Similarity comes from the shared semantic engine as ONE batch matrix; the
 similarity band (same topic, not same claim) is unchanged. Severity ranks
 what the critic gates on and what the report shows first.
+
+The module also owns the RESOLUTION pass (`resolve_contradiction` /
+`resolve_contradictions` / `unresolved_contradictions`): detection surfaces a
+pair, resolution decides whether the two claims actually disagree or a
+period/scope/unit difference explains the spread. Folding it in keeps the
+judgment beside the detectors it shares helpers with.
 """
 from __future__ import annotations
 
@@ -367,3 +373,164 @@ def find_contradictions(
 
     contradictions.sort(key=lambda c: -float(c.get("severity", 0.0)))
     return contradictions
+
+
+# ---------------------------------------------------------------------------
+# Resolution pass (formerly `app.core.contradiction_resolution`, Fix C)
+# ---------------------------------------------------------------------------
+#
+# `find_contradictions` surfaces conflicts; it does NOT decide whether the two
+# claims actually agree. A live deep run reported 5 contradictions, all of kind
+# "temporal" — the same measure for different periods — yet nothing resolved
+# them, so they kept penalizing confidence and driving expansion even though the
+# spread was fully explained by the period. The resolution pass is that missing
+# judgment: for each detected pair it asks whether the two claims MEASURE THE
+# SAME THING across unit, scope, period and metric. Only "same unit+scope+period
+# +metric, different value" stays unresolved. It lived in a separate module that
+# imported four private helpers from this one; folding it in keeps that logic
+# beside the detectors it depends on and removes the cross-module coupling.
+
+
+def _unit_of(contradiction: Dict[str, Any]) -> str:
+    values = contradiction.get("values")
+    if isinstance(values, dict):
+        return str(values.get("unit", "") or "").lower()
+    return ""
+
+
+def _values_differ(contradiction: Dict[str, Any]) -> bool:
+    """True when the two recorded values are materially different."""
+    values = contradiction.get("values")
+    if not isinstance(values, dict):
+        return True
+    try:
+        va = float(values.get("value_a"))
+        vb = float(values.get("value_b"))
+    except (TypeError, ValueError):
+        return True
+    scale = max(abs(va), abs(vb), 1e-9)
+    return abs(va - vb) / scale >= 0.05
+
+
+def resolve_contradiction(contradiction: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a copy of `contradiction` with `resolved`/`resolution` set.
+
+    Total: a non-dict or malformed input is returned with resolved=False (a
+    real conflict must never be dismissed by a parsing accident).
+    """
+    if not isinstance(contradiction, dict):
+        return {"resolved": False, "resolution": "unparseable contradiction record"}
+
+    out = dict(contradiction)
+    kind = str(contradiction.get("kind", "") or "").lower()
+    claim_a = str(contradiction.get("claim_a", "") or "")
+    claim_b = str(contradiction.get("claim_b", "") or "")
+    unit = _unit_of(contradiction)
+
+    # --- period: different years explain different values ------------------
+    # A period difference can only explain a VALUE spread — never an opposite
+    # assertion. "Coal capacity fell 12% in 2020" vs "...rose 12% in 2023" is a
+    # polarity conflict about the same measure; different reporting years do
+    # not reconcile "fell" with "rose". Polarity findings therefore skip the
+    # period branch entirely and stay unresolved below.
+    years_a, years_b = _years_in(claim_a), _years_in(claim_b)
+    period_explains = (
+        kind != "polarity"
+        and (not _share_agreeing_quantity(claim_a, claim_b))
+        and _values_differ(contradiction)
+        and ((years_a and years_b and set(years_a) != set(years_b)) or kind == "temporal")
+    )
+    if period_explains:
+        out["resolved"] = True
+        out["resolution"] = (
+            "different periods: the sources report the same measure for "
+            f"{sorted(set(years_a))[:3] or ['unspecified']} vs "
+            f"{sorted(set(years_b))[:3] or ['unspecified']}; the values differ "
+            "because the periods differ, not because the sources disagree."
+        )
+        return out
+
+    # --- scope: different geography/population explains different values ---
+    scopes_a, scopes_b = _scopes_in(claim_a), _scopes_in(claim_b)
+    if kind == "scope" or _scopes_conflict(scopes_a, scopes_b):
+        out["resolved"] = True
+        out["resolution"] = (
+            "different scopes: "
+            f"{sorted(scopes_a) or ['unspecified']} vs "
+            f"{sorted(scopes_b) or ['unspecified']}; the figures describe "
+            "different populations, so they are not contradictory."
+        )
+        return out
+
+    # --- unit/metric: not comparable -------------------------------------
+    if kind not in ("numeric", "polarity") and kind != "":
+        # Unknown kind (e.g. a future detector) — do not dismiss it.
+        out["resolved"] = False
+        out["resolution"] = f"unclassified conflict kind {kind!r} left unresolved"
+        return out
+
+    # --- genuine conflict: same unit+scope+period+metric, values differ ---
+    if kind == "numeric":
+        conflict = numeric_conflict(claim_a, claim_b, divergence=0.05)
+        if conflict is None:
+            out["resolved"] = True
+            out["resolution"] = (
+                "no comparable like-united quantities remain — the apparent "
+                "conflict is a unit or metric mismatch, not a disagreement."
+            )
+            return out
+        unit = str(conflict.get("unit", unit) or unit)
+        out["resolved"] = not _values_differ(contradiction)
+        if out["resolved"]:
+            out["resolution"] = (
+                "values agree within tolerance once normalized — not a "
+                "material conflict."
+            )
+        else:
+            out["resolution"] = (
+                f"unresolved: same {unit or 'dimensionless'} measure, same "
+                "scope and period, materially different values — the sources "
+                "genuinely disagree and this needs resolution before the "
+                "figure can be treated as established."
+            )
+        return out
+
+    if kind == "polarity":
+        out["resolved"] = False
+        out["resolution"] = (
+            "unresolved: opposite assertions about the same subject, same "
+            "scope and period — direct disagreement, not a scope or period "
+            "artifact."
+        )
+        return out
+
+    # No kind at all: conservative default is unresolved.
+    out["resolved"] = not _values_differ(contradiction)
+    out["resolution"] = (
+        "unresolved: values differ without a period, scope or unit "
+        "explanation."
+        if not out["resolved"]
+        else "values agree within tolerance — not a material conflict."
+    )
+    return out
+
+
+def resolve_contradictions(
+    contradictions: List[Dict[str, Any]] | None,
+) -> List[Dict[str, Any]]:
+    """Resolve every contradiction, preserving order. Total and non-mutating."""
+    return [resolve_contradiction(c) for c in (contradictions or [])]
+
+
+def unresolved_contradictions(
+    contradictions: List[Dict[str, Any]] | None,
+) -> List[Dict[str, Any]]:
+    """Only the genuinely conflicting (resolved is not True) entries.
+
+    This is what confidence and the stopping policy must count: a period or
+    scope difference is recorded for the report but must not penalize a run.
+    """
+    return [
+        c for c in (contradictions or [])
+        if isinstance(c, dict) and not c.get("resolved")
+    ]

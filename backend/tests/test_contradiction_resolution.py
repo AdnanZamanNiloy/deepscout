@@ -10,7 +10,7 @@ though the spread was fully explained by the period. These tests pin the rule:
   and NOT counted as an unresolved conflict.
 """
 from app.core.confidence import compute_confidence
-from app.core.contradiction_resolution import (
+from app.core.contradictions import (
     resolve_contradiction,
     resolve_contradictions,
     unresolved_contradictions,
