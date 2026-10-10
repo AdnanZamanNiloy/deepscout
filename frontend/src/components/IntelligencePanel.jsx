@@ -104,8 +104,6 @@ export default function IntelligencePanel({
           </section>
 
           <ConfidenceBreakdown breakdown={run.breakdown} />
-          <EvidenceGrades distribution={run.evidenceDistribution} />
-          <RunUsageMeter usage={run.budget} />
 
           {run.error && run.resumable ? (
             <section className="intel-section">
@@ -197,36 +195,6 @@ function ConfidenceBreakdown({ breakdown }) {
   );
 }
 
-function RunUsageMeter({ usage }) {
-  /* Rendered only when the run actually reported telemetry, so a replay
-   * (which carries none) does not show a dead "arrives later" section.
-   * Operational counts only — the product does not track cost or budget. */
-  if (!usage || typeof usage !== "object") return null;
-  const tokens = usage.spent_tokens ?? 0;
-  const calls = usage.llm_calls ?? 0;
-  const hits = usage.cache_hits ?? 0;
-  const hitRate = usage.cache_hit_rate ?? 0;
-  const fmtTokens = tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : String(tokens);
-  return (
-    <section className="intel-section">
-      <h3>Run usage</h3>
-      <div className="health-row">
-        <span className="k">LLM calls</span>
-        <span className="v">{calls}{hits > 0 ? ` (${hits} cached)` : ""}</span>
-      </div>
-      <div className="health-row">
-        <span className="k">Tokens</span>
-        <span className="v">{fmtTokens}</span>
-      </div>
-      {hits > 0 ? (
-        <div className="budget-sub note">
-          cache hit rate {Math.round(hitRate * 100)}% — repeated prompts served from disk
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
 function CitationHealthRow({ health }) {
   const summary = health && typeof health.summary === "object" ? health.summary : null;
   if (!summary) return null;
@@ -246,26 +214,6 @@ function CitationHealthRow({ health }) {
       <span className="k">Citation health</span>
       <span className="v" style={broken ? { color: "var(--deepscout-soft)" } : undefined}>{label}</span>
     </div>
-  );
-}
-
-function EvidenceGrades({ distribution }) {
-  if (!distribution || typeof distribution !== "object") return null;
-  const counts = ["A", "B", "C", "D"].map((g) => ({
-    grade: g,
-    count: Number(distribution[g]) || 0,
-  }));
-  const total = counts.reduce((sum, c) => sum + c.count, 0);
-  if (!total) return null;
-  return (
-    <section className="intel-section">
-      <h3>Evidence grades</h3>
-      <div className="health-row">
-        <IconShieldCheck size={15} className="tone-muted" />
-        <span className="k">A/B/C/D</span>
-        <span className="v">{counts.map((c) => `${c.grade}${c.count}`).join(" · ")}</span>
-      </div>
-    </section>
   );
 }
 
