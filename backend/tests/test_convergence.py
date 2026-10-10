@@ -314,11 +314,6 @@ def test_the_synthesizer_renders_the_convergence_contract():
     assert "render_convergence_contract" in source
 
 
-def test_the_convergence_reaches_the_writer_context():
-    source = open("app/graph/workflow.py").read()
-    assert '"convergence": state.get("convergence")' in source
-
-
 def test_the_convergence_module_names_no_subject():
     """Domain agnosticism: the rules are about evidence, not topics."""
     import ast

@@ -288,7 +288,7 @@ def _corroboration_candidates(
         from app.core.evidence_completion import rank_completion_targets
         from app.core.evidence_grade import registrable_domain
         from app.agents.sources import build_corroboration_query
-        from app.graph.workflow import _claim_terms
+        from app.graph.evidence import _claim_terms
 
         ranked = rank_completion_targets(
             facts,

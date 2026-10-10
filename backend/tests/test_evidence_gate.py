@@ -5,7 +5,7 @@ still has uncorroborated important claims or unresolved contradictions. The
 gate only ever ADDS research; when the pool is clean/empty/ungradeable the
 critic wins exactly as before.
 """
-from app.graph.workflow import _evidence_gaps_remain, _counter_evidence_queries
+from app.graph.evidence import _evidence_gaps_remain, _counter_evidence_queries
 
 
 def _state(facts, contradictions=None):

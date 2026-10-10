@@ -165,7 +165,7 @@ def test_default_max_attempts_matches_settings_default():
 # ---------------------------------------------------------------------------
 
 def test_workflow_surfaces_investigation_limitations():
-    from app.graph.workflow import _measured_coverage_gaps
+    from app.graph.evidence import _measured_coverage_gaps
 
     key = investigation_key(_CLAIM_QUANT)
     state = {

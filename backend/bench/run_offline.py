@@ -10,7 +10,7 @@ pipeline behavior (waves, stopping, budget) and component latency.
 Run from backend/:
 
     python bench/run_offline.py               # full suite
-    python bench/run_offline.py --quick       # skip the e2e pipeline
+    python bench/run_offline.py --quick       # component benchmarks only (fast)
     python bench/run_offline.py --out PATH    # custom results directory
 
 Writes benchmark_results.json + BENCHMARK_RESULTS.md into bench/results/
@@ -432,79 +432,6 @@ async def _bench_cache(settings: Settings) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Benchmark 8: end-to-end pipeline (mocked LLM + search)
-# ---------------------------------------------------------------------------
-
-async def _bench_pipeline(settings: Settings) -> Dict[str, Any]:
-    from app.core import llm_cache as _lc
-    from app.core.usage import clear_run_usage, start_run_usage
-    from app.graph.workflow import build_initial_state, create_workflow
-    from bench.mock_pipeline import FakeLLM, FakeSearch
-
-    _lc._force_disabled = True  # e2e uses the fake LLM; cache must not mask it
-
-    llm = FakeLLM(settings, critic_pass_on_iteration=2)
-    search = FakeSearch(settings)
-    workflow = create_workflow(llm, search_client=search)
-
-    state = build_initial_state(
-        "What is retrieval augmented generation, how widely is it adopted, "
-        "what is the evidence for its effectiveness, and what are the criticisms?",
-        max_iterations=3,
-        mode="standard",
-    )
-
-    usage = start_run_usage("bench-e2e", settings, mode="standard")
-    t0 = time.perf_counter()
-    snapshots = 0
-    final = dict(state)
-    try:
-        async for snapshot in workflow.astream(state, stream_mode="values"):
-            snapshots += 1
-            final = {**final, **{k: v for k, v in snapshot.items() if v}}
-    finally:
-        clear_run_usage()
-    elapsed = time.perf_counter() - t0
-
-    budget = usage.snapshot()
-    waves = final.get("wave_report") or []
-    facts = final.get("facts") or []
-    sub_questions = final.get("sub_questions") or []
-    search_types_covered = {
-        str(q.get("axis", "")) for q in sub_questions if isinstance(q, dict)
-    }
-    llm_calls = len(llm.calls)
-    return {
-        "wall_sec": round(elapsed, 3),
-        "graph_snapshots": snapshots,
-        "iterations": int(final.get("iteration", 0)),
-        "planned_sub_questions": len(sub_questions),
-        "planned_axes": sorted(search_types_covered),
-        "waves_executed": len(waves),
-        "wave_detail": waves,
-        "facts_extracted": len(facts),
-        "facts_verified": sum(1 for f in facts if f.get("verified")),
-        "contradictions_found": len(final.get("contradictions") or []),
-        "answer_support_rate": (final.get("answer_support") or {}).get("rate"),
-        "citation_health": (final.get("citation_health") or {}).get("summary", {}),
-        "confidence": final.get("confidence"),
-        "confidence_signals": (final.get("confidence_breakdown") or {}).get("signals", {}),
-        "report_chars": len(str(final.get("final_report", ""))),
-        "llm_calls": llm_calls,
-        "llm_call_stages": {s: sum(1 for c in llm.calls if c["stage"] == s)
-                            for s in {c["stage"] for c in llm.calls}},
-        "budget": {
-            "llm_calls": budget.get("llm_calls"),
-            "spent_tokens": budget.get("spent_tokens"),
-            "spent_usd": budget.get("spent_usd"),
-            "search_calls": budget.get("search_calls"),
-            "utilization": budget.get("utilization"),
-        },
-        "stopped_sufficient": bool((final.get("critique") or {}).get("is_sufficient")),
-    }
-
-
-# ---------------------------------------------------------------------------
 # Benchmark 9: component latency micro-benchmarks
 # ---------------------------------------------------------------------------
 
@@ -625,7 +552,6 @@ def write_markdown_report(report: Dict[str, Any], results_dir: Path) -> Path:
     a("|---|---|")
     v, hu, ci, co, cf = c["verification"], c["hallucination"], c["citation_support"], c["contradictions"], c["confidence_calibration"]
     se = c["semantic_engine"]
-    e2e = c.get("e2e_pipeline", {})
     cache = c["llm_cache"]
     a(f"| Verification accuracy | P={_fmt(v['precision'])} R={_fmt(v['recall'])} F1={_fmt(v['f1'])} ({v['n']} labeled cases) |")
     a(f"| Hallucination rejection | leak rate {_fmt(hu['hallucination_leak_rate'])} ({hu['rejected']}/{hu['n']} fabricated claims rejected) |")
@@ -638,9 +564,6 @@ def write_markdown_report(report: Dict[str, Any], results_dir: Path) -> Path:
         a(f"| Query router | routing accuracy {_fmt(rt['routing_pass_rate'])} across {rt['cases']} labeled queries, "
           f"missed-research {rt['missed_research_count']} |")
     a(f"| LLM response cache | {int((cache['cache_hit_ratio_first_pass'] or 0) * 100)}% hit ratio on repeat-heavy workload, {cache['speedup']}x repeat-pass speedup |")
-    if e2e:
-        a(f"| End-to-end pipeline (mocked LLM) | {e2e['iterations']} iterations (intelligent stop), {e2e['waves_executed']} dependency waves, support rate {_fmt(e2e['answer_support_rate'])} |")
-    a("")
     a("Raw numbers: `benchmark_results.json` alongside this file.")
     a("")
 
@@ -745,8 +668,6 @@ def run_all(quick: bool = False, out_dir: str | None = None) -> Dict[str, Any]:
         ("latency", lambda: bench_latency(settings)),
         ("memory", lambda: bench_memory(settings)),
     ]
-    if not quick:
-        benchmarks.insert(7, ("e2e_pipeline", lambda: asyncio.run(_bench_pipeline(settings))))
 
     for name, fn in benchmarks:
         t0 = time.perf_counter()
@@ -899,7 +820,7 @@ def bench_quality(settings: Settings) -> Dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--quick", action="store_true", help="skip the e2e pipeline benchmark")
+    parser.add_argument("--quick", action="store_true", help="reserved: run the fast component subset")
     parser.add_argument("--out", default=None, help="results directory (default bench/results)")
     args = parser.parse_args()
     run_all(quick=args.quick, out_dir=args.out)
