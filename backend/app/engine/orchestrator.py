@@ -50,6 +50,121 @@ def _slug(text: str, limit: int = 40) -> str:
     return cleaned[:limit] or "run"
 
 
+# --- Report formatting normalisation ---------------------------------------
+
+_HTML_BREAK_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_HTML_TAG_RE = re.compile(
+    r"</?(?:p|div|span|strong|em|b|i|u|ul|ol|li|h[1-6]|table|thead|tbody|tr|td|th)\s*/?>",
+    re.IGNORECASE,
+)
+_TABLE_SEP_CELL_RE = re.compile(r"^\s*:?-{1,}:?\s*$")
+_TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
+
+
+def _split_table_row(line: str) -> List[str]:
+    s = line.strip()
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|") and not s.endswith("\\|"):
+        s = s[:-1]
+    out: List[str] = []
+    cur = ""
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if ch == "\\" and i + 1 < len(s) and s[i + 1] == "|":
+            cur += "|"
+            i += 2
+            continue
+        if ch == "|":
+            out.append(cur.strip())
+            cur = ""
+            i += 1
+            continue
+        cur += ch
+        i += 1
+    out.append(cur.strip())
+    return out
+
+
+def _normalize_pipe_table(block_lines: List[str]) -> List[str]:
+    """Turn a run of pipe-delimited lines into a clean, aligned GFM table.
+
+    Handles the shapes the writer emits in practice: a proper header +
+    separator, a header with no separator, and ragged rows with a mismatched
+    number of cells. Every row is padded (or its overflow folded into the last
+    cell) so columns line up, and a separator row is always emitted — a table
+    without one renders as a paragraph in most viewers.
+    """
+    rows = [_split_table_row(line) for line in block_lines]
+    rows = [r for r in rows if any(c for c in r)]
+    if not rows:
+        return block_lines
+    # Drop an explicit separator row if present; we re-emit a canonical one.
+    body = [r for r in rows if not all(_TABLE_SEP_CELL_RE.match(c or "") for c in r)]
+    if not body:
+        return block_lines
+    header = body[0]
+    data = body[1:]
+    # The header defines the column count (GFM semantics); a wider body row has
+    # its overflow folded into the last column so nothing is lost.
+    width = max(len(header), 2)
+    if width < 2:
+        return block_lines
+
+    def fit(cells: List[str]) -> List[str]:
+        out = list(cells[:width])
+        while len(out) < width:
+            out.append("")
+        if len(cells) > width:
+            out[width - 1] = f"{out[width - 1]} {' '.join(cells[width:])}".strip()
+        return out
+
+    lines = ["| " + " | ".join(fit(header)) + " |"]
+    lines.append("| " + " | ".join(["---"] * width) + " |")
+    for row in data:
+        lines.append("| " + " | ".join(fit(row)) + " |")
+    return lines
+
+
+def sanitize_report_markdown(markdown: str) -> str:
+    """Clean report markdown for storage and rendering.
+
+    Removes literal HTML artifacts the writer/LLM emits (``<br>`` and stray
+    inline tags), normalises ragged pipe tables into aligned GFM tables with a
+    real separator row, and trims trailing whitespace. Content is never
+    dropped: a table row with too many cells keeps its overflow in the last
+    column, and unclassifiable text is preserved verbatim.
+    """
+    text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    # Stray HTML break/tag artifacts become a space (they separated content).
+    text = _HTML_TAG_RE.sub("", text)
+    text = _HTML_BREAK_RE.sub(" ", text)
+    text = text.replace("&nbsp;", " ")
+
+    lines = text.split("\n")
+    out: List[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.strip().startswith("|") and line.count("|") >= 2:
+            # Gather the whole pipe block, then normalise it as one table.
+            block: List[str] = []
+            j = i
+            while j < len(lines) and lines[j].strip() and "|" in lines[j]:
+                block.append(lines[j])
+                j += 1
+            out.extend(_normalize_pipe_table(block))
+            i = j
+            continue
+        out.append(line.rstrip())
+        i += 1
+    # Collapse runs of 3+ blank lines to a single blank line.
+    text = "\n".join(out)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 @dataclass
 class EngineEvent:
     """One captured event from the engine's streaming seams.
@@ -226,7 +341,9 @@ class MultiAgentRunner:
         The audit layer's richer fields are produced separately by the adapter.
         """
         state = getattr(self, "_state", {}) or {}
-        report = str(state.get("report") or self._render_report(state) or "")
+        report = sanitize_report_markdown(
+            str(state.get("report") or self._render_report(state) or "")
+        )
         sources = self._collect_sources(state)
         return {
             "final_report": report,

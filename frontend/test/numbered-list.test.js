@@ -1,21 +1,15 @@
 /* Numbered report blocks must render as a list, never as one paragraph.
  *
  * A report whose items the writer numbered ("1) **Sense** - note") could reach
- * the renderer already flattened onto one line ("1. a 2. b 3. c"), which the
- * line-oriented parser read as a SINGLE list item — one <li> containing the
- * literal "2)" and "3)" text. Two layers address it: the backend sanitizer now
- * preserves the line breaks, and the renderer splits the run-on form so reports
- * persisted before that fix still display correctly.
+ * the renderer already flattened onto one line ("1. a 2. b 3. c"), which a
+ * naive parser reads as a SINGLE list item. The Markdown parser
+ * (src/markdown.js) splits the run-on form back into real list items, and
+ * AnswerCard.jsx renders the parsed blocks.
  *
- * The helper is re-implemented here rather than imported from AnswerCard.jsx:
- * a plain-Node import of a .jsx module rejects with "Unknown file extension",
- * and a top-level `await import(...)` that rejects aborts the whole file — the
- * assertions never run and `node --test` still reports the FILE as passing.
- * That is a test that verifies nothing, so this file stays on plain .js, and
- * the last test asserts the real component actually calls the helper so the
- * copy cannot drift into verifying nothing.
- *
- * Runs on Node's built-in test runner; no DOM or new dependency required.
+ * This file imports the real helper (src/markdown.js is plain .js, so Node can
+ * import it directly — unlike a .jsx module, which plain Node rejects). The
+ * last test asserts AnswerCard actually calls the parser so the behaviour
+ * cannot drift out of the render path.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -23,30 +17,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
+import { splitInlineOrderedItems, parseBlocks } from "../src/markdown.js";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CARD = readFileSync(join(HERE, "..", "src", "components", "AnswerCard.jsx"), "utf8");
 
 const NUMBER_RE = /^\s*(\d+)[.)]\s+(.*)$/;
-const INLINE_ORDERED_RE = /(?:^|\s)(\d{1,2})[.)]\s+(?=\S)/g;
-
-function splitInlineOrderedItems(body, startNum) {
-  INLINE_ORDERED_RE.lastIndex = 0;
-  const marks = [];
-  let m;
-  while ((m = INLINE_ORDERED_RE.exec(body)) !== null) marks.push(m);
-  if (!marks.length) return null;
-  const nums = marks.map((mk) => Number(mk[1]));
-  if (!nums.every((n, i) => n === startNum + 1 + i)) return null;
-  const parts = [];
-  for (let i = 0; i < marks.length; i++) {
-    const from = marks[i].index + marks[i][0].length;
-    const to = i + 1 < marks.length ? marks[i + 1].index : body.length;
-    const part = body.slice(from, to).trim();
-    if (part) parts.push(part);
-  }
-  if (!parts.length || !parts.every((p) => p.startsWith("**"))) return null;
-  return parts;
-}
 
 // The exact run-on shape shipped by the "what is the current trend of ai" run.
 const FLATTENED =
@@ -62,9 +38,17 @@ test("a flattened numbered block splits back into separate list items", () => {
 
   const parts = splitInlineOrderedItems(num[2], Number(num[1]));
   assert.ok(parts, "the run-on items must be recovered");
-  assert.equal(parts.length, 2);
-  assert.match(parts[0], /^\*\*Business and market adoption of AI\*\*/);
-  assert.match(parts[1], /^\*\*AI policy and regulation\*\*/);
+  assert.equal(parts.length, 3);
+  assert.match(parts[0], /^\*\*Trends in artificial intelligence technology\*\*/);
+  assert.match(parts[1], /^\*\*Business and market adoption of AI\*\*/);
+  assert.match(parts[2], /^\*\*AI policy and regulation\*\*/);
+});
+
+test("the parser turns a flattened numbered line into multiple list items", () => {
+  const list = parseBlocks(FLATTENED).find((b) => b.type === "list");
+  assert.ok(list, "a list block must be produced");
+  assert.equal(list.ordered, true);
+  assert.equal(list.items.length, 3, "run-on items are recovered, not merged");
 });
 
 test("prose that merely contains a number and a period is left alone", () => {
@@ -85,10 +69,9 @@ test("prose that merely contains a number and a period is left alone", () => {
   }
 });
 
-test("AnswerCard splits inline ordered items inside the list-item branch", () => {
-  // Guards the dead-code class: the helper existing but never being called
+test("AnswerCard renders parsed blocks (parser is wired into the render path)", () => {
+  // Guards the dead-code class: the parser existing but never being called
   // would render exactly the bug it was written for.
-  assert.match(CARD, /function splitInlineOrderedItems/);
-  assert.match(CARD, /const INLINE_ORDERED_RE/);
-  assert.match(CARD, /splitInlineOrderedItems\(itemBody, Number\(num\[1\]\)\)/);
+  assert.match(CARD, /import \{ parseBlocks \} from "\.\.\/markdown"/);
+  assert.match(CARD, /parseBlocks\(/);
 });

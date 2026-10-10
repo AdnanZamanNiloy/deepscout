@@ -44,6 +44,10 @@ class DeepScoutRetriever:
     # Set by `make_retriever_class`; a plain class attribute keeps `__name__`
     # stable (the engine logs and MCP-detects by the retriever class name).
     _search_client: Optional[SearchClient] = None
+    #: The app's main event loop, captured at install time. Async work is
+    #: marshalled onto this loop so the client's loop-bound semaphores stay
+    #: valid (see ``search``).
+    _loop: Optional[asyncio.AbstractEventLoop] = None
 
     def __init__(self, query: str, query_domains: Optional[List[str]] = None):
         self.query = str(query or "").strip()
@@ -53,13 +57,20 @@ class DeepScoutRetriever:
         self.query_domains = list(query_domains or [])
 
     def search(self, max_results: int = _DEFAULT_MAX_RESULTS) -> List[Dict[str, Any]]:
-        """Synchronous search used from a worker thread.
+        """Synchronous search the engine calls from a worker thread.
 
-        ``asyncio.run`` is safe here: the engine invokes this via
-        ``asyncio.to_thread``, so there is no running loop in this thread. A
-        fresh client would re-create pools per call, so the class-level client
-        is required — a missing client is a wiring error, surfaced loudly
-        rather than returning a silent empty list.
+        Critically, the async ``SearchClient`` must run on the SAME event loop
+        that created its internal semaphores (the app's main loop). Calling
+        ``asyncio.run`` here would spin up a NEW loop in this thread and every
+        rate-limit/connection semaphore would raise "bound to a different event
+        loop" — observed live as each search contract failing while the run
+        limped on with partial evidence. Instead the coroutine is marshalled
+        onto the captured main loop via ``run_coroutine_threadsafe`` and awaited
+        from this thread.
+
+        ``asyncio.run`` remains the fallback only when no loop was captured
+        (e.g. a unit test driving the retriever outside the app), where there is
+        no shared state to conflict with.
         """
         client = type(self)._search_client
         if client is None:
@@ -69,7 +80,14 @@ class DeepScoutRetriever:
             )
         if not self.query:
             return []
-        results = asyncio.run(client.run_search([self.query]))
+        loop = type(self)._loop
+        if loop is not None and loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(
+                client.run_search([self.query]), loop
+            )
+            results = future.result()
+        else:
+            results = asyncio.run(client.run_search([self.query]))
         return self._to_engine_results(results, max_results)
 
     @staticmethod
@@ -105,17 +123,23 @@ class DeepScoutRetriever:
         return out
 
 
-def make_retriever_class(client: SearchClient, name: str = "DeepScoutRetriever"):
-    """Build the retriever class carrying ``client``.
+def make_retriever_class(
+    client: SearchClient,
+    name: str = "DeepScoutRetriever",
+    loop: Optional[asyncio.AbstractEventLoop] = None,
+):
+    """Build the retriever class carrying ``client`` (and the main loop).
 
     A distinct subclass (rather than a module-level class mutated in place)
     keeps `install` idempotent and lets tests construct an isolated retriever
     without touching the process-wide wiring.
     """
-    return type(name, (DeepScoutRetriever,), {"_search_client": client})
+    return type(name, (DeepScoutRetriever,), {"_search_client": client, "_loop": loop})
 
 
-def install(client: SearchClient) -> type:
+def install(
+    client: SearchClient, loop: Optional[asyncio.AbstractEventLoop] = None
+) -> type:
     """Patch the engine's retrieval seams to use ``client``.
 
     Two seams are patched:
@@ -124,8 +148,17 @@ def install(client: SearchClient) -> type:
       to populate ``self.retrievers``; returns our single class.
     * ``gptr.actions.retriever.get_default_retriever`` — the fallback the
       factory reaches for when a name does not resolve.
+
+    ``loop`` is the app's running main loop; it is captured so the retriever's
+    async search runs on the loop that owns the client's semaphores. When
+    omitted, the currently-running loop is used if there is one.
     """
-    retriever_cls = make_retriever_class(client)
+    if loop is None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+    retriever_cls = make_retriever_class(client, loop=loop)
 
     def _get_retrievers(headers, cfg):  # noqa: ANN001 - engine signature
         return [retriever_cls]

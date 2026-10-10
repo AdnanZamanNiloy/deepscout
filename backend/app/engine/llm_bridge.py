@@ -98,13 +98,71 @@ class EngineLLMBridge:
                 pass
         return text or ""
 
+    def make_provider(self):
+        """A ``GenericLLMProvider``-shaped object backed by this bridge.
+
+        The engine does not only call ``create_chat_completion``: several paths
+        (the strategic-LLM fallbacks, MCP research, ``utils/tools``) build a
+        provider through ``get_llm`` / ``GenericLLMProvider.from_provider`` and
+        call ``get_chat_response`` directly. Patching only the funnel left those
+        paths reaching a real provider SDK with no credentials. Returning this
+        shim from the patched factory closes every construction path.
+
+        It exposes the two methods the engine actually calls
+        (``get_chat_response``, ``stream_response``) plus the metadata
+        attributes the cost callback reads, so it is a drop-in for the call
+        sites without emulating the full langchain model interface.
+        """
+        bridge = self
+
+        class _BridgeProvider:
+            def __init__(self) -> None:
+                self.last_usage_metadata = None
+                self.last_response_metadata: Dict[str, Any] = {}
+                self.verbose = True
+                self.llm = self  # callers that touch `.llm` get a callable shim
+
+            async def get_chat_response(self, messages, stream=False, websocket=None, **kwargs):
+                return await bridge.create_chat_completion(
+                    messages=messages, stream=stream, websocket=websocket, **kwargs
+                )
+
+            async def stream_response(self, messages, websocket=None, **kwargs):
+                text = await bridge.create_chat_completion(messages=messages, **kwargs)
+                if websocket is not None:
+                    try:
+                        await websocket.send_json({"type": "report", "output": text})
+                    except Exception:  # pragma: no cover - observer must not break flow
+                        pass
+                return text
+
+            async def ainvoke(self, messages, **kwargs):
+                text = await bridge.create_chat_completion(messages=messages, **kwargs)
+
+                class _Msg:
+                    content = text
+                    usage_metadata = None
+                    response_metadata: Dict[str, Any] = {}
+
+                return _Msg()
+
+        return _BridgeProvider()
+
 
 def install(llm: LLMClient) -> EngineLLMBridge:
-    """Patch the engine's LLM funnel to use ``llm``. Idempotent per process.
+    """Patch the engine's LLM entry points to use ``llm``. Idempotent.
 
     Import-time side effect is avoided on purpose: the engine packages can be
     imported (e.g. by tests) without an initialized LLM client. ``install`` is
     called once at app startup.
+
+    Three seams are patched, covering every way the engine reaches a model:
+
+    1. ``gptr.utils.llm.create_chat_completion`` — the primary funnel.
+    2. ``multi_agents.agents.utils.llms.call_model`` / ``create_chat_completion``
+       — the agent team's helpers.
+    3. ``GenericLLMProvider.from_provider`` — direct provider construction in
+       the strategic-LLM fallbacks, MCP research and ``utils/tools``.
     """
     bridge = EngineLLMBridge(llm)
 
@@ -115,6 +173,24 @@ def install(llm: LLMClient) -> EngineLLMBridge:
     import gptr.utils.llm as gptr_llm
 
     gptr_llm.create_chat_completion = bridge.create_chat_completion
+
+    # --- provider factory: covers every non-funnel construction path ---------
+    import gptr.llm_provider.generic.base as provider_base
+
+    _original_from_provider = provider_base.GenericLLMProvider.from_provider
+
+    def _bridged_from_provider(cls, provider, chat_log=None, verbose=True, **kwargs):  # noqa: ANN001
+        return bridge.make_provider()
+
+    provider_base.GenericLLMProvider.from_provider = classmethod(_bridged_from_provider)
+
+    # Re-bind the name in modules that imported the class directly.
+    try:
+        import gptr.llm_provider as provider_pkg
+
+        provider_pkg.GenericLLMProvider = provider_base.GenericLLMProvider
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("[EngineLLMBridge] could not rebind provider package: %s", exc)
 
     try:
         import multi_agents.agents.utils.llms as ma_llms
