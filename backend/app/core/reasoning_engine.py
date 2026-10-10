@@ -43,6 +43,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
 from app.core.logging import get_logger
+from app.core.primitives import normalize_key as _norm
 
 logger = get_logger(__name__)
 
@@ -97,11 +98,6 @@ _KIND_DISTINGUISHERS: Dict[str, str] = {
     "temporal": "which reporting period applies (the same measure is cited for different periods)",
     "scope": "which population/geography each figure describes (the scopes differ)",
 }
-
-
-def _norm(text: str) -> str:
-    """Deterministic comparison/ordering key for a claim or label."""
-    return " ".join(str(text or "").lower().split())
 
 
 def _domain_of(value: str) -> str:

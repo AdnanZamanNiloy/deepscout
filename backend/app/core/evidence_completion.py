@@ -29,6 +29,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Sequence, Set
 
 from app.core.logging import get_logger
+from app.core.primitives import normalize_key as _normalize
 
 logger = get_logger(__name__)
 
@@ -40,10 +41,6 @@ IMPACT_QUANTITATIVE = 3
 IMPACT_IN_SUMMARY = 3
 IMPACT_HIGH_CORROBORATION_NEED = 2
 IMPACT_PRIMARY_SOURCE_NEED = 2
-
-
-def _normalize(text: str) -> str:
-    return " ".join(str(text or "").lower().split())
 
 
 def _summary_claims(ctx: Optional[Dict[str, Any]]) -> Set[str]:

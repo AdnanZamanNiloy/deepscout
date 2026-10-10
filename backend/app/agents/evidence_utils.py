@@ -35,7 +35,6 @@ from app.agents.evidence.domain import (  # noqa: F401
 from app.agents.evidence.text import (  # noqa: F401
     normalize_claim_text,
     _tokenize,
-    _jaccard,
     _semantic_similarity,
     semantic_similarity,
 )

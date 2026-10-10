@@ -33,3 +33,25 @@ def safe_float(value: Any, default: float = 0.0) -> float:
 def is_year(value: float) -> bool:
     """True for an integer in the year range (used for exact number grounding)."""
     return float(value).is_integer() and 1000.0 <= value <= 2999.0
+
+
+def normalize_key(text: Any) -> str:
+    """Whitespace-collapsed lowercase comparison/ordering key.
+
+    Byte-identical to the `_norm`/`_normalize` helpers previously copied into
+    answer_conformance, evidence_completion, reasoning_engine and
+    synthesis_planner — a deterministic key for comparing claims and labels.
+    """
+    return " ".join(str(text or "").lower().split())
+
+
+def jaccard(a: Any, b: Any) -> float:
+    """Jaccard similarity of two token sets; 0.0 when either is empty.
+
+    Byte-identical to the `_jaccard` copies previously in focus, evidence/text
+    and core/semantic. Accepts any sized iterables (set, frozenset, list).
+    """
+    sa, sb = set(a), set(b)
+    if not sa or not sb:
+        return 0.0
+    return len(sa & sb) / len(sa | sb)

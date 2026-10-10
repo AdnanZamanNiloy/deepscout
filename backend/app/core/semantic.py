@@ -33,6 +33,8 @@ import numpy as np
 
 from difflib import SequenceMatcher
 
+from app.core.primitives import jaccard as _jaccard
+
 # ---------------------------------------------------------------------------
 # Tokenization + fixed IDF policy
 # ---------------------------------------------------------------------------
@@ -214,12 +216,6 @@ def _l2_normalize(vec: Dict[str, float]) -> Dict[str, float]:
     if norm <= 1e-12:
         return {}
     return {tok: w / norm for tok, w in vec.items()}
-
-
-def _jaccard(a: frozenset, b: frozenset) -> float:
-    if not a or not b:
-        return 0.0
-    return len(a & b) / len(a | b)
 
 
 # ---------------------------------------------------------------------------
