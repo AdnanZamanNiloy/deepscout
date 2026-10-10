@@ -216,6 +216,38 @@ def test_overlap_drops_off_topic_junk():
     assert claim_query_overlap("Routes in Oslo", "Instrument transformers hum") == 0.0
 
 
+def test_generic_head_claim_is_rejected_only_on_a_named_query():
+    """A claim linking to the query by ONE generic head noun is off-topic.
+
+    Live defect: on "which skills are most demanding in 2027", piano-assessment
+    and agent-skill-compilation claims cleared the overlap floor because the
+    query has four content words and "skills" is one of them. The guard rejects
+    a claim that shares at most one CONTENT word while naming none of the
+    query's subjects — and only when the query actually names something.
+    """
+    from app.agents.evidence_type import entity_tokens
+    from app.agents.evidence_utils import claim_matches_only_a_generic_head as generic
+
+    q = "which skills are most demanding in 2027"
+    et = entity_tokens(q)
+    assert et, "guard depends on the query naming a subject"
+
+    # Off-topic claims whose only real link is "skills" (function words excluded).
+    assert generic(q, "A rubric for assessing piano skills in conservatory students.", et)
+    assert generic(q, "Skills are compiled into a portable policy for the agent.", et)
+
+    # On-topic claims either name the subject or share two+ content words.
+    assert not generic(
+        q,
+        "The most demanding skill is emotional resilience under pressure in 2027.",
+        et,
+    )
+    assert not generic(q, "Employers most demand technical and communication skills.", et)
+
+    # No named subject: the rule cannot apply, so nothing is dropped.
+    assert not generic("what is retrieval augmented generation", "A response to a query.", ())
+
+
 def test_select_diverse_skips_near_dupes():
     from app.agents.evidence_utils import select_diverse
 

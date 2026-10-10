@@ -134,3 +134,47 @@ def test_failed_llm_result_not_cached(tmp_path):
         assert any("grid parity" in f["claim"] for f in second)
     finally:
         clear_fallbacks()
+
+
+def test_empty_model_object_is_weak_evidence_not_a_provider_outage(tmp_path):
+    """A model that returns an empty object degraded the run as
+    "provider-transient" ("the provider was temporarily unavailable (rate
+    limit, timeout or outage)"), which is FALSE: every provider answered, the
+    model just produced nothing usable. The reason must classify as evidence
+    weakness, not a transport failure — the two must never be conflated
+    (app/core/degradation.py, reliability #4)."""
+    from app.core.degradation import EVIDENCE_WEAK, fallback_reasons
+
+    class EmptyObjectLLM:
+        def __init__(self):
+            self.settings = Settings(
+                groq_api_key="k",
+                database_url=str(tmp_path / "empty_object.db"),
+                _env_file=None,
+            )
+            self.calls = 0
+
+        async def generate_json(self, *a, **k):
+            # The exact live failure: HTTP 200, every field default.
+            self.calls += 1
+            raise ValueError("model returned an empty object; every field is default")
+
+    llm = EmptyObjectLLM()
+    results = [{
+        "title": "Bangladesh power sector outlook",
+        "url": "https://power.gov.bd/empty-object-probe",
+        "snippet": "",
+        "content": "Solar power in Bangladesh reached grid parity for new utility projects.",
+        "sub_question": "What are the levelized cost values for solar power in Bangladesh?",
+    }]
+    reset_fallbacks()
+    try:
+        asyncio.run(summarizer_agent(
+            llm, "Compare the economics of nuclear vs solar energy in Bangladesh", results
+        ))
+        reasons = fallback_reasons()
+        assert reasons.get("summarizer") == EVIDENCE_WEAK, (
+            f"empty-object degradation misclassified: {reasons!r}"
+        )
+    finally:
+        clear_fallbacks()

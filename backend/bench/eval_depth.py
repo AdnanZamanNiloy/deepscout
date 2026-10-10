@@ -51,7 +51,7 @@ def evaluate_scenario(scenario: Dict[str, Any], settings: Any) -> Dict[str, Any]
     Mirrors `route_after_critic`'s ordering so a hard wall can never be
     preempted by an evidence trigger (the exact bug the depth controller's
     ordering guards against)."""
-    from app.core import depth_controller
+    from app.core.depth import controller as depth_controller
     from app.graph.workflow import _evidence_gaps_remain
 
     state = scenario["state"]

@@ -14,13 +14,10 @@ import logging
 from typing import Any, Dict, List, Sequence, Tuple
 
 from app.agents.answer_quality import length_band
-from app.agents.research_quality import (
-    IndependenceReport,
-    ResearchQualityReport,
-    TemporalProfile,
-    assess_report_quality,
-)
-from app.core.synthesis_intelligence import (
+from app.agents.quality.independence import IndependenceReport
+from app.agents.quality.quality import ResearchQualityReport, assess_report_quality
+from app.agents.quality.temporal import TemporalProfile
+from app.core.synthesis_intel.ledger import (
     SynthesisIntelligenceReport,
     apply_synthesis_intelligence,
 )

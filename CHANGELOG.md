@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased — Question-shaped answers
+
+Synthesis no longer follows a fixed report template. The question and the
+evidence in hand decide the structure, length and depth; the evidence decides
+the conclusion. This builds on the `ReportProfile` / `AnswerBlueprint` layers
+and closes the last fixed-template path the live run exposed.
+
+**What changed:**
+
+- **A `recommendation` query family.** "Suggest some research topics", "what
+  should I study", "recommend projects" are recognised as requests for
+  actionable options, not surveys. `infer_query_type`/`_format_guidance`
+  (`synthesis/profiles.py`) and `_blueprint_key` (`outline.py`) share the shape,
+  which asks for a short ranked set of concrete options, each with its method
+  and a feasibility note (skills, data, compute, supervision). The live defect —
+  a definitional survey that answered none of the suggestions — is fixed at the
+  planner, router, blueprint and writer-prompt layers.
+- **Conformance enforces the recommendation shape.** `answer_conformance` now
+  fails a suggestion request that ships no concrete, actionable options, the
+  same way it already fails a comparison without a verdict or a "why" without a
+  mechanism.
+- **Guidance requests are not "ambiguous".** A multi-reading term inside a
+  request for suggestions no longer triggers the disambiguation opener, which
+  buried the answer under a "which meaning did you mean" block.
+
+**Preserved unchanged:** citations and their verification, evidence safeguards
+(definition lock, ranking basis, convergence, temporal/independence contracts),
+interpretation locks, degraded-run handling and capping, and the LLM JSON
+schema (`{"answer": "..."}`).
+
 ## Unreleased — Red team removed
 
 The standalone **Red Team** agent (`app/agents/redteam.py`) has been deleted, along

@@ -100,6 +100,23 @@ class FakeSearch:
                     })
         return results
 
+    async def run_grounding_search(self, query: str) -> List[Dict[str, Any]]:
+        """Cheap title/snippet pairs for the planner's terminology grounding.
+
+        The production SearchClient has this method (app/agents/search.py) and
+        the intent node calls it on every research query. The mocks lagged that
+        interface, so the golden/e2e runs logged `planner_context_search_failed`
+        and the planner fell back to heuristic dimensions — the benchmark was
+        measuring a degraded planning path and understated report quality. The
+        stub returns the same deterministic pages as `run_search` would for the
+        query, as dicts with the `title`/`snippet` keys the caller reads.
+        """
+        results = await self.run_search([query])
+        return [
+            {"title": r.get("title", ""), "snippet": r.get("snippet", ""), "url": r.get("url", "")}
+            for r in results[:6]
+        ]
+
 
 class FakeLLM:
     """LLMClient-compatible stub with scripted stage responses."""
@@ -122,6 +139,8 @@ class FakeLLM:
         self._record_usage(stage, system_prompt, user_prompt)
         if stage == "planner":
             return self._plan()
+        if stage == "planner_directive":
+            return self._directive()
         if stage == "summarizer":
             return self._facts(user_prompt)
         if stage == "critic":
@@ -166,8 +185,31 @@ class FakeLLM:
     @staticmethod
     def _detect_stage(system_prompt: str, user_prompt: str) -> str:
         blob = f"{system_prompt}\n{user_prompt}".lower()
-        # Order matters: the summarizer prompt may embed sub-question context,
-        # so its distinctive extraction instruction is checked FIRST.
+        # Stage is identified by the AGENT'S OWN OPENING LINE in the system
+        # prompt ("You are the Summarizer Agent…"). Phrase-matching on
+        # instructions ("extract high-quality claims") is fragile: the
+        # summarizer prompt was reworded and that phrase vanished, so every
+        # summarizer call was misrouted to the planner and the golden runs fell
+        # back to a single extractive fact. The opening line is the one part of
+        # each prompt that names its own stage, so it is the stable contract.
+        head = (system_prompt or "").lower()
+        if "summarizer agent" in head:
+            return "summarizer"
+        # The planner runs TWO distinct LLM stages with different schemas: the
+        # dimension directive (returns {"dimensions": [...]}) and the contract
+        # builder (returns {"sub_questions": [...]}). They share the word
+        # "planner", so they must be told apart by their self-naming opener or
+        # the directive receives a contract payload, finds no "dimensions" key,
+        # and silently falls back to heuristic axes — which is what happened.
+        if "planning directive" in head:
+            return "planner_directive"
+        if "planner agent" in head:
+            return "planner"
+        if "critic agent" in head:
+            return "critic"
+        if "synthesis engine" in head or "final write" in head:
+            return "synthesizer"
+        # Fallback phrase matching for prompts without a self-naming opener.
         if "extract high-quality claims" in blob:
             return "summarizer"
         if "delegation contract" in blob or "sub-question" in blob or "planner" in blob:
@@ -179,6 +221,20 @@ class FakeLLM:
         return "unknown"
 
     # -- scripted payloads ---------------------------------------------------
+
+    @staticmethod
+    def _directive() -> Dict[str, Any]:
+        """Dimension directive payload: the schema is `{"dimensions": [...]}`.
+
+        The directive and the contract builder are two planner LLM stages with
+        different output schemas. Returning the contract shape here made
+        `dimensions` empty, so the planner fell back to heuristic axes and the
+        golden coverage checks under-reported dimension hits.
+        """
+        return {
+            "dimensions": ["definition", "mechanism", "evidence"],
+            "must_cover": [],
+        }
 
     @staticmethod
     def _plan() -> Dict[str, Any]:
@@ -308,22 +364,31 @@ class GoldenFakeSearch(FakeSearch):
         results: List[Dict[str, Any]] = []
         seen_urls: set = set()
         queries = [q[0] if isinstance(q, tuple) else str(q) for q in (sub_questions or [])]
+
+        # Partition the topic pack across this batch's contracts so EVERY
+        # contract gets its own tagged results. The previous rotation still let
+        # the FIRST contract consume the whole pack (its URLs entered the
+        # global `seen_urls`), so later contracts received nothing and their
+        # sub_questions had no evidence — `build_contexts` then found one
+        # non-empty context, the summarizer ran a single contract, and a
+        # six-page topic collapsed to one extracted fact. Each contract now
+        # gets a rotating WINDOW of the pack, so tagged results exist per
+        # question and the multi-contract wave actually summarizes.
+        n = max(1, len(queries))
         for index, question in enumerate(queries):
             self.calls.append(question)
             topic = self._route(question)
             if topic == "generic":
                 topic = self.topic
             pack = fixtures_v1.pages_for_topic(topic)
-            # Rotate the pack per sub-question: each contract gets a DISTINCT
-            # slice so the production per-contract search dedup does not starve
-            # later contracts of evidence (which would collapse a multi-domain
-            # query onto one publisher and understate coverage).
-            if pack:
-                offset = index % len(pack)
-                rotated = pack[offset:] + pack[:offset]
-            else:
-                rotated = pack
-            for page in rotated[: len(pack)]:
+            if not pack:
+                continue
+            # Window of ceil(len/n) pages per contract, rotated by index. With a
+            # single contract this is the whole pack (unchanged behaviour).
+            window = max(1, -(-len(pack) // n))
+            start = (index * window) % len(pack)
+            rotated = pack[start:] + pack[:start]
+            for page in rotated[: min(window + 1, len(pack))]:
                 if page["url"] in seen_urls:
                     continue
                 seen_urls.add(page["url"])
@@ -363,9 +428,9 @@ class GoldenFakeLLM(FakeLLM):
         stage. Check the synthesizer's unique signature first, then delegate
         to the base heuristic for the rest."""
         system_low = (system_prompt or "").lower()
-        if "final synthesis agent" in system_low:
+        if "synthesis engine" in system_low or "final write" in system_low:
             return "synthesizer"
-        if "extract high-quality claims" in system_low:
+        if "summarizer agent" in system_low:
             return "summarizer"
         return FakeLLM._detect_stage(system_prompt, user_prompt)
 
@@ -381,6 +446,8 @@ class GoldenFakeLLM(FakeLLM):
         self._record_usage(stage, system_prompt, user_prompt)
         if stage == "planner":
             return self._golden_plan()
+        if stage == "planner_directive":
+            return self._golden_directive()
         if stage == "summarizer":
             return self._golden_facts(user_prompt)
         if stage == "critic":
@@ -403,6 +470,16 @@ class GoldenFakeLLM(FakeLLM):
         query = fixtures_v1.expected_by_id().get(self.query_id)
         dims = list(query.get("required_dimensions", [])) if query else []
         return dims or ["definition", "evidence"]
+
+    def _golden_directive(self) -> Dict[str, Any]:
+        """Dimension directive for the golden query: its required dimensions.
+
+        Returning the query's own required dimensions here (rather than letting
+        the planner fall back to generic heuristic axes) is what makes the
+        golden coverage checks meaningful: the plan is told what the query
+        needs, exactly as the real directive LLM would be.
+        """
+        return {"dimensions": self._expected_dimensions(), "must_cover": []}
 
     def _golden_plan(self) -> Dict[str, Any]:
         dims = self._expected_dimensions()

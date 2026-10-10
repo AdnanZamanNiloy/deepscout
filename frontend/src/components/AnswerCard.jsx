@@ -195,6 +195,7 @@ const REASON_LABELS = {
   "weak-evidence": "the extracted evidence was too thin or unusable",
   no_facts_parsed: "no usable claims could be parsed from the sources",
   llm_returned_no_facts: "the model returned no usable claims",
+  llm_returned_nothing: "the model returned nothing usable for the prompt size (not a provider outage)",
   payload_too_large: "the source payload was too large for the provider",
 };
 

@@ -506,7 +506,27 @@ export function buildTrace(
 // --- helpers ---------------------------------------------------------------
 
 function str(v: unknown): string {
-  return typeof v === "string" ? v.trim() : v == null ? "" : String(v);
+  if (typeof v === "string") return v.trim();
+  if (v == null) return "";
+  // Never surface the JS "[object Object]" placeholder. An error frame whose
+  // `message` arrived as a structured object (or a validation-detail list) must
+  // render as readable text, not as "[object Object]" — which is exactly what a
+  // user saw as the entire failure message.
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    if (typeof o.message === "string") return o.message.trim();
+    if (typeof o.msg === "string") return o.msg.trim();
+    if (typeof o.detail !== "undefined") return str(o.detail);
+    if (Array.isArray(v)) {
+      return v.map((x) => str(x)).filter(Boolean).join("; ");
+    }
+    try {
+      return JSON.stringify(v);
+    } catch {
+      return "";
+    }
+  }
+  return String(v);
 }
 
 function num(v: unknown): number | null {

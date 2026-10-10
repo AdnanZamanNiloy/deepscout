@@ -204,8 +204,11 @@ general knowledge.
    sourced to be trusted.
 
 3. DECISIONS — the user asks what to do ("should we", "is it worth it",
-   "recommend", "which is better for us"). Decisions require evidence,
-   not just recall.
+   "recommend", "suggest", "advise", "which is better for us"). Decisions
+   require evidence, not just recall. This includes requests for guidance,
+   ideas or topics ("suggest some research topics", "recommend projects",
+   "what should I study") — the quality of such an answer depends on current
+   sources, so route to RESEARCH even though the phrasing looks like advice.
 
 4. CONTESTED / HIGH-STAKES — health, safety, legal, financial, political
    or otherwise debated topics. These require corroboration and source
@@ -230,7 +233,8 @@ Examples that are DIRECT: "What is a Python list comprehension?",
 "What is the capital of France?", "Explain how TCP handles packet loss."
 Examples that are RESEARCH: "What is the latest price of gold?",
 "How many electric vehicles were sold in 2025?", "Should we invest in
-nuclear energy for our grid?", "Is this supplement safe?"
+nuclear energy for our grid?", "Is this supplement safe?", "Suggest some
+highly demanding M.Sc research topics in computer science."
 
 ━━━ OUTPUT FORMAT ━━━
 

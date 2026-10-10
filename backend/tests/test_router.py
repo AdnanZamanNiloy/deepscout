@@ -64,6 +64,33 @@ def test_decision_framing_forces_research():
     assert "decision" in d.signals["hard_blockers"]
 
 
+def test_recommendation_requests_force_research():
+    """"Suggest/recommend topics" is guidance, not stable knowledge.
+
+    Live defect: "suggest me some highly demanding research topic for M.sc in
+    computer science and engineering" was classified as plain factual and the
+    router answered it from model recall — no sources. Only "recommend" was a
+    decision marker, so its synonyms ("suggest", "advise", "give me ideas",
+    "what topics") slipped through and produced an ungrounded answer.
+    """
+    for q in (
+        "suggest me some highly demanding research topic for M.sc in computer science",
+        "recommend some good books on machine learning",
+        "what topics should I research for a PhD in NLP",
+        "give me some ideas for a final year project",
+    ):
+        d = deterministic_route(q)
+        assert d.path == RESEARCH, q
+        assert "decision" in d.signals["hard_blockers"], q
+
+
+def test_plain_recall_questions_are_not_decision_framing():
+    """The broadened markers must not capture stable-knowledge questions."""
+    for q in ("What is a Python list comprehension?", "What is the capital of France?"):
+        d = deterministic_route(q)
+        assert "decision" not in d.signals["hard_blockers"], q
+
+
 def test_contested_topic_forces_research():
     d = deterministic_route("Is this supplement safe to take daily?")
     assert d.path == RESEARCH

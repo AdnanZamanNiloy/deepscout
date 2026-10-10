@@ -130,7 +130,7 @@ def make_critic_node(llm, critic_agent):
         # asymmetry and staleness caps dead on live runs.
         epistemics = state.get("epistemics")
         if epistemics is None:
-            from app.agents.epistemics import assess_epistemics
+            from app.agents.epistemic.asymmetry import assess_epistemics
 
             epistemics = assess_epistemics(
                 state["query"], state.get("facts", []), contradictions

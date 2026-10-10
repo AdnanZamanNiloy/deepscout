@@ -325,6 +325,12 @@ def _ensure_disambiguation(answer: str, ctx: Dict[str, Any]) -> str:
     intent = ctx.get("intent") or {}
     if not isinstance(intent, dict) or not intent.get("ambiguity"):
         return answer
+    # A guidance request ("suggest me topics") is not made ambiguous by a
+    # multi-reading term inside it; do not prepend the disambiguation opener.
+    from app.agents.synthesis.context_blocks import _is_guidance_query
+
+    if _is_guidance_query(intent):
+        return answer
     if re.search(r"^\s*\d+\)\s*\*\*[^*]{2,120}\*\*", answer or "", re.M):
         return answer
     block = _deterministic_disambiguation(

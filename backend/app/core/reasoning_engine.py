@@ -494,7 +494,7 @@ def _depth_unknowns(state: Dict[str, Any], facts: Sequence[Any]) -> List[str]:
     if not state:
         return []
     try:
-        from app.core.depth_controller import _thin_dimensions, _uncovered_axes
+        from app.core.depth.signals import _thin_dimensions, _uncovered_axes
 
         out: List[str] = []
         for axis in _uncovered_axes(state):

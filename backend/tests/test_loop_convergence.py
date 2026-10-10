@@ -22,7 +22,7 @@ The properties asserted here:
 import asyncio
 
 from app.core.config import Settings
-from app.core.depth_controller import decide_with_checks
+from app.core.depth.controller import decide_with_checks
 from app.core.investigation_planner import (
     _dimension_entry_key,
     select_investigations,

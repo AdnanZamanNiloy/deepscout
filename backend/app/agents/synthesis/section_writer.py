@@ -16,7 +16,8 @@ from typing import Any, Dict, List, Sequence, Tuple
 
 from app.agents.answer_quality import length_band
 from app.agents.outline import AnswerBlueprint, AnswerOutline, group_facts_by_section, render_blueprint
-from app.agents.research_quality import IndependenceReport, TemporalProfile
+from app.agents.quality.independence import IndependenceReport
+from app.agents.quality.temporal import TemporalProfile
 from app.core.llm import LLMClient
 from app.core.logging import get_logger
 from app.core.schemas import SynthesizerAnswerModel

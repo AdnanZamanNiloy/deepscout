@@ -9,7 +9,7 @@ are only emitted when unit+scope+period are compatible.
 
 Mirrors the style of test_depth_controller_v2.py / test_evidence_gate.py.
 """
-from app.core import depth_controller
+from app.core.depth import controller as depth_controller
 from app.core.config import Settings
 from app.core.contradictions import find_contradictions
 from app.core.usage import clear_run_usage, start_run_usage

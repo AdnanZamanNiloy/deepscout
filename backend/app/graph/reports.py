@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from app.core import depth_controller
+from app.core.depth import controller as depth_controller
 from app.core.decision import build_decision_layer
 from app.core.logging import get_logger
 

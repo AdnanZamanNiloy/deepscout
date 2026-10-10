@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, Set
 
-from app.agents.research_quality import independent_corroboration
+from app.agents.quality.independence import independent_corroboration
 from app.core.primitives import safe_float as _safe_float, safe_int as _safe_int  # noqa: F401
 
 
@@ -66,7 +66,8 @@ _HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.*\S)\s*$")
 
 
 def order_by_assumed_reading(
-    items: list, policy: Dict[str, Any] | None, label_of=lambda x: str(x)
+    items: list, policy: Dict[str, Any] | None, label_of=lambda x: str(x),
+    item_factory=None,
 ) -> list:
     """Order readings so the one the pipeline ASSUMED comes first.
 
@@ -80,13 +81,26 @@ def order_by_assumed_reading(
     The policy's `interpretations` list is authoritative and always contains the
     assumption, so ordering by its index works across both channels. Anything
     not named there keeps its original relative position.
+
+    DEFENSE IN DEPTH: if the assumed reading is not among `items` at all — the
+    cross-taxonomy case the policy layer now avoids, but a caller can still hand
+    us a policy whose assumption names a reading the intent's list omits — the
+    assumption is PREPENDED so "meaning 1" is always the reading the pipeline
+    chose. `item_factory` builds the synthetic entry in the caller's own shape;
+    a bare label string is used when none is supplied.
     """
     policy = policy if isinstance(policy, dict) else {}
+    if item_factory is None:
+        item_factory = lambda label: {"label": label}  # noqa: E731
+    assumption = str(policy.get("assumption", "") or "").strip()
+    items = list(items)
     order = [
         str(x).strip() for x in (policy.get("interpretations") or []) if str(x).strip()
     ]
+    if assumption and assumption not in order:
+        order = [assumption, *order]
     if not order:
-        return list(items)
+        return items
 
     def rank(item) -> int:
         label = label_of(item).strip()
@@ -95,4 +109,9 @@ def order_by_assumed_reading(
         except ValueError:
             return len(order)
 
-    return sorted(items, key=rank)
+    ordered = sorted(items, key=rank)
+    if assumption and not any(label_of(x).strip() == assumption for x in ordered):
+        # The assumed reading is not in the caller's list: surface it at
+        # position 0 so the announcement cannot contradict the decision.
+        ordered = [item_factory(assumption), *ordered]
+    return ordered

@@ -91,6 +91,24 @@ def test_heuristic_dimensions_differ_by_query_type():
     assert decision != comparative != causal
 
 
+def test_recommendation_query_plans_option_dimensions_not_definition():
+    """A "suggest ... topics" request must plan for SUGGESTIONS, not a survey.
+
+    Live defect: "suggest me some highly demanding research topic for M.sc in
+    computer science and engineering" fell to the generic `else` branch
+    (definition / evidence / criticism), so the run searched for papers ABOUT
+    research areas and returned a survey of open problems instead of a set of
+    candidate topics.
+    """
+    dims = _heuristic_dimensions(
+        "suggest me some highly demanding research topic for M.sc in computer science and engineering"
+    )
+    joined = " ".join(dims).lower()
+    assert "candidate options" in joined
+    assert "selection criteria" in joined
+    assert "definition" not in joined
+
+
 def test_llm_dimensions_flow_into_required_axes_and_contracts():
     """The directive's dimensions become the plan's hard requirements: a plan
     that omits one gets a contract for it."""

@@ -421,6 +421,18 @@ _BLUEPRINT_STRATEGIES: Dict[str, str] = {
         "recommendation conditioned on the reader's situation, and state what "
         "would change it."
     ),
+    "recommendation": (
+        "Give a SHORT ranked set of concrete options (typically 4-8), each with "
+        "one clause of WHY it fits the reader's stated situation and what makes "
+        "it hard or distinctive. For research or project topics, give each "
+        "option a method or approach and a feasibility note (skills, data, "
+        "compute, supervision, time to first result), then close with how to "
+        "choose. Do NOT survey the field or report on other people's research; "
+        "the user asked for suggestions they can act on. If a source ranks or "
+        "recommends these options, follow its ranking; if not, say the list is "
+        "assembled rather than measured, and never present an unranked list as a "
+        "ranking."
+    ),
     "forecast": (
         "State the current measured level and its as-of date first; label every "
         "projection as a projection with its assumptions, and give a range."
@@ -502,7 +514,16 @@ def _blueprint_key(query: str, intent: Dict[str, Any], outline: AnswerOutline) -
         ("comparison", r"\b(vs\.?|versus|compare[ds]?|comparison|better than|difference between|which (?:is|one))\b"),
         ("howto", r"\b(how (?:do|to|can) |steps? to|guide to|set ?up|install|configure|tutorial)\b"),
         ("causal", r"\b(why|what caused|cause[ds]? of|reason[s]? (?:for|why)|leads? to)\b"),
-        ("decision", r"\b(should (?:i|we|they)|worth it|is it worth|recommend|choose between|invest in)\b"),
+        # Recommendation/guidance requests: the user wants SUGGESTIONS, not a
+        # survey of the field. Checked before `decision` so "suggest some
+        # research topics" gets a ranked-options answer rather than a
+        # trade-off analysis, and before the generic patterns so it is not
+        # captured by `list` ("what are the ...") as a bare enumeration.
+        ("recommendation", r"\b(suggest|recommend|advise|give me (?:some|a few|ideas|examples)|"
+                           r"some ideas|topic suggestions|which .{0,30}should (?:i|we)|"
+                           r"what should (?:i|we) (?:study|research|choose|pick|learn)|"
+                           r"best .{0,25}(?:to (?:study|learn|research)|for (?:me|us)))\b"),
+        ("decision", r"\b(should (?:i|we|they)|worth it|is it worth|choose between|invest in)\b"),
         ("forecast", r"\b(will |forecast|projection|predicted|by 20\d\d|outlook|future of|expected to)\b"),
         ("timeline", r"\b(timeline|history of|when did|chronolog|over time|evolution of)\b"),
         ("status", r"\b(current(?:ly)?|right now|as of|latest|today|still |up to date)\b"),

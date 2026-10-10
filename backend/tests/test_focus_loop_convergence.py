@@ -217,7 +217,7 @@ def test_high_drift_forces_a_redirect_decision():
     The live report carried drift=0.58 and round 3 still repeated itself; the
     depth controller has to act on the number.
     """
-    from app.core.depth_controller import decide_with_checks
+    from app.core.depth.controller import decide_with_checks
 
     state = _planned_state(["enterprise_adoption", "regulation"])
     state.update({
@@ -234,7 +234,7 @@ def test_high_drift_forces_a_redirect_decision():
 
 def test_drift_redirect_beats_a_sufficient_critic():
     """Size and confidence look healthy on a drifted run — that is the trap."""
-    from app.core.depth_controller import decide
+    from app.core.depth.controller import decide
     from app.core.usage import clear_run_usage, start_run_usage
 
     settings = _settings()
@@ -252,7 +252,7 @@ def test_drift_redirect_beats_a_sufficient_critic():
 
 def test_concentration_alone_redirects_a_broad_question():
     """A broad question answered from one dimension is concentrated, not done."""
-    from app.core.depth_controller import decide_with_checks
+    from app.core.depth.controller import decide_with_checks
 
     state = _planned_state(["regulation"])
     state["focus"]["report"].update({
@@ -266,7 +266,7 @@ def test_concentration_alone_redirects_a_broad_question():
 
 def test_a_narrow_answered_question_is_not_redirected():
     """Proportionality: one dimension is a complete answer to a narrow question."""
-    from app.core.depth_controller import decide_with_checks
+    from app.core.depth.controller import decide_with_checks
 
     state = _planned_state([])
     state["focus"]["report"].update({

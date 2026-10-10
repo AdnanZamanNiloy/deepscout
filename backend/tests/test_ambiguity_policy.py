@@ -28,7 +28,7 @@ from app.agents.ambiguity import (
     is_semantic_gap,
     readings_would_diverge,
 )
-from app.core.depth_controller import decide_with_checks
+from app.core.depth.controller import decide_with_checks
 from app.core.config import Settings
 from app.graph import workflow as wf
 

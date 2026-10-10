@@ -1,5 +1,5 @@
 """Dynamic Research Depth controller tests (Phase 2.8)."""
-from app.core import depth_controller as dc
+from app.core.depth import controller as dc
 
 
 def _state(**overrides):

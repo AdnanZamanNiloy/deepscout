@@ -99,3 +99,44 @@ def test_the_weights_differ_by_query_type():
 def test_empty_answer_scores_zero():
     q = score_report("anything", "", EVIDENCE, "factual")
     assert q.score == 0.0
+    # Also against a query with no usable tokens: coverage() returns 1.0 there,
+    # and renormalization must not hand an empty answer free points.
+    assert score_report("x", "", EVIDENCE, "factual").score == 0.0
+
+
+def test_number_free_answer_is_judged_on_the_other_dimensions():
+    """A qualitative answer must not be debited for stating no figures.
+
+    The scorer used to score `numeric_accuracy` 0.0 for "no numbers stated" —
+    the same as for fabricated numbers — which capped a perfect number-free
+    factual answer at 7.5 and a data-analysis answer at 6.5. That made the
+    9/10 target unreachable for reasons unrelated to quality. Accuracy is now
+    REMOVED (weight renormalized) when there is nothing to be accurate about.
+    """
+    qualitative = (
+        "The most demanding skill is analytical thinking [1]. Employers "
+        "increasingly value it, and the evidence indicates a durable shift "
+        "toward soft skills [1]. The evidence does not settle how permanent "
+        "that shift is."
+    )
+    q = score_report(
+        "what is the most demanding skill in 2027?", qualitative, EVIDENCE, "factual"
+    )
+    # accuracy was not applicable, so it must not appear in the weights.
+    assert "accuracy" not in q.weights
+    # It must score strictly above the same dimensions with accuracy=0 counted,
+    # which is the cap the old behaviour imposed (factual: 0.25 weight).
+    with_zero_penalty = 10.0 * (
+        0.75 * q.groundedness + 0.15 * q.coverage + 0.15 * q.readability
+    )
+    assert q.score > with_zero_penalty
+
+
+def test_fabricated_numbers_still_take_the_full_debit():
+    """The not-applicable rule must not become an escape hatch for invention."""
+    q = score_report(
+        "what are the figures", FABRICATED_NUMBERS, EVIDENCE, "data-analysis"
+    )
+    assert q.accuracy < 0.5
+    assert "accuracy" in q.weights
+    assert q.score < QUALITY_TARGET

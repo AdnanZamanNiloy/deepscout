@@ -131,7 +131,7 @@ def compute_confidence(
     weights stay fixed so scores remain comparable over time, and every
     adjustment is recorded in `caps_applied` and `stats`.
 
-    Pass `epistemics` (an `app.agents.epistemics.EpistemicReport`) whenever
+    Pass `epistemics` (an `app.agents.epistemic.asymmetry.EpistemicReport`) whenever
     one is available: it has already separated genuine disagreements from
     time-series and scope artifacts, so the conflict penalty lands on real
     conflicts instead of on every numeric pair the detector fired on.
@@ -414,7 +414,7 @@ def _temporal_for(facts: Sequence[Dict[str, Any]], query: str) -> Any:
     if not facts:
         return None
     try:
-        from app.agents.research_quality import temporal_profile
+        from app.agents.quality.temporal import temporal_profile
     except Exception:  # noqa: BLE001
         return None
     try:

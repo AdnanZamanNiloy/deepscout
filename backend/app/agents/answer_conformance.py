@@ -103,6 +103,21 @@ _FORECAST_ASOF_MARKERS = (
     "as at", "so far", "at the time of writing", "in 20",
 )
 
+# Recommendation markers: a suggestion request must offer concrete, actionable
+# options, not a survey of the field. The answer needs at least one option
+# signal AND at least one actionability signal (method, or how to proceed).
+_RECOMMENDATION_OPTION_MARKERS = (
+    "option", "candidate", "recommend", "suggest", "shortlist", "consider",
+    "approach", "method", "topic", "project", "choose", "start with",
+    "first", "alternatively", "top ", "one route", "one approach",
+)
+_RECOMMENDATION_ACTION_MARKERS = (
+    "feasib", "skill", "prerequisite", "requirement", "method", "approach",
+    "data", "dataset", "compute", "supervis", "duration", "timeline",
+    "steps", "how to", "start by", "begin", "you could", "you can",
+    "trade-off", "tradeoff", "choose", "decide", "depends on",
+)
+
 # Uncertainty / hedge markers: an inference should carry one of these.
 _INFERENCE_MARKERS = (
     "suggests", "suggest", "indicates", "indicate", "implies", "imply",
@@ -417,6 +432,25 @@ def _check_shape(
                 "Question fit: this is a procedural question but the answer is not "
                 "ordered steps. Give prerequisites, then numbered steps in execution "
                 "order, and name the failure mode for any step that can fail."
+            )
+        return
+
+    if qt == "recommendation":
+        # A request for suggestions must deliver actionable options, not a
+        # survey of what other people have written. It needs option signals AND
+        # at least one actionability signal (a method, a prerequisite, or how to
+        # choose). A single option-less paragraph fails this.
+        has_options = _contains_any(lower, _RECOMMENDATION_OPTION_MARKERS)
+        has_actionability = _contains_any(lower, _RECOMMENDATION_ACTION_MARKERS)
+        if not (has_options and has_actionability):
+            report.shape_conformant = False
+            report.failures.append(
+                "Question fit: this is a request for suggestions but the answer does "
+                "not give concrete, actionable options. Lead with a short ranked set "
+                "of specific options, each with why it fits the reader's situation; "
+                "for research or project topics, add each option's method and a "
+                "feasibility note (skills, data, compute, supervision), then say how "
+                "to choose. Do not survey the field or report on other people's work."
             )
         return
 

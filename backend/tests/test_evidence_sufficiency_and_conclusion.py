@@ -27,7 +27,7 @@ from app.agents.report_consistency import (
     report_status,
 )
 from app.agents.synthesizer import _basis_candidates
-from app.core import depth_controller
+from app.core.depth import controller as depth_controller
 from app.core.config import Settings
 from app.core.confidence import DEGRADED_CAP, compute_confidence
 

@@ -47,6 +47,7 @@ from app.core.schemas import SummarizerFactsModel
 
 from app.agents.evidence_utils import (
     MIN_QUERY_OVERLAP,
+    claim_matches_only_a_generic_head,
     claim_query_overlap,
     clean_snippet_text,
     dedupe_semantic_facts,
@@ -406,6 +407,18 @@ async def summarizer_agent(
     if not quality_results:
         return []
 
+    # Named subjects the original query is about. Used with the overlap floor
+    # below to reject claims that match only a generic head noun. Failure-safe:
+    # an import error leaves the entity set empty, which disables only this
+    # refinement (the overlap floor still applies).
+    try:
+        from app.agents.evidence_type import entity_tokens as _entity_tokens
+
+        query_entity_tokens = _entity_tokens(query)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Summarizer] entity token extraction failed", exc_info=exc)
+        query_entity_tokens = ()
+
     system_prompt = specialist_system_prompt(specialist_role)
     source_index = _build_source_index(quality_results)
     text_by_url = {
@@ -566,15 +579,30 @@ async def summarizer_agent(
                 # immediately, so the one remedy that helps (a smaller prompt)
                 # was never tried and the stage went straight to heuristic
                 # extraction — the run whose claims were raw source text.
-                if "empty object" in str(exc).lower() and budget_index < len(_EXCERPT_BUDGET_LADDER) - 1:
+                if "empty object" in str(exc).lower():
+                    if budget_index < len(_EXCERPT_BUDGET_LADDER) - 1:
+                        logger.warning(
+                            "[Summarizer] model returned nothing usable at %d excerpt chars; "
+                            "retrying smaller",
+                            excerpt_budget,
+                        )
+                        fallback_reason = "llm_returned_nothing"
+                        budget_index += 1
+                        continue
+                    # Last rung and STILL empty: the provider answered, the model
+                    # produced nothing usable. This is an evidence/output problem,
+                    # NOT a transport failure — classifying it as `llm_error`
+                    # reported the run as "provider temporarily unavailable"
+                    # (rate limit, timeout or outage), which is false: no
+                    # provider call failed. Keep it as `llm_returned_nothing` so
+                    # the reason maps to EVIDENCE_WEAK, not PROVIDER_TRANSIENT.
                     logger.warning(
-                        "[Summarizer] model returned nothing usable at %d excerpt chars; "
-                        "retrying smaller",
+                        "[Summarizer] model returned nothing usable at the "
+                        "smallest excerpt budget (%d chars); using heuristic fallback",
                         excerpt_budget,
                     )
                     fallback_reason = "llm_returned_nothing"
-                    budget_index += 1
-                    continue
+                    break
                 logger.warning("[Summarizer] LLM call failed, using heuristic fallback", exc_info=exc)
                 fallback_reason = "llm_error"
                 break
@@ -667,6 +695,13 @@ async def summarizer_agent(
             # sense label is the topical contract.
             relevance = max(relevance, claim_query_overlap(sense, claim))
         if relevance < MIN_QUERY_OVERLAP:
+            continue
+        # A claim that cleared the overlap floor on a SINGLE generic head noun
+        # while naming none of the query's subjects is off-topic: the live
+        # "piano skills" / "agent skill compilation" papers on a workforce
+        # query. Only applies when the query names an entity, so paraphrase
+        # claims that legitimately share few surface words are untouched.
+        if claim_matches_only_a_generic_head(query, claim, query_entity_tokens):
             continue
 
         profile = classify_source(source)

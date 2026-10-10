@@ -1,6 +1,6 @@
 """Depth controller v2: budget stops, novel-query memory, mode targets."""
 
-from app.core import depth_controller
+from app.core.depth import controller as depth_controller
 from app.core.config import Settings
 from app.core.usage import clear_run_usage, start_run_usage
 
