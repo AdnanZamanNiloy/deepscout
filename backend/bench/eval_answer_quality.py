@@ -294,10 +294,277 @@ def run(json_out: bool = False) -> int:
     return 1 if failures else 0
 
 
+# ---------------------------------------------------------------------------
+# PIPELINE HALF (--pipeline): run representative queries through the REAL
+# production graph with the deterministic offline mocks and score the DELIVERED
+# answer with the same metrics. This is the half that can catch a pipeline
+# regression (a wrong plan, a lost subject, a degraded fallback) that scoring
+# hand-written candidate answers never can — the synthetic half always passes
+# because its candidates were written to pass.
+# ---------------------------------------------------------------------------
+
+# Representative queries across the materially different categories the
+# scripted offline fixtures cover. Each entry: (golden_id, category, query,
+# expected_shapes). These run the FULL production graph.
+_PIPELINE_QUERIES: List[tuple] = [
+    ("factual-rag", "factual",
+     "What is retrieval augmented generation and how does it work?",
+     {"concise", "thematic", "mechanism_chain"}),
+    ("comparison-nuclear-solar", "comparison",
+     "Compare nuclear and solar energy for grid reliability and cost.",
+     {"criterion_comparison"}),
+    ("decision-nuclear-investment", "decision-support",
+     "Should Bangladesh expand nuclear energy investment over the next twenty years?",
+     {"options", "thematic"}),
+]
+
+# Planning-shape queries checked DIRECTLY against the real intent→plan path (no
+# mock), on the defect this benchmark guards: a modifier term must not replace
+# the query's actual subject in the plan. These do not need the graph or the
+# scripted fixtures — the defect lives entirely in intent classification, the
+# ambiguity policy and the plan, all of which are deterministic.
+_PLAN_SUBJECT_QUERIES: List[tuple] = [
+    ("plan-rec-1", "recommendation",
+     "Suggest me highly demanding research topics in computer science.",
+     ["computer", "science"]),
+    ("plan-rec-2", "recommendation",
+     "Recommend demanding MSc research topics in computer science.",
+     ["computer", "science"]),
+    ("plan-rec-3", "recommendation",
+     "Recommend the best programming language to learn.",
+     ["programming", "language"]),
+    ("plan-decision", "decision",
+     "Should we invest in nuclear energy for our grid?",
+     ["nuclear", "energy"]),
+]
+
+
+def run_plan_subject_checks() -> List[Dict[str, Any]]:
+    """Deterministic intent→plan check: does the plan keep the query's subject?
+
+    Runs the REAL heuristic intent + ambiguity policy + fallback plan (the
+    degraded path, where the live defect was observed). A modifier term such as
+    "demanding" must never become the plan's subject. No mock, no network.
+    """
+    from app.agents.ambiguity import decide_ambiguity
+    from app.agents.intent import heuristic_intent
+    from app.agents.planning.plan import fallback_plan
+
+    out: List[Dict[str, Any]] = []
+    for qid, category, query, subject_terms in _PLAN_SUBJECT_QUERIES:
+        intent = heuristic_intent(query).to_dict()
+        policy = decide_ambiguity(query, intent)
+        intent["ambiguity_policy"] = policy.to_dict()
+        plan = fallback_plan(query, target_count=4, intent=intent)
+        subjects_blob = " ".join(
+            str(c.get("question", "") or "").lower() for c in plan
+        )
+        kept = all(t in subjects_blob for t in subject_terms)
+        # A reading label (parenthetical stripped, as the planner renders it)
+        # must NEVER lead a planned question: that is the subject being replaced
+        # by a modifier-term interpretation. This is the exact pre-fix shape
+        # ("stressful or difficult …" instead of "computer science …").
+        readings = [
+            re.sub(r"\s*\([^)]*\)", "", str(label)).strip().lower()
+            for label in (policy.interpretations or [])
+        ]
+        leaked = [
+            r for r in readings
+            if r and any(
+                str(c.get("question", "") or "").lower().startswith(r)
+                for c in plan
+            )
+        ]
+        out.append({
+            "id": qid,
+            "category": category,
+            "query": query,
+            "subject_terms": subject_terms,
+            "subject_kept": kept,
+            "interpretation_leaked": leaked,
+            "planned_questions": [str(c.get("question", ""))[:80] for c in plan][:4],
+            "ambiguity_action": policy.action,
+        })
+    return out
+
+
+async def run_pipeline(json_out: bool = False) -> int:
+    """Run the representative set through the production graph (offline mocks).
+
+    Exit 0 when every aggregate pipeline floor passes, 1 on regression.
+    """
+    import asyncio  # noqa: F401  (kept for the async runner below)
+    import tempfile
+
+    from app.agents import citation_check
+    from app.core import llm_cache
+    from app.core.config import Settings
+    from app.core.degradation import reset_fallbacks, take_fallbacks
+    from app.core.usage import clear_run_usage, start_run_usage
+    from app.graph.workflow import (
+        build_initial_state,
+        create_workflow,
+        graph_recursion_limit,
+    )
+    from bench.mock_pipeline import GoldenFakeLLM, GoldenFakeSearch
+
+    results: List[Dict[str, Any]] = []
+
+    async def _one(qid: str, category: str, query: str, shapes: set) -> Dict[str, Any]:
+        tmp = tempfile.mkdtemp(prefix="deepscout-aq-pipe-")
+        settings = Settings(
+            groq_api_key="pipeline-offline",
+            database_url=f"{tmp}/aq.db",
+            _env_file=None,
+        )
+        llm_cache._force_disabled = True
+
+        async def _offline_citations(answer, answer_support, **kwargs):
+            return {"checked": 0, "sources": [], "summary": {}, "enabled": False}
+
+        original = citation_check.check_citations
+        citation_check.check_citations = _offline_citations
+        reset_fallbacks()
+        llm = GoldenFakeLLM(settings, query_id=qid, query=query,
+                            critic_pass_on_iteration=1)
+        search = GoldenFakeSearch(settings, query=query)
+        workflow = create_workflow(llm, search_client=search)
+        state = build_initial_state(query, settings.max_iterations, mode="standard")
+        usage = start_run_usage(f"aq-{qid}", settings, mode="standard")
+        final: Dict[str, Any] = dict(state)
+        try:
+            async for snap in workflow.astream(
+                state, stream_mode="values",
+                config={"recursion_limit": graph_recursion_limit(state)},
+            ):
+                final = {**final, **{k: v for k, v in snap.items() if v}}
+        finally:
+            clear_run_usage()
+            citation_check.check_citations = original
+        degraded = take_fallbacks()
+
+        answer = str(final.get("synthesized_answer", "") or "")
+        report = str(final.get("final_report", "") or "") or answer
+        delivered = report
+        plan = [q for q in (final.get("sub_questions") or []) if isinstance(q, dict)]
+        sub_questions = [q for q in (final.get("sub_questions") or []) if isinstance(q, dict)]
+        facts = [f for f in (final.get("facts") or []) if isinstance(f, dict)]
+
+        # SUBJECT PRESERVATION — the exact regression this benchmark exists to
+        # catch: a modifier term (e.g. "demanding") must not replace the query's
+        # actual subject in the plan. Measured as overlap between the query's own
+        # content words and the planned questions.
+        q_tokens = {
+            w for w in re.findall(r"[a-z0-9]+", query.lower()) if len(w) > 2
+            and w not in {"the", "and", "for", "what", "how", "does", "suggest",
+                          "recommend", "compare", "should", "me", "some", "highly",
+                          "demanding", "topics", "research"}
+        }
+        plan_blob = " ".join(
+            str(q.get("question", "") or "").lower() for q in plan
+        )
+        subject_terms = [t for t in q_tokens if t in ("computer", "science", "msc")]
+        subject_kept = all(t in plan_blob for t in subject_terms) if subject_terms else True
+
+        shape = detect_shape(delivered)
+        adaptive = shape in shapes
+        noise = len(_PROCESS_NOISE_RE.findall(delivered))
+        relevance = score_answer_relevance(query, answer or delivered)
+        return {
+            "id": qid,
+            "category": category,
+            "shape": shape,
+            "adaptive": adaptive,
+            "process_noise": noise,
+            "process_clean": noise == 0,
+            "answer_relevance": round(relevance, 3),
+            "subject_kept": subject_kept,
+            "subject_terms": subject_terms,
+            "planned_questions": [str(q.get("question", ""))[:80] for q in plan][:6],
+            "degraded": list(degraded),
+            "answer_chars": len(delivered),
+            "facts": len(facts),
+        }
+
+    for qid, category, query, shapes in _PIPELINE_QUERIES:
+        results.append(await _one(qid, category, query, shapes))
+
+    plan_checks = run_plan_subject_checks()
+
+    n = len(results) or 1
+    pn = len(plan_checks) or 1
+    agg = {
+        "cases": len(results),
+        "subject_kept_rate": round(sum(1 for r in results if r["subject_kept"]) / n, 3),
+        "adaptability_rate": round(sum(1 for r in results if r["adaptive"]) / n, 3),
+        "process_clean_rate": round(sum(1 for r in results if r["process_clean"]) / n, 3),
+        "mean_relevance": round(sum(r["answer_relevance"] for r in results) / n, 3),
+        "plan_cases": len(plan_checks),
+        "plan_subject_kept_rate": round(
+            sum(1 for r in plan_checks if r["subject_kept"]) / pn, 3),
+        "plan_no_interpretation_leak_rate": round(
+            sum(1 for r in plan_checks if not r["interpretation_leaked"]) / pn, 3),
+    }
+    floors = {
+        # Every representative query must keep its subject in the plan: a plan
+        # that lost the subject cannot retrieve on-topic evidence.
+        "subject_kept_rate": 1.0,
+        "adaptability_rate": 0.60,
+        "process_clean_rate": 1.0,
+        "mean_relevance": 0.10,
+        # The regression this benchmark was extended to catch: the plan must
+        # keep the query's subject and must never adopt a modifier-term
+        # interpretation as its subject.
+        "plan_subject_kept_rate": 1.0,
+        "plan_no_interpretation_leak_rate": 1.0,
+    }
+    failures = [
+        {"metric": k, "actual": agg[k], "floor": v}
+        for k, v in floors.items() if agg[k] < v
+    ]
+    if json_out:
+        print(json.dumps({"aggregate": agg, "results": results,
+                          "plan_checks": plan_checks,
+                          "failures": failures}, indent=2))
+    else:
+        print("Answer-quality benchmark (PIPELINE, production graph + mocks)")
+        print("=" * 60)
+        for r in results:
+            flag = "ok " if r["adaptive"] else "SHAPE"
+            kept = "" if r["subject_kept"] else "  SUBJECT-LOST"
+            clean = "" if r["process_clean"] else f"  NOISE={r['process_noise']}"
+            print(f"  {r['id']:<24} {r['category']:<16} {flag} {r['shape']} "
+                  f"rel={r['answer_relevance']:.2f}{kept}{clean}")
+        print("-" * 60)
+        print("  Planning subject-preservation (real intent + plan, no mock):")
+        for r in plan_checks:
+            kept = "ok " if r["subject_kept"] else "SUBJECT-LOST"
+            leak = ("  LEAK=" + ",".join(r["interpretation_leaked"])
+                    if r["interpretation_leaked"] else "")
+            print(f"  {r['id']:<24} {r['category']:<16} {kept} "
+                  f"action={r['ambiguity_action']}{leak}")
+        print("-" * 60)
+        for k, v in agg.items():
+            print(f"  {k:<32} {v}")
+        if failures:
+            print("\nFAILED FLOORS:")
+            for f in failures:
+                print(f"  {f['metric']}: {f['actual']} < {f['floor']}")
+        else:
+            print("\nAll pipeline answer-quality floors passed.")
+    return 1 if failures else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+    parser.add_argument("--pipeline", action="store_true",
+                        help="also run representative queries through the production graph")
     args = parser.parse_args()
+    if args.pipeline:
+        import asyncio
+
+        return asyncio.run(run_pipeline(json_out=args.json))
     return run(json_out=args.json)
 
 

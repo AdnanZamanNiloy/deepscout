@@ -166,6 +166,20 @@ def _query_concept(query: str) -> str:
         (query or "").strip(),
         flags=re.IGNORECASE,
     )
+    # Guidance verbs request a different ACT on a concept, not the concept itself:
+    # "suggest me highly demanding research topics" searches for the topics, and
+    # carrying "suggest me" into the query text only dilutes retrieval. Stripped
+    # after the wh-word so both "suggest me X" and "what should I study" reduce to
+    # the subject. Kept structural (verb phrases only, no subject knowledge).
+    text = re.sub(
+        r"^\s*(suggest|recommend|advise|give\s+me|show\s+me|list|"
+        r"which\s+should\s+(?:i|we)\s+(?:study|research|learn|choose|pick)|"
+        r"what\s+should\s+(?:i|we)\s+(?:study|research|learn|choose|pick))\s+",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"^\s*(me|us|some|a\s+few|any|the)\s+", "", text, flags=re.IGNORECASE)
     return re.sub(r"\s+", " ", text).strip(" ?.!") or (query or "").strip()
 
 

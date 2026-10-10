@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Sequence, Tuple
 
 from app.core.semantic import is_meaning_bearing_form
+from app.core.primitives import is_guidance_query
 
 # Actions.
 PROCEED = "proceed"
@@ -119,6 +120,17 @@ _COMPARATIVE_MARKERS: Tuple[str, ...] = (
     "which", "either", "whether", "compare", "contrast", "difference between",
     "better", "worse", "vs", "versus", "trade-off", "tradeoff",
 )
+
+# A RECOMMENDATION / GUIDANCE request: the user wants suggestions they can act
+# on, not an analysis of one of the query's modifiers. The ask ("suggest some
+# topics") is itself unambiguous, so a multi-reading ADJECTIVE inside it
+# ("demanding", "best", "popular") must not be split into readings — the
+# readings are the adjective's senses, not alternative answers to the request.
+#
+# The predicate itself lives in `app.core.primitives.is_guidance_query` so the
+# query-type classifier and the critic's definition gate share one definition.
+# Homonym SENSES (genuine multiple meanings of a noun the user typed) are NOT
+# suppressed: only the under-specification interpretations are.
 
 
 @dataclass
@@ -209,9 +221,15 @@ def _reading_labels(intent: Mapping[str, Any], query: str = "") -> List[str]:
     for item in intent.get("senses") or ():
         if isinstance(item, Mapping):
             _add(item.get("label", ""))
-    for item in intent.get("interpretations") or ():
-        if isinstance(item, Mapping):
-            _add(item.get("label", ""))
+    # Under-specification readings (an ADJECTIVE's senses) are dropped for a
+    # guidance request: the ask is unambiguous, so "demanding"/"best"/"popular"
+    # being multi-reading does not make the request itself ambiguous. Homonym
+    # `senses` above are genuine multiple meanings of a noun the user typed and
+    # are never suppressed.
+    if not is_guidance_query(query):
+        for item in intent.get("interpretations") or ():
+            if isinstance(item, Mapping):
+                _add(item.get("label", ""))
     # On-meaning readings lead; off-meaning ones are still offered, last.
     return (on_meaning + off_meaning_labels)[:MAX_INTERPRETATIONS]
 

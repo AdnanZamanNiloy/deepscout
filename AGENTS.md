@@ -253,6 +253,40 @@ These are real bugs found by reading the code, not hypotheticals. Each one below
   numbers in such a sentence still fail as `numeric_failure`. Rule: any
   per-sentence check that assumes ONE source per sentence must be revisited
   when the pipeline is told to reason ACROSS sources.
+
+[FIXED — guidance query split by a modifier adjective] app/agents/ambiguity.py,
+  app/agents/planning/plan.py, app/agents/planning/contracts.py,
+  app/agents/planning/prompts.py, app/core/primitives.py
+  "Suggest me highly demanding research topics in computer science" was treated
+  as AMBIGUOUS on the word "demanding": the intent layer's curated
+  under-specification table emitted two JOB-market readings ("Stressful or
+  difficult", "Requiring high skill or responsibility"), decide_ambiguity chose
+  `separate` with an assumption, and `_intent_research_senses` replaced the
+  plan's actual subject with those reading labels — every sub-question became
+  "stressful or difficult definition explanation overview", so no on-topic
+  evidence could ever be retrieved. The term match is context-free, so ANY
+  multi-reading modifier misfired inside a guidance request ("recommend the
+  best programming language" -> "Best fit for a use case"). Fix: a shared
+  `is_guidance_query` (app/core/primitives.py) makes the ambiguity policy skip
+  under-specification readings for suggestion/advice requests; the directive
+  prompt gained recommendation dimensions; the fallback plan is option-shaped;
+  `_query_concept` strips the guidance verb. Rule: a modifier adjective inside
+  a request for suggestions is not a request-level ambiguity — only homonym
+  SENSES of a noun the user typed may split a guidance request.
+
+[FIXED — recommendation query falsely stopped by the definition gate]
+  app/agents/orchestrator.py, app/agents/critic.py
+  A "suggest some topics" request was classified `factual` (the lexical
+  classifier has no recommendation type), so the critic's definition gate
+  required an "X is Y" claim that recommendation evidence never contains,
+  emitted `no definitional claim`, and the depth controller's is_semantic_gap
+  (whose markers include the bare token "definition") finalized the run at
+  iteration 1 with planned axes still uncovered — thin evidence and a degraded
+  fallback. Fix: guidance requests classify as `exploratory` and the gate
+  excludes them. Rule: a query-type-driven gate must be verified for every
+  query type the classifier can emit, not only the demo query's type; and a
+  substring marker like "definition" inside is_semantic_gap must not be
+  satisfiable by an ordinary uncovered-axis name.
 ```
 
 If you find a new instance of any of these patterns anywhere in the codebase while working on something else, fix it or flag it in your commit message — don't leave it for later just because it's outside your current task's file scope.

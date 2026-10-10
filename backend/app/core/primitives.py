@@ -12,6 +12,32 @@ from __future__ import annotations
 from typing import Any
 
 
+# A RECOMMENDATION / GUIDANCE request: the user wants suggestions they can act
+# on, not an analysis of the query's subject or one of its modifiers. The ask
+# ("suggest some topics") is itself unambiguous and non-definitional. This is
+# shared by every layer that must treat such a request differently: the
+# ambiguity policy (its modifier adjectives are not a real ambiguity), the
+# query-type classifier (it is exploratory, not factual), and the critic's
+# definition gate (it does not owe a definitional "X is Y" claim).
+#
+# Structural verbs only — no subject knowledge, so this stays domain-agnostic.
+_GUIDANCE_MARKERS: tuple = (
+    "suggest", "recommend", "advise", "give me some", "give me a few",
+    "give me ideas", "give me examples", "some ideas", "topic suggestions",
+    "ideas for", "why should i", "which should i", "which should we",
+    "what should i study", "what should i research", "what should i learn",
+    "what should i choose", "what should i pick", "what should we study",
+    "what should we research", "what should we do", "what topics",
+    "which topics", "good topics", "best topics",
+)
+
+
+def is_guidance_query(query: Any) -> bool:
+    """True when the query asks for suggestions/guidance rather than analysis."""
+    low = f" {str(query or '').lower().strip()} "
+    return any(marker in low for marker in _GUIDANCE_MARKERS)
+
+
 def safe_int(value: Any, default: int = 0) -> int:
     """int() that never raises. Dirty data must not crash a pipeline stage."""
     try:

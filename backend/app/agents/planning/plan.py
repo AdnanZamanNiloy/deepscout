@@ -164,14 +164,44 @@ def fallback_plan(
     """
     concept = _query_concept(query)
     year = _year_from(today)
-    blueprint: List[Tuple[str, str, str, int]] = [
-        (f"{concept} definition explanation overview", "definition", "encyclopedia", 1),
-        (f"{concept} statistics official data figures{year}", "evidence", "statistical", 1),
-        (f"{concept} limitations criticism counter-evidence risks", "criticism", "academic", 2),
-        (f"{concept} mechanism how it works components", "mechanism", "academic", 2),
-        (f"{concept} real world applications examples compared", "application", "comparison", 2),
-        (f"{concept} recent developments outlook{year}", "outlook", "news", 3),
-    ]
+    # A RECOMMENDATION request ("suggest me research topics") needs options to
+    # choose from, not a survey of the subject. The fixed blueprint below opens
+    # with a definition, so a degraded recommendation run searched for "what is
+    # <the topic>" and returned a survey of open problems instead of candidate
+    # topics. `_heuristic_dimensions` already derives the recommendation shape
+    # (candidate options / selection criteria / authoritative recommendations),
+    # but the fallback plan never consumed it. When the query is a
+    # recommendation/decision request, build option-shaped contracts from the
+    # user's own concept; otherwise keep the existing blueprint exactly.
+    from app.agents.planning.dimensions import _heuristic_dimensions
+
+    heuristic_dims = _heuristic_dimensions(query, intent)
+    recommendation_shaped = any(
+        "candidate option" in d.lower() or "selection criteria" in d.lower()
+        for d in heuristic_dims
+    )
+    if recommendation_shaped:
+        blueprint: List[Tuple[str, str, str, int]] = [
+            (f"candidate {concept} options recommended by authoritative sources",
+             "candidate_options", "academic", 1),
+            (f"criteria for selecting among {concept}: difficulty, feasibility and fit",
+             "selection_criteria", "academic", 1),
+            (f"authoritative recommendations and rankings of {concept}{year}",
+             "authoritative_recommendations", "academic", 2),
+            (f"risks, pitfalls and feasibility of pursuing {concept}",
+             "risks and pitfalls", "academic", 2),
+            (f"evidence and examples of {concept}", "evidence", "statistical", 3),
+            (f"limitations and open challenges in {concept}", "criticism", "academic", 3),
+        ]
+    else:
+        blueprint = [
+            (f"{concept} definition explanation overview", "definition", "encyclopedia", 1),
+            (f"{concept} statistics official data figures{year}", "evidence", "statistical", 1),
+            (f"{concept} limitations criticism counter-evidence risks", "criticism", "academic", 2),
+            (f"{concept} mechanism how it works components", "mechanism", "academic", 2),
+            (f"{concept} real world applications examples compared", "application", "comparison", 2),
+            (f"{concept} recent developments outlook{year}", "outlook", "news", 3),
+        ]
     # A trends-style question gets the frontier spread even on the deterministic
     # path, so a degraded run answers "current state of X" with the same breadth
     # a model plan would. Same conditional as the model path: the SPREAD is

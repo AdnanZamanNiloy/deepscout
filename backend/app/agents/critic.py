@@ -297,7 +297,15 @@ async def critic_agent(
     # be overridden BY them. Each gate corresponds to a way a report can be
     # confidently wrong.
     # ------------------------------------------------------------------
-    requires_definition = (
+    # A recommendation/guidance request ("suggest some topics") is not a
+    # definitional query: it owes candidate suggestions, not an "X is Y" claim.
+    # Without this, the query is typed `factual`, the gate demands a definition
+    # the evidence cannot contain, emits `no definitional claim`, and the depth
+    # controller (is_semantic_gap) finalizes the run at iteration 1 with axes
+    # still uncovered — the exact premature-stop defect.
+    from app.core.primitives import is_guidance_query
+
+    requires_definition = not is_guidance_query(query) and (
         query_type == "factual"
         or (not query_type and bool(DEFINITIONAL_QUERY_RE.match(query or "")))
     )
