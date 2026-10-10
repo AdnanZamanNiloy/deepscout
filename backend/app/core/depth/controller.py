@@ -15,6 +15,7 @@ from app.core.depth.checks import (
     _convergence_checks,
     _criticism_checks,
     _focus_checks,
+    _focus_diverging,
     _min_iterations,
     _novel_followups,
     _two_consecutive_stalls,
@@ -330,6 +331,16 @@ def decide_with_checks(
     # prevent.
     focus = _focus_checks(state)
     if focus["redirect"]:
+        # DRIFT CONVERGENCE (structural), checked FIRST. A drift that has failed
+        # to improve across consecutive rounds means the corrective searches are
+        # adding off-topic evidence, not closing the gap — the sources reached do
+        # not cover the question. This is a property of the question vs the
+        # searchable web, not a slow run, so MORE searching cannot fix it.
+        # Without this the redirect re-forced a pass every round while drift rose
+        # (0.50 -> 0.61) and the run ballooned to 80 sources with gaps still open.
+        diverging = _focus_diverging(state)
+        if diverging["diverging"]:
+            return _with_reason("finalize", diverging["reason"])
         # A redirect is only useful if there is somewhere NEW to redirect to. If
         # every uncovered/high-priority dimension has already been searched to
         # exhaustion, the drift cannot be corrected by more searching; finalize

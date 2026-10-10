@@ -139,6 +139,10 @@ class ResearchState(TypedDict, total=False):
     # tracked to resolution. Threaded through state so the stopping policy and
     # the Limitations section both read the same record (no module-level store).
     criticism_ledger: Dict[str, Any]
+    # Per-pass focus series (off_query_share / concentration / drifted /
+    # concentrated) so a drift that FAILS TO IMPROVE across rounds can be
+    # converged on as structural rather than re-searched. Run-scoped, bounded.
+    focus_history: List[Dict[str, Any]]
 
 
 class PlannerUpdate(TypedDict):
@@ -194,6 +198,7 @@ class CriticUpdate(TypedDict):
     # structured task and re-checked for resolution on the next pass
     # (app/core/criticism_ledger.py). Additive.
     criticism_ledger: Dict[str, Dict[str, Any]]
+    focus_history: List[Dict[str, Any]]
 
 
 class SynthesizerUpdate(TypedDict):

@@ -344,6 +344,27 @@ def make_critic_node(llm, critic_agent):
             focus_report = focus_state.get("report") or {}
             if focus_report:
                 logger.info("[Focus] %s", focus_state.get("summary", ""))
+
+        # FOCUS-DIVERGENCE HISTORY. Drift and concentration measured against the
+        # ORIGINAL question, appended per pass. A drift that FAILS TO IMPROVE for
+        # consecutive rounds is structural — the searchable sources simply do not
+        # cover the question — and the corrective searches are adding off-topic
+        # evidence (the run drifted 0.50 -> 0.61 while expanding). Recording the
+        # series lets the stopping controller converge on that, instead of
+        # re-searching toward a question the sources cannot answer. Run-scoped on
+        # state; bounded to the last few rounds.
+        focus_history = list(state.get("focus_history") or [])
+        if focus_report:
+            focus_history.append(
+                {
+                    "off_query_share": float(focus_report.get("off_query_share", 0.0) or 0.0),
+                    "concentration": float(focus_report.get("concentration", 0.0) or 0.0),
+                    "drifted": bool(focus_report.get("drifted")),
+                    "concentrated": bool(focus_report.get("concentrated")),
+                }
+            )
+            focus_history = focus_history[-6:]
+
         critique_feedback = critique.get("reason", "")
         if improved:
             critique_feedback = f"{critique_feedback} Improved search focus: {'; '.join(improved)}"
@@ -377,5 +398,6 @@ def make_critic_node(llm, critic_agent):
             "convergence": convergence_diagnosis,
             "gap_history": gap_history,
             "criticism_ledger": criticism_ledger,
+            "focus_history": focus_history,
         }
     return _node

@@ -529,7 +529,6 @@ def _dimension_coverage_candidates(
             if key:
                 by_label[key] = item
 
-    attempt = max(0, _as_int(state.get("iteration", 0)))
     out: List[Dict[str, Any]] = []
     seen: Set[str] = set()
 
@@ -544,17 +543,22 @@ def _dimension_coverage_candidates(
 
         # DIMENSION EXHAUSTION. A dimension that has been searched repeatedly and
         # produced nothing stops being a candidate instead of being re-issued
-        # forever. The old code had no dimension-level memory at all, so it
-        # appended "(attempt N)" each round — which also defeated the
-        # executed-query filter, since every round's text was new. That is how a
-        # run reached 80 sources with the same gaps still open.
+        # forever (ledger budget, line above).
+        #
+        # The query text is emitted UNCHANGED — never with an "(attempt N)"
+        # suffix. The suffix was a dedup-defeating mechanism: search_node's
+        # executed-query filter matches exact normalized text, so every round's
+        # "(attempt N)" looked like a brand-new query and re-ran the same search.
+        # That is how a run reached 80 sources with the same gaps still open.
+        # De-duplication must live in the ledger (which knows this is the same
+        # dimension), not in a mutated string that defeats query memory.
         axis = str(item.get("axis", "") or "") if isinstance(item, dict) else ""
         entry = entries.get(_dimension_entry_key(axis or label))
         gain = _expected_gain(entry)
         if gain <= 0.0:
             return
 
-        query = question if attempt == 0 else f"{question} (attempt {attempt + 1})"
+        query = question
         if _normalize(query) in seen:
             return
         seen.add(_normalize(query))

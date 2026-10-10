@@ -183,6 +183,59 @@ def _focus_checks(state: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# Rounds of consecutive non-improving drift before the redirect is declared
+# structural. Two matches the fundamental-gap convergence constant and the
+# "two consecutive stalls" idea used elsewhere: one round is noise, two is a
+# property of the question.
+FOCUS_DIVERGENCE_ROUNDS = 2
+# A drift drop smaller than this counts as "not improving" — off-query share
+# does not fall meaningfully between rounds.
+FOCUS_IMPROVEMENT_EPSILON = 0.03
+
+
+def _focus_diverging(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Has off-query drift failed to improve across consecutive rounds?
+
+    Reads the per-pass focus series critic_node records. A drift that stays
+    flat or RISES for `FOCUS_DIVERGENCE_ROUNDS` rounds is not a slow search —
+    the corrective passes are adding off-topic evidence. That is a property of
+    the question versus the reachable sources, so continuing to search cannot
+    fix it: the run must finalize with the drift recorded as a limitation.
+
+    Only fires when at least FOCUS_DIVERGENCE_ROUNDS+1 samples exist, so a run
+    that has not had a chance to correct is never converged on prematurely.
+    """
+    history = state.get("focus_history") or []
+    if not isinstance(history, list) or len(history) < FOCUS_DIVERGENCE_ROUNDS + 1:
+        return {"diverging": False, "rounds": 0, "reason": ""}
+    shares = [
+        float(h.get("off_query_share", 0.0) or 0.0)
+        for h in history
+        if isinstance(h, dict)
+    ]
+    if len(shares) < FOCUS_DIVERGENCE_ROUNDS + 1:
+        return {"diverging": False, "rounds": 0, "reason": ""}
+    tail = shares[-(FOCUS_DIVERGENCE_ROUNDS + 1):]
+    # Not improving = every recent step failed to reduce off-query share.
+    improving = [
+        tail[i] < tail[i - 1] - FOCUS_IMPROVEMENT_EPSILON
+        for i in range(1, len(tail))
+    ]
+    if improving and not any(improving):
+        return {
+            "diverging": True,
+            "rounds": FOCUS_DIVERGENCE_ROUNDS,
+            "reason": (
+                "research drift did not improve across "
+                f"{FOCUS_DIVERGENCE_ROUNDS} consecutive rounds (off-query share "
+                f"{tail[0]:.2f} -> {tail[-1]:.2f}); the sources reached do not "
+                "cover the question, so it is recorded as a limitation rather "
+                "than searched again"
+            ),
+        }
+    return {"diverging": False, "rounds": 0, "reason": ""}
+
+
 def _dimension_attempts_left(state: Dict[str, Any], dimension: str) -> bool:
     """Has this dimension any search budget left?
 
