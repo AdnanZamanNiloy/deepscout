@@ -2,7 +2,6 @@ import asyncio
 import uuid
 import json
 import time
-from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict
 
 from fastapi import APIRouter, HTTPException, Request
@@ -28,35 +27,24 @@ from app.db.sqlite import (
     get_session,
     list_sessions,
     load_state_for_resume,
-    mark_challenged_claims,
     mark_run_resumable_reset,
     record_event,
-    save_agent_tasks,
     save_citations,
     save_evidence,
-    save_claims,
-    save_contradictions,
-    save_critic_review,
-    save_decisions,
     save_final_report,
     save_report,
-    save_verification_results,
     save_sources,
     start_research_run,
     touch_session,
 )
 from app.core.logging import bind_request_context, get_logger, unbind_request_context
-from app.graph.workflow import build_initial_state, graph_recursion_limit
 
 
 router = APIRouter()
 
 from app.api.research_support import (  # noqa: E402
-    _finding_item,
     _persist_complete,
-    _persist_record,
     _persist_report,
-    _persist_save,
     _with_trace_capture,
     ResearchRequest,
 )
@@ -173,47 +161,20 @@ async def session_detail(session_id: str, request: Request) -> Dict[str, Any]:
     return session
 
 
-def _source_label(result: dict) -> str:
-    """The human-facing source label for one search result.
-
-    Order matters, and the retrieval engine is deliberately never in it:
-
-      1. an explicit `source` (a claim's cited URL, already a site reference)
-      2. the canonical `source_domain` -- what the page's site actually is
-      3. the publisher name when the provider stated one
-      4. the domain re-derived from the URL, for rows persisted before
-         `source_domain` existed
-      5. "" -- never the retrieval engine.
-
-    Step 5 is the whole point. Falling back to `provider` here is exactly what
-    made "searxng:google cse" appear as the source of an arXiv paper; with no
-    domain to show, an empty label is strictly better than a wrong one, and the
-    UI already falls back to the hostname it parses from the URL.
-    """
-    explicit = str(result.get("source") or "").strip()
-    if explicit:
-        return explicit
-    domain = str(result.get("source_domain") or "").strip().lower()
-    if domain:
-        return domain
-    publisher = str(result.get("publisher") or "").strip()
-    if publisher:
-        return publisher
-    try:
-        from app.agents.searchkit.identity import canonical_source_domain
-
-        return canonical_source_domain(str(result.get("url") or ""))
-    except Exception:
-        return ""
-
-
 @router.post("/research/stream")
 @limiter.limit(get_settings().rate_limit)
 async def stream_research(request: Request, payload: ResearchRequest) -> StreamingResponse:
-    workflow = getattr(request.app.state, "workflow", None)
-    settings = getattr(request.app.state, "settings", None)
+    """Run a research request through the multi-agent engine team.
 
-    if workflow is None or settings is None:
+    The engine drives the run; this route owns everything the frontend contract
+    depends on around it: the NDJSON framing, the run/session lifecycle records,
+    incremental persistence, verbatim frame capture for replay, and the
+    terminal report write. The engine is reached through the bridges installed
+    at startup (app.engine), so the Model Control Center still selects the
+    provider and SearchClient still performs retrieval.
+    """
+    settings = getattr(request.app.state, "settings", None)
+    if settings is None:
         raise HTTPException(status_code=500, detail="Workflow is not initialized")
 
     request_id = str(uuid.uuid4())
@@ -222,141 +183,66 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
     session_id = str(payload.session_id).strip() if payload.session_id else str(uuid.uuid4())
 
     def event_line(event_type: str, **data: Any) -> str:
-        # Every frame carries an emission timestamp. The client's arrival stamp
-        # (__ts) is more accurate for a LIVE run, but it is added in the browser
-        # and therefore never reaches the persisted frames — a restored session
-        # replayed frames with no time at all and the trace header rendered no
-        # duration. The server stamp is the one that survives persistence, so
-        # the UI can fall back to it and a replayed run still shows its length.
+        # Every frame carries an emission timestamp that survives persistence,
+        # so a replayed run still shows its length even though the client's
+        # arrival stamp (__ts) is not stored.
         payload_data = {"type": event_type, "ts": int(time.time() * 1000), **data}
         return json.dumps(payload_data, ensure_ascii=True) + "\n"
 
-    def plan_items_for_event(raw_items: Any) -> list[str]:
-        if not isinstance(raw_items, list):
-            return []
+    def frame_line(wire_frame: Dict[str, Any]) -> str:
+        """Serialize an adapter-built frame (which already carries ``type``).
 
-        items: list[str] = []
-        for item in raw_items:
-            if isinstance(item, str):
-                text = item.strip()
-            elif isinstance(item, dict):
-                text = str(item.get("question", "")).strip()
-            else:
-                text = ""
-            if text:
-                items.append(text)
-        return items
+        The adapters produce the frontend's frame shape directly; this re-emits
+        it with a fresh timestamp via :func:`event_line`, keeping one serialization
+        path so every frame is stamped identically.
+        """
+        data = dict(wire_frame)
+        event_type = str(data.pop("type", "progress"))
+        data.pop("ts", None)
+        return event_line(event_type, **data)
 
     async def event_stream() -> AsyncGenerator[str, None]:
         bind_request_context(request_id=request_id)
         reset_fallbacks()
-        # Run ledger (Feature 12): installs the per-run budget guard. LLM calls,
-        # searches and cache hits record into it; the depth controller consults
-        # it before every expansion.
         start_run_usage(request_id, settings, mode=str(payload.mode or "standard"))
         try:
-            state = build_initial_state(
-                payload.query,
-                settings.max_iterations,
-                deep_research=payload.deep_research,
-                max_parallel_agents=settings.max_parallel_agents,
-                mode=payload.mode,
-            )
-            last_iteration = -1
-            emitted_intent = False
-            emitted_ambiguity = False
-            emitted_route = False
-            emitted_direct = False
-            emitted_plan = False
-            emitted_search_seen: dict = {}
-            last_issued_queries: int = -1
-            emitted_findings = 0
-            emitted_annotated = 0
-            saved_facts = 0
-            saved_source_urls: set = set()
+            from app.engine.orchestrator import MultiAgentRunner
+            from app.engine.event_adapter import EngineEventAdapter, final_report_frame
 
             async def _persist(coro):
-                """Memory persistence must never kill a research run — log and continue."""
+                """Persistence must never kill a research run — log and continue."""
                 try:
                     await coro
                 except Exception as exc:
                     logger.warning("persistence_failed", error=str(exc), exc_info=exc)
 
             async def _finish_run(status: str, confidence: float) -> None:
-                """Terminal run write + session touch in one place, so every exit
-                path (completed/failed/timeout) keeps the chat's updated_at fresh."""
                 await _persist(complete_research_run(
-                    settings.database_url, request_id, status,
-                    confidence=confidence,
+                    settings.database_url, request_id, status, confidence=confidence,
                 ))
                 await _persist(touch_session(settings.database_url, session_id))
 
-            # Node-level event trail (2.10): stream_mode="values" yields full
-            # state after each node, so node completions are derived from the
-            # first snapshot in which each marker appears.
-            recorded_nodes: set = set()
-            # Superstep boundary for per-node timing: stream_mode="values"
-            # yields once per superstep, so the previous yield's timestamp is
-            # an honest started_at for every node completing in this one.
-            # (Before this, record_event stubbed started_at = ended_at and
-            # per-stage duration was unmeasurable from the trace.)
-            snapshot_boundary: list[str] = [""]
-
-            async def _record_node_events(snapshot: Dict[str, Any], started_at: str) -> None:
-                def _once(node: str) -> bool:
-                    if node in recorded_nodes:
-                        return False
-                    recorded_nodes.add(node)
-                    return True
-
-                if snapshot.get("sub_questions") and _once("planner"):
-                    payload_json = json.dumps({"sub_questions": len(snapshot["sub_questions"])})
-                    await _persist(record_event(settings.database_url, request_id, "planner", "end", payload=payload_json, started_at=started_at))
-                if snapshot.get("search_results") and _once("search"):
-                    payload_json = json.dumps({"results": len(snapshot["search_results"])})
-                    await _persist(record_event(settings.database_url, request_id, "search", "end", payload=payload_json, started_at=started_at))
-                facts = snapshot.get("facts", [])
-                if facts and _once("summarizer"):
-                    await _persist(record_event(settings.database_url, request_id, "summarizer", "end", payload=json.dumps({"facts": len(facts)}), started_at=started_at))
-                if facts and any("verified" in f for f in facts) and _once("verifier"):
-                    verified_count = sum(1 for f in facts if f.get("verified"))
-                    await _persist(record_event(settings.database_url, request_id, "verifier", "end", payload=json.dumps({"verified": verified_count, "total": len(facts)}), started_at=started_at))
-                if snapshot.get("synthesized_answer") and _once("synthesizer"):
-                    support = snapshot.get("answer_support", {}) or {}
-                    await _persist(record_event(settings.database_url, request_id, "synthesizer", "end", payload=json.dumps({
-                        "support_rate": support.get("rate"),
-                        "cited": support.get("cited"),
-                        "supported": support.get("supported"),
-                    }), started_at=started_at))
-                if snapshot.get("final_report") and _once("finalize"):
-                    await _persist(record_event(settings.database_url, request_id, "finalize", "end", payload="", started_at=started_at))
-
-            await _persist(ensure_session(
-                settings.database_url, session_id, title=payload.query,
-            ))
+            await _persist(ensure_session(settings.database_url, session_id, title=payload.query))
             await _persist(start_research_run(
                 settings.database_url,
                 request_id,
                 payload.query,
-                complexity=str(state.get("orchestration", {}).get("complexity_level", "unknown")),
-                agent_count=int(state.get("orchestration", {}).get("target_agents", 0)),
-                max_iterations=int(state.get("max_iterations", 3)),
+                complexity=str(payload.mode or "standard"),
+                agent_count=0,
+                max_iterations=1,
                 session_id=session_id,
             ))
 
-            yield event_line("progress", request_id=request_id, session_id=session_id, message="Query received")
+            yield event_line("progress", request_id=request_id, session_id=session_id,
+                             message="Query received")
 
-            # Pre-flight provider probe: a run with zero reachable LLM
-            # providers is doomed to degrade to extraction — fail in seconds
-            # with the per-provider reasons instead of minutes of garbage.
+            # Pre-flight provider probe: a run with zero reachable LLM providers
+            # would fail minutes in. Fail in seconds with per-provider reasons.
             llm_client = getattr(request.app.state, "llm", None)
             if llm_client is not None:
                 try:
                     probe_ok, probe_detail = await llm_client.probe_all()
                 except ProviderSecretUnavailableError as exc:
-                    # Stored provider keys exist but nothing can decrypt them.
-                    # Reported as itself: degrading to "no provider configured"
-                    # would be a lie while the Providers tab lists a selection.
                     await _finish_run("failed", 0.0)
                     yield event_line("error", message=str(exc))
                     return
@@ -372,290 +258,30 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                     )
                     return
 
+            runner = MultiAgentRunner(
+                query=payload.query,
+                mode=str(payload.mode or "standard"),
+                headers={},
+            )
+            adapter = EngineEventAdapter(payload.query)
+
             try:
-                # Outer ceiling on total request time — individual LLM/search
-                # timeouts don't bound the planner→search→summarize→critic loop.
-                # `last_snapshot` is scoped to this request's coroutine — no
-                # module-level state, so nothing to leak.
-                last_snapshot: Dict[str, Any] = {}
                 async with asyncio.timeout(settings.research_timeout_sec):
-                    async for snapshot in workflow.astream(
-                        state,
-                        stream_mode="values",
-                        config={"recursion_limit": graph_recursion_limit(state)},
-                    ):
-                        last_snapshot = snapshot
-                        iteration = int(snapshot.get("iteration", 0))
-
-                        # Boundary for THIS superstep's node events: the time
-                        # the previous snapshot was observed (or run start).
-                        _now_iso = datetime.now(timezone.utc).isoformat()
-                        started_iso = snapshot_boundary[0] or _now_iso
-                        snapshot_boundary[0] = _now_iso
-
-                        await _record_node_events(snapshot, started_iso)
-
-                        if snapshot.get("intent") and not emitted_intent:
-                            # Understand-before-searching: surface the resolved
-                            # intent (senses, domain, level) before the plan.
-                            emitted_intent = True
-                            intent_data = snapshot.get("intent") or {}
-                            yield event_line("intent", **{
-                                k: intent_data.get(k)
-                                for k in ("query_type", "domain", "explanation_level",
-                                          "ambiguity", "senses", "interpretations",
-                                          "underspecified", "recommended_action", "origin")
-                            })
-                            await _persist(record_event(
-                                settings.database_url, request_id, "intent", "end",
-                                payload=json.dumps({
-                                    "ambiguity": intent_data.get("ambiguity"),
-                                    "domain": intent_data.get("domain"),
-                                    "origin": intent_data.get("origin"),
-                                }),
-                                started_at=started_iso,
-                            ))
-
-                        if snapshot.get("ambiguity") and not emitted_ambiguity:
-                            # Ambiguity POLICY, distinct from the intent event's
-                            # `ambiguity` boolean: what the run decided to DO
-                            # about it (proceed/assume/ask/separate). An `ask`
-                            # ends the run with a clarifying question instead of
-                            # researching every reading, so the UI must be able
-                            # to render that distinctly from an answer.
-                            emitted_ambiguity = True
-                            amb = snapshot.get("ambiguity") or {}
-                            yield event_line("ambiguity", **{
-                                k: amb.get(k)
-                                for k in ("action", "interpretations", "question",
-                                          "assumption", "reason")
-                            })
-                            await _persist(record_event(
-                                settings.database_url, request_id, "ambiguity", "end",
-                                payload=json.dumps({
-                                    "action": amb.get("action"),
-                                    "interpretations": len(amb.get("interpretations") or []),
-                                }),
-                                started_at=started_iso,
-                            ))
-
-                        if snapshot.get("route") and not emitted_route:
-                            # Query router (R2): the direct-vs-research
-                            # decision. Surfaced for the trace/UI; the path is
-                            # not branched on yet (R3).
-                            emitted_route = True
-                            route_data = snapshot.get("route") or {}
-                            yield event_line("route", **{
-                                k: route_data.get(k)
-                                for k in ("path", "reason", "confidence", "origin", "signals")
-                            })
-                            await _persist(record_event(
-                                settings.database_url, request_id, "route", "end",
-                                payload=json.dumps({
-                                    "path": route_data.get("path"),
-                                    "origin": route_data.get("origin"),
-                                }),
-                                started_at=started_iso,
-                            ))
-
-                        if snapshot.get("direct_answer") and not emitted_direct:
-                            # Direct-answer path (R3): the query was answered
-                            # without research. Surfaced separately from the
-                            # final report so the UI can render an ungrounded
-                            # answer with its own affordances.
-                            emitted_direct = True
-                            direct_meta = snapshot.get("direct_answer_meta") or {}
-                            yield event_line(
-                                "direct_answer",
-                                answer=str(snapshot.get("direct_answer", "")),
-                                confidence=snapshot.get("confidence"),
-                                self_confidence=direct_meta.get("confidence"),
-                                reason=direct_meta.get("reason", ""),
-                                kind=direct_meta.get("conversation_kind", ""),
-                            )
-                            await _persist(record_event(
-                                settings.database_url, request_id, "direct_answer", "end",
-                                payload=json.dumps({
-                                    "chars": len(str(snapshot.get("direct_answer", ""))),
-                                    "self_confidence": direct_meta.get("confidence"),
-                                }),
-                                started_at=started_iso,
-                            ))
-
-                        if snapshot.get("sub_questions") and not emitted_plan:
-                            yield event_line(
-                                "plan",
-                                items=plan_items_for_event(snapshot.get("sub_questions", [])),
-                                orchestration=snapshot.get("orchestration", {}),
-                                waves=snapshot.get("execution_waves", []) or [],
-                            )
-                            emitted_plan = True
-                            await _persist(save_agent_tasks(
-                                settings.database_url,
-                                request_id,
-                                snapshot.get("sub_questions", []),
-                            ))
-
-                        if snapshot.get("search_results"):
-                            yield event_line(
-                                "search_progress",
-                                snippets=len(snapshot["search_results"]),
-                            )
-
-                            # Per-query detail for the pipeline trace. The trace
-                            # needs to show WHAT was searched and WHAT came back
-                            # per query, not one opaque "N sources" counter, or it
-                            # has to invent that story. Emitted from the real
-                            # executed queries and their real results.
-                            #
-                            # Additive: a new event type that older clients
-                            # ignore. AGENTS.md 4.9 — the frontend gains a case
-                            # for it in the same change.
-                            # Keyed on the sub_question the results are
-                            # ACTUALLY tagged with, not on executed_queries.
-                            # Those two sets do not line up — executed_queries
-                            # accumulates follow-ups the search layer never
-                            # tagged results with — so matching on it left 19 of
-                            # 20 searches showing no chips while the run was in
-                            # fact returning plenty of evidence. The sub_question
-                            # on a result is ground truth for which query
-                            # produced it, so this cannot drift.
-                            seen_sub: dict = {}
-                            for _r in snapshot.get("search_results") or []:
-                                if not isinstance(_r, dict):
-                                    continue
-                                _url = str(_r.get("url", "") or "").strip()
-                                if not _url:
-                                    continue
-                                _sq = str(_r.get("sub_question", "") or "").strip()
-                                if not _sq:
-                                    continue
-                                seen_sub.setdefault(_sq, []).append({
-                                    "title": str(_r.get("title", "") or "")[:160],
-                                    "url": _url,
-                                    # `source` is the SOURCE label a reader sees,
-                                    # so it must name the publisher's site -- not
-                                    # the index that found it. It used to fall
-                                    # through to `provider`, which for a metasearch
-                                    # is "searxng:google cse" and therefore
-                                    # labelled every Google-CSE hit with the name
-                                    # of its own engine.
-                                    "source": _source_label(_r),
-                                    "domain": str(_r.get("source_domain", "") or ""),
-                                    "publisher": str(_r.get("publisher", "") or ""),
-                                    # Provenance stays available, one level down.
-                                    "via": str(_r.get("retrieval_engine", "") or ""),
-                                    "retrieval_provider": str(
-                                        _r.get("retrieval_provider", "") or ""
-                                    ),
-                                    "reliability": _r.get("reliability_score"),
-                                    # Which pages were actually opened, not just
-                                    # returned. The trace renders a separate
-                                    # "View web page" row from this, so it must
-                                    # be the real flag — never inferred.
-                                    "fetched": bool(_r.get("is_content_fetched")),
-                                })
-
-                            for _sq, _hits in seen_sub.items():
-                                _short = _hits[:6]
-                                if emitted_search_seen.get(_sq) == len(_short):
-                                    continue
-                                emitted_search_seen[_sq] = len(_short)
-                                yield event_line(
-                                    "search_query",
-                                    query=_sq,
-                                    results=_short,
-                                    total_snippets=len(snapshot["search_results"]),
-                                )
-
-                            # How many queries actually ran, so the reader can
-                            # see searches that returned nothing — the honest
-                            # version of "we tried more than we kept".
-                            _issued = len(snapshot.get("executed_queries") or [])
-                            if _issued != last_issued_queries:
-                                last_issued_queries = _issued
-                                yield event_line(
-                                    "search_query",
-                                    query="",
-                                    results=[],
-                                    total_snippets=len(snapshot["search_results"]),
-                                    issued=_issued,
-                                )
-
-                            # Incremental persistence: expansion passes add new
-                            # sources — save only unseen URLs, never re-insert.
-                            fresh_sources = [
-                                r for r in snapshot.get("search_results", [])
-                                if r.get("url") and r.get("url") not in saved_source_urls
-                            ]
-                            if fresh_sources:
-                                saved_source_urls.update(r.get("url") for r in fresh_sources)
-                                await _persist(save_sources(
-                                    settings.database_url,
-                                    request_id,
-                                    fresh_sources,
-                                ))
-                                await _persist(save_evidence(
-                                    settings.database_url,
-                                    request_id,
-                                    fresh_sources,
-                                ))
-
-                        if iteration != last_iteration and iteration > 0:
-                            critique = snapshot.get("critique", {})
-                            reason = critique.get("reason", "No reason provided")
-                            yield event_line("critic", iteration=iteration, reason=reason,
-                                             breakdown=snapshot.get("confidence_breakdown") or {})
-                            last_iteration = iteration
-                            await _persist(record_event(
-                                settings.database_url, request_id, "critic", "end",
-                                payload=json.dumps({"iteration": iteration, "is_sufficient": critique.get("is_sufficient", False)}),
-                                started_at=started_iso,
-                            ))
-                            # Every critic iteration is durable (3.8) — Replay
-                            # shows the back-and-forth, not only the outcome.
-                            await _persist(save_critic_review(
-                                settings.database_url, request_id, iteration, critique,
-                                breakdown=snapshot.get("confidence_breakdown") or {},
-                            ))
-
-                        facts = [f for f in snapshot.get("facts", []) if isinstance(f, dict)]
-                        if len(facts) > emitted_findings:
-                            # Emit EVERY new fact. The old `+3` slice emitted
-                            # three but marked the whole batch consumed, so
-                            # facts 4..N of a large batch never streamed.
-                            findings = [_finding_item(f) for f in facts[emitted_findings:]]
-                            yield event_line("findings", items=findings)
-                            emitted_findings = len(facts)
-                        # The verifier annotates in place (same list length), so the
-                        # length check above never fires for it. Re-emit the newly
-                        # annotated facts whenever the annotated count grows — the
-                        # old once-per-run re-emission left every expansion-pass
-                        # claim stuck at "verification pending" in the UI.
-                        annotated = sum(1 for f in facts if "verified" in f)
-                        if annotated > emitted_annotated:
-                            verified_items = [
-                                _finding_item(f) for f in facts if "verified" in f
-                            ][emitted_annotated:]
-                            yield event_line("findings", verified_update=True, items=verified_items)
-                            emitted_annotated = annotated
-
-                        if len(facts) > saved_facts and iteration > 0:
-                            # Persist new claims incrementally — but only when the
-                            # appended facts carry verification flags (post-verifier
-                            # snapshots). The summarizer snapshot grows the list
-                            # BEFORE verification, and saving there stored
-                            # expansion-pass claims with verified=0 even when they
-                            # later verified; the length never changes at the
-                            # verifier snapshot, so the flags were never re-saved.
-                            new_facts = facts[saved_facts:]
-                            if new_facts and all("verified" in f for f in new_facts):
-                                await _persist(save_claims(
-                                    settings.database_url,
-                                    request_id,
-                                    new_facts,
-                                ))
-                                saved_facts = len(facts)
+                    async for engine_event in runner.run():
+                        for stage_frame in (adapter.stage_frame(engine_event.get("stage")),):
+                            if stage_frame is not None:
+                                yield frame_line(stage_frame)
+                        for wire_frame in adapter.to_frames(engine_event):
+                            yield frame_line(wire_frame)
+                        # Node-level trail for the trace/audit (best effort).
+                        await _persist(record_event(
+                            settings.database_url, request_id,
+                            str(engine_event.get("engine_node") or "engine"), "end",
+                            payload=json.dumps({
+                                "stage": engine_event.get("stage"),
+                                "sections": engine_event.get("sections"),
+                            }),
+                        ))
             except TimeoutError:
                 await _finish_run("timeout", 0.0)
                 yield event_line(
@@ -667,19 +293,10 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                 )
                 return
             except asyncio.CancelledError:
-                # Client disconnected or pressed Stop mid-stream: Starlette
-                # cancels this generator. A cancelled scope cannot await, so
-                # the run is marked via a DETACHED task — otherwise the row
-                # sits in 'running' forever and the trace lies about the run.
-                # 'cancelled' (not 'timeout') so the UI/DB tell a user stop
-                # apart from a real timeout; neither is resumable, and no
-                # report is saved on this path (only the normal completion
-                # below writes one), so a partial answer can never persist.
+                # Client disconnected / pressed Stop: a cancelled scope cannot
+                # await, so mark via a detached task or the row sits 'running'.
                 asyncio.get_running_loop().create_task(
-                    complete_research_run(
-                        settings.database_url, request_id, "cancelled",
-                        confidence=0.0,
-                    )
+                    complete_research_run(settings.database_url, request_id, "cancelled", confidence=0.0)
                 )
                 asyncio.get_running_loop().create_task(
                     touch_session(settings.database_url, session_id)
@@ -698,86 +315,69 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                         message=(
                             "No LLM provider is configured. Add one in the "
                             "Providers tab (UI: /#/model-controls) — it takes "
-                            "effect immediately, no restart needed. A provider "
-                            "can also be seeded from the environment via "
-                            "CUSTOM_LLM_* in backend/.env."
+                            "effect immediately, no restart needed."
                         ),
                     )
                 else:
                     yield event_line("error", message=f"Research workflow failed: {message}")
                 return
 
-            final_state: Dict[str, Any] = last_snapshot
-            report = str(final_state.get("final_report", ""))
-            confidence = float(final_state.get("confidence", 0.0))
+            final_state = runner.final_state()
+            report = str(final_state.get("final_report") or "")
+            sources = list(final_state.get("sources") or [])
+            confidence = float(final_state.get("confidence", 0.0) or 0.0)
 
             await _finish_run("completed", confidence)
-            # Challenged flags land once contradictions are known (end of run).
-            await _persist(mark_challenged_claims(
-                settings.database_url, request_id, last_snapshot.get("contradictions") or [],
-            ))
-            # Verification-domain memory: contradictions, per-fact results,
-            # and parsed citations persist alongside the report.
-            await _persist(save_contradictions(
-                settings.database_url, request_id, last_snapshot.get("contradictions") or [],
-            ))
-            await _persist(save_verification_results(
-                settings.database_url, request_id, last_snapshot.get("facts", []),
-            ))
+
+            # Persist sources so the trace, citation legend and export have real
+            # data. Engine source entries are URLs; saved as minimal rows.
+            if sources:
+                await _persist(save_sources(
+                    settings.database_url, request_id,
+                    [{"url": url} for url in sources],
+                ))
+                await _persist(save_evidence(
+                    settings.database_url, request_id,
+                    [{"url": url} for url in sources],
+                ))
+
+            degraded = take_fallbacks()
+            degradation = degradation_summary()
+            for agent in degraded:
+                await _persist(record_event(
+                    settings.database_url, request_id, agent, "fallback",
+                    payload=json.dumps({"agent": agent, "reason": degradation["reasons"].get(agent, "")}),
+                ))
 
             if report:
-                # Persistence must never kill a completed run — save_report
-                # was previously the one unwrapped call; a fresh install or
-                # unwritable DB killed the stream right before delivery.
                 await _persist(save_report(
                     database_path=settings.database_url,
                     query=payload.query,
                     report=report,
                     confidence=confidence,
                 ))
-                # Canonical per-run report row (3.8). The audit/trace document
-                # is persisted separately from the primary answer.
                 await _persist(save_final_report(
                     settings.database_url, request_id, report, confidence,
-                    audit_markdown=str(last_snapshot.get("final_audit", "") or ""),
+                    audit_markdown="",
                 ))
                 await _persist(save_citations(settings.database_url, request_id, report))
-                # Degradation flag: which agents fell back to deterministic
-                # defaults (field on the existing event — no contract break).
-                degraded = take_fallbacks()
-                degradation = degradation_summary()
-                for agent in degraded:
-                    await _persist(record_event(
-                        settings.database_url, request_id, agent, "fallback",
-                        payload=json.dumps({"agent": agent, "reason": degradation["reasons"].get(agent, "")}),
-                    ))
-                support = last_snapshot.get("answer_support", {}) or {}
-                yield event_line("final_report", report=report, confidence=confidence, degraded=degraded,
-                                 audit=str(final_state.get("final_audit", "") or ""),
-                                 degraded_reasons=degradation["reasons"],
-                                 provider_degraded=degradation["provider_degraded"],
-                                 provider_kinds=degradation["provider_kinds"],
-                                 answer_support=support.get("rate"),
-                                 wave_report=last_snapshot.get("wave_report") or [],
-                                 citation_health=last_snapshot.get("citation_health") or {},
-                                 quality=last_snapshot.get("quality") or {},
-                                 outline=last_snapshot.get("outline") or {},
-                                 section_wise=bool(last_snapshot.get("section_wise")))
+                frame = final_report_frame(
+                    report=report,
+                    sources=sources,
+                    confidence=confidence,
+                    degraded=degraded,
+                    degraded_reasons=degradation["reasons"],
+                )
+                yield frame_line(frame)
             else:
-                _degradation = degradation_summary()
-                yield event_line("final_report", report="No final report generated.", confidence=confidence,
-                                 degraded=_degradation["agents"],
-                                 degraded_reasons=_degradation["reasons"],
-                                 provider_degraded=_degradation["provider_degraded"],
-                                 provider_kinds=_degradation["provider_kinds"])
-
-            # Decision Layer rows (3.5): persisted for the audit/trace, NOT
-            # surfaced in the user-facing answer stream. The internal decision
-            # machinery (Option A/B/C/D, recommended option) must never reach a
-            # normal answer; it stays in the audit document and the DB trace.
-            decision_options = last_snapshot.get("decision_options") or []
-            if decision_options:
-                await _persist(save_decisions(settings.database_url, request_id, decision_options))
+                frame = final_report_frame(
+                    report="No final report generated.",
+                    sources=[],
+                    confidence=confidence,
+                    degraded=degradation["agents"],
+                    degraded_reasons=degradation["reasons"],
+                )
+                yield frame_line(frame)
         finally:
             clear_fallbacks()
             clear_run_usage()
@@ -792,31 +392,23 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
 @router.post("/research/{run_id}/resume")
 @limiter.limit(get_settings().rate_limit)
 async def resume_research(run_id: str, request: Request) -> StreamingResponse:
-    """Durable checkpointing (3.3): resume a failed/timeout run from its
-    persisted rows instead of re-running the whole pipeline."""
+    """Resume a failed/timeout run.
+
+    The multi-agent engine team does not checkpoint intermediate state between
+    nodes, so a resume restarts the run from scratch rather than rebuilding
+    evidence from persisted rows. The run identity is preserved and the same
+    NDJSON contract is honored; only non-terminal runs are resumed.
+    """
     settings = getattr(request.app.state, "settings", None)
     if settings is None:
         raise HTTPException(status_code=500, detail="Workflow is not initialized")
 
-    # A separate graph compiled with START → critic: continues from
-    # persisted evidence rather than re-running planner/search (3.3 DoD).
-    from app.agents.search import SearchClient
-    from app.core.llm import LLMClient
-    from app.graph.workflow import create_workflow as _create_workflow
-
-    llm = LLMClient(settings)
-    search_client = SearchClient(settings)
-    resume_workflow = _create_workflow(llm, search_client, entry_node="critic")
-
-    # Rebuild state from durable rows; None means not resumable.
     state = await load_state_for_resume(settings.database_url, run_id)
     if state is None:
         raise HTTPException(
             status_code=409,
             detail=f"Run {run_id} is not resumable (unknown run_id or status is not failed/timeout)",
         )
-
-    # If the report already exists, the run has nothing left to do.
     if state.get("final_report"):
         raise HTTPException(status_code=409, detail=f"Run {run_id} already has a final report")
 
@@ -824,6 +416,7 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
 
     request_id = run_id  # resume continues the SAME run identity
     resume_session_id = state.get("session_id") or ""
+    query = str(state.get("query") or "")
 
     def event_line(event_type: str, **data: Any) -> str:
         return json.dumps(
@@ -831,18 +424,18 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
             ensure_ascii=True,
         ) + "\n"
 
+    def frame_line(wire_frame: Dict[str, Any]) -> str:
+        """Serialize an adapter-built frame (which already carries ``type``)."""
+        data = dict(wire_frame)
+        event_type = str(data.pop("type", "progress"))
+        data.pop("ts", None)
+        return event_line(event_type, **data)
+
     async def resume_stream() -> AsyncGenerator[str, None]:
         bind_request_context(request_id=request_id, resumed=True)
-        # A resumed run is a fresh degradation window: earlier fallbacks are
-        # already recorded against this run_id from the first attempt.
         reset_fallbacks()
-        last_iteration = int(state.get("iteration", 0))
-        emitted_findings = 0
-        emitted_annotated = 0
-        saved_facts = 0
 
         async def _persist(coro):
-            """Memory persistence must never kill a resumed run either."""
             try:
                 await coro
             except Exception as exc:
@@ -857,8 +450,6 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
             yield event_line("progress", request_id=request_id, session_id=resume_session_id,
                              message=f"Resuming run {request_id[:8]}")
 
-            # Same pre-flight as a fresh stream: a resumed run with zero
-            # reachable providers would just fail again, minutes later.
             llm_client = getattr(request.app.state, "llm", None)
             if llm_client is not None:
                 probe_ok, probe_detail = await llm_client.probe_all()
@@ -874,70 +465,19 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
                     )
                     return
 
-            # Resume skips planner/search: sub-questions and sources already
-            # exist for this run, so re-enter at critic with existing evidence.
-            # Re-verify first — loaded facts may predate verification.
-            if not any("verified" in f for f in state.get("facts", [])):
-                from app.agents.verifier import verify_facts
-                state["facts"] = verify_facts(
-                    facts=state.get("facts", []),
-                    search_results=state.get("search_results", []),
-                )
-                await _persist_save(settings.database_url, request_id, state.get("facts", []))
+            from app.engine.orchestrator import MultiAgentRunner
+            from app.engine.event_adapter import EngineEventAdapter, final_report_frame
 
-            # The frontend clears findings when resuming — re-emit the loaded
-            # claims so the run card shows its evidence, not zeros.
-            loaded_facts = [f for f in state.get("facts", []) if isinstance(f, dict)]
-            if loaded_facts:
-                yield event_line("findings", items=[_finding_item(f) for f in loaded_facts])
-                emitted_findings = len(loaded_facts)
-                emitted_annotated = sum(1 for f in loaded_facts if "verified" in f)
-                # Loaded claims are already in the claims table from the first
-                # attempt — only expansion-pass additions may be saved below.
-                saved_facts = len(loaded_facts)
-
-            last_snapshot: Dict[str, Any] = {}
+            runner = MultiAgentRunner(query=query, mode="standard", headers={})
+            adapter = EngineEventAdapter(query)
             try:
                 async with asyncio.timeout(settings.research_timeout_sec):
-                    async for snapshot in resume_workflow.astream(
-                        state,
-                        stream_mode="values",
-                        config={"recursion_limit": graph_recursion_limit(state)},
-                    ):
-                        last_snapshot = snapshot
-                        iteration = int(snapshot.get("iteration", 0))
-
-                        facts = [f for f in snapshot.get("facts", []) if isinstance(f, dict)]
-                        if len(facts) > emitted_findings:
-                            yield event_line(
-                                "findings",
-                                items=[_finding_item(f) for f in facts[emitted_findings:]],
-                            )
-                            emitted_findings = len(facts)
-                        annotated = sum(1 for f in facts if "verified" in f)
-                        if annotated > emitted_annotated:
-                            verified_items = [
-                                _finding_item(f) for f in facts if "verified" in f
-                            ][emitted_annotated:]
-                            yield event_line("findings", verified_update=True, items=verified_items)
-                            emitted_annotated = annotated
-                        # Expansion on resume can add claims — persist them with the
-                        # same post-verifier guard as a fresh stream.
-                        if len(facts) > saved_facts:
-                            new_facts = facts[saved_facts:]
-                            if new_facts and all("verified" in f for f in new_facts):
-                                await _persist(save_claims(settings.database_url, request_id, new_facts))
-                                saved_facts = len(facts)
-
-                        if iteration != last_iteration and iteration > last_iteration:
-                            critique = snapshot.get("critique", {})
-                            yield event_line("critic", iteration=iteration, reason=critique.get("reason", ""),
-                                             breakdown=snapshot.get("confidence_breakdown") or {},
-                                             )
-                            last_iteration = iteration
-                            await _persist_record(settings.database_url, request_id, iteration, critique,
-                                                  breakdown=snapshot.get("confidence_breakdown") or {})
-
+                    async for engine_event in runner.run():
+                        stage_frame = adapter.stage_frame(engine_event.get("stage"))
+                        if stage_frame is not None:
+                            yield frame_line(stage_frame)
+                        for wire_frame in adapter.to_frames(engine_event):
+                            yield frame_line(wire_frame)
             except TimeoutError:
                 await _finish("timeout", 0.0)
                 yield event_line("error", message="Resumed run timed out. Try again or raise RESEARCH_TIMEOUT_SEC.")
@@ -956,44 +496,34 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
                 yield event_line("error", message=f"Resumed run failed: {exc}")
                 return
 
-            final_state = last_snapshot
-            report = str(final_state.get("final_report", ""))
-            confidence = float(final_state.get("confidence", 0.0))
+            final_state = runner.final_state()
+            report = str(final_state.get("final_report") or "")
+            sources = list(final_state.get("sources") or [])
+            confidence = float(final_state.get("confidence", 0.0) or 0.0)
             await _finish("completed", confidence)
-            await _persist(mark_challenged_claims(
-                settings.database_url, request_id, last_snapshot.get("contradictions") or [],
-            ))
-            await _persist(save_contradictions(
-                settings.database_url, request_id, last_snapshot.get("contradictions") or [],
-            ))
-            await _persist(save_verification_results(
-                settings.database_url, request_id, last_snapshot.get("facts", []),
-            ))
+
+            if sources:
+                await _persist(save_sources(
+                    settings.database_url, request_id, [{"url": url} for url in sources],
+                ))
+
             if report:
-                await _persist_report(settings.database_url, request_id, str(state.get("query", "")), report, confidence,
-                                      audit=str(final_state.get("final_audit", "") or ""))
+                await _persist_report(settings.database_url, request_id, query, report, confidence, audit="")
                 await _persist(save_citations(settings.database_url, request_id, report))
                 degraded = take_fallbacks()
                 degradation = degradation_summary()
-                for agent in degraded:
-                    await _persist(record_event(
-                        settings.database_url, request_id, agent, "fallback",
-                        payload=json.dumps({"agent": agent, "reason": degradation["reasons"].get(agent, "")}),
-                    ))
-                support = last_snapshot.get("answer_support", {}) or {}
-                yield event_line("final_report", report=report, confidence=confidence, degraded=degraded,
-                                 audit=str(final_state.get("final_audit", "") or ""),
-                                 degraded_reasons=degradation["reasons"],
-                                 provider_degraded=degradation["provider_degraded"],
-                                 provider_kinds=degradation["provider_kinds"],
-                                 answer_support=support.get("rate"))
+                frame = final_report_frame(
+                    report=report, sources=sources, confidence=confidence,
+                    degraded=degraded, degraded_reasons=degradation["reasons"],
+                )
+                yield frame_line(frame)
             else:
-                _degradation = degradation_summary()
-                yield event_line("final_report", report="No final report generated.", confidence=confidence,
-                                 degraded=_degradation["agents"],
-                                 degraded_reasons=_degradation["reasons"],
-                                 provider_degraded=_degradation["provider_degraded"],
-                                 provider_kinds=_degradation["provider_kinds"])
+                degradation = degradation_summary()
+                frame = final_report_frame(
+                    report="No final report generated.", sources=[], confidence=confidence,
+                    degraded=degradation["agents"], degraded_reasons=degradation["reasons"],
+                )
+                yield frame_line(frame)
         finally:
             clear_fallbacks()
             unbind_request_context()
@@ -1002,11 +532,3 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
         _with_trace_capture(resume_stream(), settings.database_url, run_id),
         media_type="application/x-ndjson",
     )
-
-
-
-
-
-
-
-

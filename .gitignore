@@ -35,6 +35,10 @@ frontend/.vite/
 # bounded diskcache directory (Phase 1.4)
 .cache/
 
+# Engine run artifacts (the publisher can emit report files)
+backend/outputs/
+outputs/
+
 # Third-party reference clones (read-only adaptation sources, never commit)
 gpt-researcher/
 

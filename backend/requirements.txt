@@ -51,6 +51,10 @@ mistune>=3.0.2
 # lazily and degrades cleanly if absent; listed so startup logs stay clean.
 mcp>=1.9.1,<2.0.0
 langchain-mcp-adapters>=0.1.0
+# Pin starlette below 1.0: the MCP adapter stack pulls starlette>=1.x, but
+# fastapi 0.116.1 (above) is incompatible with it (APIRouter no longer accepts
+# on_startup). Kept here so a fresh resolve stays working.
+starlette>=0.40,<0.48
 
 pytest==9.1.1
 pytest-asyncio==1.4.0
