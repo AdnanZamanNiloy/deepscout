@@ -1,6 +1,6 @@
 # DeepScout-AI Benchmark Results
 
-*Suite: deepscout-offline-benchmarks v2.0 — generated 2026-09-19T16:48:22Z*
+*Suite: deepscout-offline-benchmarks v2.0 — generated 2026-10-11T07:53:46Z*
 
 Deterministic, network-free measurement of the intelligence and performance
 properties of the upgraded pipeline. All metrics run on hand-labeled
@@ -11,36 +11,20 @@ reproducible with `python bench/run_offline.py` from `backend/`.
 
 | Component | Headline metrics |
 |---|---|
-| Verification accuracy | P=1.0000 R=1.0000 F1=1.0000 (16 labeled cases) |
-| Hallucination rejection | leak rate 0.0000 (6/6 fabricated claims rejected) |
 | Citation support | sentence accuracy 1.0000, numeric grounding 1.0000 |
 | Contradiction detection | P=1.0000 R=1.0000 F1=1.0000 across 3 kinds ['numeric', 'polarity', 'temporal'] |
 | Confidence calibration | 100% in expected band, monotonic ordering: True |
 | Semantic engine | Spearman 0.7094 vs labels, dedup F1 0.7500 @ 0.86 |
-| Query router | routing accuracy 1.0000 across 21 labeled queries, missed-research 0 |
-| LLM response cache | 66% hit ratio on repeat-heavy workload, 254.0x repeat-pass speedup |
-
+| LLM response cache | 66% hit ratio on repeat-heavy workload, 293.81x repeat-pass speedup |
 Raw numbers: `benchmark_results.json` alongside this file.
 
 ## Intelligence detail
-
-### Verification (claim vs source)
-
-8 true positives, 0 false accepts, 0 false rejects, 8 true rejects.
-Hard checks: weighted lexical overlap, source authority, unit-aware numeric grounding,
-polarity consistency vs the most-similar source sentence, direct-quote location.
-Per-claim latency 165.9 µs. Misses: 0.
-
-### Hallucination adversarial set
-
-Fabricated numbers, invented facts, and retraction claims against clean sources.
-Rejected 6/6; leak rate 0.0000.
 
 ### Contradiction engine v2
 
 Numeric (unit-aware), polarity and temporal detectors over the shared semantic
 engine. Kinds detected this run: {'numeric': 2, 'polarity': 3, 'temporal': 1}. Pairwise scan latency
-4.3500 ms for 12 labeled pairs.
+6.1300 ms for 12 labeled pairs.
 
 ### Confidence engine v2
 
@@ -51,15 +35,15 @@ citation support and axis coverage blend in when present.
 
 | Operation | Latency |
 |---|---|
-| Similarity matrix, 60 facts | 218.2 ms |
-| Similarity matrix, 200 facts | 572.4 ms |
-| Cross-similarity, 40 sentences x 200 claims | 10.6 ms |
-| Contradiction scan, 60 facts | 280.5 ms |
-| Dedup pass, 60 facts | 242.1 ms |
-| Answer-support check, 40 sentences | 0.2800 ms |
-| Pair similarity (single) | 153.5 µs |
+| Similarity matrix, 60 facts | 403.2 ms |
+| Similarity matrix, 200 facts | 1,038.8 ms |
+| Cross-similarity, 40 sentences x 200 claims | 24.2 ms |
+| Contradiction scan, 60 facts | 493.0 ms |
+| Dedup pass, 60 facts | 435.4 ms |
+| Answer-support check, 40 sentences | 0.5000 ms |
+| Pair similarity (single) | 181.2 µs |
 
-Peak-RSS delta across a 300-fact matrix workload: 21936 KiB —
+Peak-RSS delta across a 300-fact matrix workload: 22100 KiB —
 the engine fits comfortably in the 8 GB RAM budget with the whole stack.
 
 ## Known limitations (measured, not hidden)

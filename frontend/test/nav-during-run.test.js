@@ -25,8 +25,8 @@ test("switching chats is no longer refused while a run streams", () => {
 });
 
 test("a run's updates are routed to the session that owns it", () => {
-  // patchRun / pushTrace / the raw-frame append must all go through the
-  // owner-aware helper, or the run dies the moment the user looks away.
+  // patchRun / the raw-frame append must both go through the owner-aware
+  // helper, or the run dies the moment the user looks away.
   assert.match(src, /const applyToOwner = useCallback/, "owner-aware apply helper exists");
   assert.match(
     src,
@@ -39,13 +39,11 @@ test("a run's updates are routed to the session that owns it", () => {
     "and writes to that session's offscreen list",
   );
 
-  for (const [name, pattern] of [
-    ["patchRun", /const patchRun = useCallback\(\[?[\s\S]*?applyToOwner\(tempId/],
-    ["pushTrace", /const pushTrace = useCallback\(\[?[\s\S]*?applyToOwner\(tempId/],
-  ]) {
-    const m = src.match(pattern);
-    assert.ok(m, `${name} must route through applyToOwner`);
-  }
+  assert.match(
+    src,
+    /const patchRun = useCallback\(\[?[\s\S]*?applyToOwner\(tempId/,
+    "patchRun must route through applyToOwner",
+  );
   // The raw-frame append is what the pipeline trace renders from.
   assert.match(
     src,

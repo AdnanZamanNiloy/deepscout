@@ -58,7 +58,6 @@ _HTML_TAG_RE = re.compile(
     re.IGNORECASE,
 )
 _TABLE_SEP_CELL_RE = re.compile(r"^\s*:?-{1,}:?\s*$")
-_TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
 
 
 def _split_table_row(line: str) -> List[str]:

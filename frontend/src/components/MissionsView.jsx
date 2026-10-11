@@ -27,8 +27,6 @@ export function statusTone(status) {
   }
 }
 
-export { STATUS_DOT };
-
 export default function MissionsView({ missions, onOpen, onRemove, onNew }) {
   if (missions.length === 0) {
     return (

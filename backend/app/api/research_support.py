@@ -7,7 +7,7 @@ of `router`/`limiter` they can live in their own module with no import cycle.
 from __future__ import annotations
 
 import json
-from typing import Any, AsyncGenerator, Dict
+from typing import AsyncGenerator
 
 from pydantic import BaseModel, Field
 
@@ -39,21 +39,6 @@ class ResearchRequest(BaseModel):
     # appends them to one session instead of minting a session per question.
     # Optional for backward compatibility — absent means "generate one".
     session_id: str | None = Field(default=None, max_length=120)
-
-
-def _finding_item(fact: Dict[str, Any]) -> Dict[str, Any]:
-    """Wire shape of one findings item — shared by the stream, the verified
-    re-emission and the resume path. Claim Inspector (3.6) detail fields are
-    harmless when absent pre-verification."""
-    return {
-        "claim": fact.get("claim", ""),
-        "source": fact.get("source", ""),
-        "verified": fact.get("verified"),
-        "verification_score": fact.get("verification_score"),
-        "verification_reason": fact.get("verification_reason"),
-        "agent": fact.get("agent", ""),
-        "confidence": fact.get("confidence"),
-    }
 
 
 def _with_trace_capture(

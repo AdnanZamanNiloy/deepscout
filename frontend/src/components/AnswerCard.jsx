@@ -1,8 +1,6 @@
-import { confidenceLabel, parseReport } from "../lib";
+import { parseReport } from "../lib";
 import { parseBlocks } from "../markdown";
-import {
-  IconAlert, IconChart, IconCheckCircle, IconDoc,
-} from "./icons";
+import { IconAlert } from "./icons";
 import ExportMenu from "./ExportMenu";
 /* Final report card — renders ONLY backend-produced content:
  * report markdown sections, findings events. */

@@ -1,11 +1,10 @@
 """Shared pure primitives: safe coercion used across agents and core.
 
 Single home for the small, total helpers that were previously copy-pasted into
-several modules (`quality/primitives`, `epistemic/primitives`,
-`synthesis/primitives`, `graph/evidence`). Behaviour is identical to each copy:
-an unparseable value yields the supplied default instead of raising, because
-external data (model output, fetched pages) is never trusted to hold clean
-types.
+several modules (`quality/primitives`, `epistemic/primitives`). Behaviour is
+identical to each copy: an unparseable value yields the supplied default instead
+of raising, because external data (model output, fetched pages) is never trusted
+to hold clean types.
 """
 from __future__ import annotations
 
@@ -64,9 +63,8 @@ def is_year(value: float) -> bool:
 def normalize_key(text: Any) -> str:
     """Whitespace-collapsed lowercase comparison/ordering key.
 
-    Byte-identical to the `_norm`/`_normalize` helpers previously copied into
-    answer_conformance, evidence_completion, reasoning_engine and
-    synthesis_planner — a deterministic key for comparing claims and labels.
+    A deterministic key for comparing claims and labels, consolidating the
+    `_norm`/`_normalize` helpers that were previously copied around.
     """
     return " ".join(str(text or "").lower().split())
 
@@ -74,8 +72,7 @@ def normalize_key(text: Any) -> str:
 def jaccard(a: Any, b: Any) -> float:
     """Jaccard similarity of two token sets; 0.0 when either is empty.
 
-    Byte-identical to the `_jaccard` copies previously in focus, evidence/text
-    and core/semantic. Accepts any sized iterables (set, frozenset, list).
+    Accepts any sized iterables (set, frozenset, list).
     """
     sa, sb = set(a), set(b)
     if not sa or not sb:

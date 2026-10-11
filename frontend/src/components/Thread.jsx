@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { formatTime, isNoProviderError } from "../lib";
-import { IconCheck, IconChevronDown, IconCopy, IconInfo, IconPencil, IconRefresh } from "./icons";
+import { IconCheck, IconCopy, IconInfo, IconPencil, IconRefresh } from "./icons";
 
 /* Chat thread: right-aligned user bubbles, DeepScout responses, working action row. */
 
@@ -153,44 +153,6 @@ export function AgentMessageShell({ text, onRegenerate, canRegenerate, children 
           <MessageActions text={text} onRegenerate={onRegenerate} canRegenerate={canRegenerate} />
         ) : null}
       </div>
-    </div>
-  );
-}
-
-export function TypingRow() {
-  return (
-    <span className="typing-pill" role="status">
-      <i /><i /><i />
-      Agents reviewing…
-    </span>
-  );
-}
-
-export function ThinkingSteps({ steps }) {
-  const [open, setOpen] = useState(false);
-  if (!steps || steps.length === 0) return null;
-  // Collapsed by default: the report is the product, the trace is support.
-  return (
-    <div className="steps-card">
-      <button
-        className="steps-head"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-      >
-        <IconChevronDown size={13} className={open ? "flip" : ""} />
-        {open ? "Hide pipeline trace" : `Pipeline trace · ${steps.length} step${steps.length === 1 ? "" : "s"}`}
-      </button>
-      {open ? (
-        <div className="steps-list">
-          {steps.map((t, i) => (
-            <div className="steps-row" key={i}>
-              <span className="steps-rail"><span className={`steps-dot kind-${t.kind || "wait"}`} /></span>
-              <span className="steps-text">{t.text}</span>
-              <span className="steps-time">{formatTime(t.at)}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }

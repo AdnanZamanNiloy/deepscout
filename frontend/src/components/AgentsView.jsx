@@ -2,7 +2,7 @@
  * tools are stated from the code, not marketing copy. Live per-agent latency
  * and cost are not instrumented yet — said plainly rather than faked. */
 
-import { IconChart, IconCheckCircle, IconDoc, IconSearch, IconShield, IconShieldCheck, IconTarget } from "./icons";
+import { IconChart, IconCheckCircle, IconDoc, IconSearch, IconShield, IconTarget } from "./icons";
 
 const AGENTS = [
   {

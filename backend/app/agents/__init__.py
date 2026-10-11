@@ -2,8 +2,8 @@
 
 Deliberately lazy: importing `app.agents` costs nothing, and each name pulls
 in only the module that defines it. That matters in the host application,
-where `app.agents.search` drags in httpx and provider SDKs that a worker
-running only synthesis should not pay for.
+where `app.agents.search` drags in httpx and provider SDKs that workers
+running only the engine bridges should not pay for.
 
 Public surface (stable names, additive-only evolution). Every name here
 MUST resolve to a real module — a name pointing at a module that was never
@@ -13,14 +13,8 @@ guarded by `tests/test_agents_facade.py::test_every_lazy_export_resolves`.
     orchestrate, OrchestrationPlan, ...          — adaptive orchestration
     planner_agent, execution_waves, ...          — planning contracts
     SearchClient, contract_queries, ...          — multi-provider search
-    summarizer_agent, verifier helpers           — extraction + verification
-    critic_agent                                — judgement
-    summarize_contradictions, compute_confidence — conflicts + scoring
-    coverage_gaps                                — dynamic depth
+    compute_confidence, ConfidenceReport         — scoring
     ResearchBudget, retry/breaker helpers        — operational limits + reliability
-
-Executive decision (`app.core.decision`) lives outside this package; this
-facade re-exports agent modules only.
 """
 from __future__ import annotations
 
@@ -28,14 +22,12 @@ from typing import Any
 
 _LAZY: dict[str, str] = {
     # orchestration
-    "orchestrate": "app.agents.orchestrator",
-    "OrchestrationPlan": "app.agents.orchestrator",
     "ComplexityScore": "app.agents.orchestrator",
     "PlanTargets": "app.agents.orchestrator",
+    "plan_targets": "app.agents.orchestrator",
     "score_complexity": "app.agents.orchestrator",
-    "recommend_mode": "app.agents.orchestrator",
+    "classify_query_type": "app.agents.orchestrator",
     "MODE_PRESETS": "app.agents.orchestrator",
-    "VALID_MODES": "app.agents.orchestrator",
     # planning
     "planner_agent": "app.agents.planner",
     "execution_waves": "app.agents.planner",
@@ -46,41 +38,15 @@ _LAZY: dict[str, str] = {
     "SearchClient": "app.agents.search",
     "contract_queries": "app.agents.search",
     "SearchResult": "app.agents.search",
-    # extraction / verification
-    "summarizer_agent": "app.agents.summarizer",
-    "specialist_system_prompt": "app.agents.summarizer",
-    "verify_facts": "app.agents.verifier",
-    # judgement / adversarial
-    "critic_agent": "app.agents.critic",
-    # analytical synthesis (thesis between plan and writer)
-    "analytical_synthesis": "app.agents.analyst",
-    "AnalyticalBrief": "app.agents.analyst",
     # conflicts / scoring
-    "summarize_contradictions": "app.agents.contradiction",
-    "contradiction_followups": "app.agents.contradiction",
     "compute_confidence": "app.agents.confidence",
     "ConfidenceReport": "app.agents.confidence",
-    # depth control
-    "coverage_gaps": "app.agents.stopping",
     # operational limits / reliability
     "ResearchBudget": "app.agents.budget",
     "MODE_LIMIT_MULTIPLIER": "app.agents.budget",
     "retry_async": "app.agents.reliability",
     "CircuitBreaker": "app.agents.reliability",
     "gather_bounded": "app.agents.reliability",
-    # epistemics: conflict adjudication, claim standards, coverage balance
-    "assess_epistemics": "app.agents.epistemic.asymmetry",
-    "EpistemicReport": "app.agents.epistemic.asymmetry",
-    "coverage_asymmetry": "app.agents.epistemic.asymmetry",
-    "adjudicate": "app.agents.epistemic.conflicts",
-    "adjudicate_all": "app.agents.epistemic.conflicts",
-    "classify_conflict": "app.agents.epistemic.conflicts",
-    "ConflictKind": "app.agents.epistemic.conflicts",
-    "Resolution": "app.agents.epistemic.conflicts",
-    "classify_claim": "app.agents.epistemic.claims",
-    "assess_standards": "app.agents.epistemic.claims",
-    "ClaimType": "app.agents.epistemic.claims",
-    "EVIDENCE_STANDARDS": "app.agents.epistemic.claims",
     "apply_epistemic_adjustments": "app.agents.confidence",
     # sources / evidence
     "classify_source": "app.agents.sources",

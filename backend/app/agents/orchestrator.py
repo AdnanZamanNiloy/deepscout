@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 # ---------------------------------------------------------------------------
 # Lexical signals
@@ -350,13 +350,6 @@ def score_complexity(query: str) -> ComplexityScore:
 # Modes and targets
 # ---------------------------------------------------------------------------
 
-LEVEL_TARGETS: Dict[str, int] = {
-    "low": 3,
-    "medium": 4,
-    "high": 5,
-    "very_high": 6,
-}
-
 # Confidence a mode is trying to reach before it stops. A quick answer is
 # allowed to be less certain — that is the trade the user chose by asking for a
 # quick answer — while deep exists precisely to be thorough.
@@ -380,30 +373,6 @@ MODE_PRESETS: Dict[str, Dict[str, Any]] = {
     "standard": {"max_agents": 3, "max_iterations": 3, "deep_research": False},
     "deep":      {"max_agents": 5, "max_iterations": 5, "deep_research": True},
 }
-VALID_MODES = tuple(MODE_PRESETS.keys())
-
-# Modes a caller may have used historically, mapped to what they became. Kept
-# so a stored run, a saved URL, or an older client that still sends one of
-# these names gets a working run instead of a validation error — the mapping
-# is applied wherever an incoming mode is first read.
-LEGACY_MODES: Mapping[str, str] = {
-    "executive": "deep",
-    "audit": "standard",
-}
-
-
-def resolve_mode(mode: Any) -> str:
-    """Normalise any incoming mode string to one of VALID_MODES.
-
-    Returns "standard" for anything unrecognised, including None. A legacy name
-    maps to the mode that inherited its behaviour rather than to the default,
-    so an old `executive` run still gets deep research instead of silently
-    becoming shallow.
-    """
-    key = str(mode or "").strip().lower()
-    if key in MODE_PRESETS:
-        return key
-    return LEGACY_MODES.get(key, "standard")
 
 # Fix B.1 — depth scales with the research map, but stays strictly bounded.
 # A live deep run hit the 5-iteration ceiling with a 12-contract map and
@@ -432,27 +401,6 @@ def scaled_max_iterations(mode: str, target_agents: int) -> int:
     per_pass = max(1, int(SCALED_MODE_MIN_CONTRACTS_PER_PASS))
     needed = -(-agents // per_pass)  # ceil division, integer math
     return max(base, DEEP_MODE_ITERATION_FLOOR, needed)
-
-
-def recommend_mode(complexity: ComplexityScore) -> str:
-    """Mode DeepScout would pick if the user did not.
-
-    A recommendation, never an override: modes cost money and latency, and the
-    user's explicit choice always wins in `orchestrate`. Exposed so the UI can
-    show "Deep Research recommended" with a reason instead of making the user
-    guess.
-    """
-    # A decision query at high complexity wants the decision layer and the
-    # analytical report. That is `deep` now, which carries both.
-    if complexity.is_decision and complexity.level in ("high", "very_high"):
-        return "deep"
-    if complexity.level == "very_high":
-        return "deep"
-    if complexity.level == "low" and complexity.query_type == "factual":
-        return "quick"
-    if complexity.is_contested:
-        return "deep"
-    return "standard"
 
 
 @dataclass
@@ -545,133 +493,4 @@ def plan_targets(
         confidence_target=MODE_CONFIDENCE_TARGET.get(mode, 0.75),
         required_axes=required[:5],
         specialists=specialists[:5],
-    )
-
-
-# ---------------------------------------------------------------------------
-# Orchestration plan
-# ---------------------------------------------------------------------------
-
-@dataclass
-class OrchestrationPlan:
-    complexity: ComplexityScore
-    target_agents: int
-    clamped: bool
-    deep_research: bool
-    max_parallel_agents: int
-    notes: List[str] = field(default_factory=list)
-    # --- additive fields ---
-    mode: str = "standard"
-    recommended_mode: str = "standard"
-    targets: Optional[PlanTargets] = None
-    budget_multiplier: float = 1.0
-
-    @property
-    def dimensions(self) -> List[str]:
-        return list(self.complexity.dimensions)
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "complexity": self.complexity.to_dict(),
-            "target_agents": self.target_agents,
-            "clamped": self.clamped,
-            "deep_research": self.deep_research,
-            "max_parallel_agents": self.max_parallel_agents,
-            "notes": list(self.notes),
-            "mode": self.mode,
-            "recommended_mode": self.recommended_mode,
-            "targets": self.targets.to_dict() if self.targets else None,
-            "budget_multiplier": self.budget_multiplier,
-        }
-
-
-def orchestrate(
-    query: str,
-    max_parallel_agents: int,
-    deep_research: bool = False,
-    mode: str = "",
-) -> OrchestrationPlan:
-    """Map a query to a research strategy under the hardware cap.
-
-    Signature is backwards compatible; `mode` is new and optional. When it is
-    empty the orchestrator recommends one but still uses the default target
-    mapping, so existing callers see identical `target_agents` behaviour.
-
-    very_high complexity with an explicit deep_research=true flag (or the
-    deep mode, which IS the opt-in) may exceed the default cap; otherwise
-    the clamp holds.
-    """
-    complexity = score_complexity(query)
-    recommended = recommend_mode(complexity)
-
-    requested_mode = str(mode or "").strip().lower()
-    effective_mode = requested_mode if requested_mode in MODE_PRESETS else "standard"
-    notes: List[str] = []
-    if requested_mode and requested_mode not in MODE_PRESETS:
-        notes.append(f"unknown mode {requested_mode!r}; falling back to standard")
-
-    # A deep mode selection is itself the deep-research opt-in.
-    if effective_mode == "deep":
-        deep_research = True
-
-    raw_target = LEVEL_TARGETS[complexity.level]
-    if requested_mode in MODE_PRESETS:
-        # An explicit mode bounds the plan: quick must stay quick even on a
-        # very_high query, which is the user trading depth for latency.
-        mode_cap = int(MODE_PRESETS[effective_mode]["max_agents"])
-        if mode_cap < raw_target:
-            notes.append(
-                f"mode {effective_mode} caps the plan at {mode_cap} angle(s) "
-                f"(complexity suggested {raw_target})"
-            )
-        raw_target = min(raw_target, mode_cap)
-
-    # A question spanning many dimensions needs at least one angle per
-    # dimension, up to the caps below — otherwise a 6-dimension decision
-    # question gets researched along 4 axes and two dimensions never appear.
-    dimension_floor = min(len(complexity.dimensions), 6)
-    if dimension_floor > raw_target and effective_mode == "deep":
-        notes.append(
-            f"raised target to {dimension_floor} to cover every detected dimension"
-        )
-        raw_target = dimension_floor
-
-    effective_cap = max_parallel_agents
-    if complexity.level == "very_high" and deep_research:
-        effective_cap = max(max_parallel_agents, raw_target)
-    elif effective_mode == "deep":
-        # The mode IS the depth opt-in: covering every detected dimension may
-        # exceed the default hardware cap, or the dimension-coverage raise
-        # above would be clamped straight back down — recreating exactly the
-        # "six dimensions researched along four axes" failure it exists to
-        # prevent. The mode's own max_agents still bounds the plan.
-        effective_cap = max(max_parallel_agents, raw_target)
-
-    target_agents = max(1, min(raw_target, effective_cap))
-    clamped = target_agents < raw_target
-    if clamped:
-        if complexity.level == "very_high" and not deep_research:
-            notes.append(
-                "very_high complexity clamped to MAX_PARALLEL_AGENTS; "
-                "pass deep_research=true to lift the cap"
-            )
-        else:
-            notes.append(
-                f"{complexity.level} complexity target {raw_target} clamped to "
-                f"MAX_PARALLEL_AGENTS={max_parallel_agents}"
-            )
-
-    from app.agents.budget import MODE_LIMIT_MULTIPLIER
-
-    return OrchestrationPlan(
-        complexity=complexity,
-        target_agents=target_agents,
-        clamped=clamped,
-        deep_research=deep_research,
-        max_parallel_agents=max_parallel_agents,
-        notes=notes,
-        mode=effective_mode,
-        recommended_mode=recommended,
-        targets=plan_targets(complexity, effective_mode, target_agents),
-        budget_multiplier=MODE_LIMIT_MULTIPLIER.get(effective_mode, 1.0),
     )

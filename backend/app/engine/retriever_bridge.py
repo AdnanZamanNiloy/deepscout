@@ -17,7 +17,6 @@ pages already read here.
 from __future__ import annotations
 
 import asyncio
-import contextvars
 from typing import Any, Callable, Dict, List, Optional
 
 from app.agents.search import SearchClient
@@ -27,30 +26,6 @@ logger = get_logger(__name__)
 
 # Distinguishes "no fetch requested" from "fetch returned nothing".
 _DEFAULT_MAX_RESULTS = 10
-
-# Per-run source collector. The engine instantiates the retriever class itself,
-# so there is no constructor seam to hand it a run-scoped object. A ContextVar
-# carries the active collector on the async task that owns the run — the search
-# runs on the app's main loop via run_coroutine_threadsafe, but we set the
-# ContextVar from within the same coroutine that calls ``search`` would break:
-# the sync ``search`` runs in a worker thread, so the collector is read here
-# through the bound instance instead. See ``make_retriever_class``.
-_SOURCE_SINK: contextvars.ContextVar[Optional[Callable[[List[Dict[str, Any]]], None]]] = (
-    contextvars.ContextVar("engine_source_sink", default=None)
-)
-
-
-def set_source_sink(
-    sink: Optional[Callable[[List[Dict[str, Any]]], None]],
-) -> contextvars.Token:
-    """Install the per-run collector for retrieved sources.
-
-    Returns the ContextVar token so the caller can ``reset`` it in a finally
-    block (AGENTS.md 4.3: run-scoped, explicitly cleaned up). ``sink`` receives
-    the raw backend search dicts (title/url/content/published_at/...) before
-    they are shaped for the engine.
-    """
-    return _SOURCE_SINK.set(sink)
 
 
 class DeepScoutRetriever:

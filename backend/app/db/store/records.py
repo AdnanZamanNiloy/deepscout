@@ -266,32 +266,6 @@ async def save_critic_review(database_path: str, run_id: str, iteration: int, cr
         await db.commit()
 
 
-async def save_decisions(database_path: str, run_id: str, options: list) -> None:
-    """One row per strategic option from the Decision Layer (3.5)."""
-    rows = [
-        (
-            run_id,
-            str(o.get("option_label", "")).strip(),
-            str(o.get("description", "")).strip(),
-            1 if o.get("is_recommended") else 0,
-            str(o.get("rationale", "")),
-            str(o.get("risk_note", "")),
-            _now(),
-        )
-        for o in options
-        if isinstance(o, dict) and str(o.get("option_label", "")).strip() and str(o.get("description", "")).strip()
-    ]
-    if not rows:
-        return
-    async with _connect(database_path) as db:
-        await db.executemany(
-            "INSERT INTO decisions (run_id, option_label, description, is_recommended, rationale, risk_note, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            rows,
-        )
-        await db.commit()
-
-
 async def save_contradictions(database_path: str, run_id: str, contradictions: list) -> int:
     """Persist detected contradiction pairs for replay and diagnosis."""
     rows = [

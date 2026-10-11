@@ -326,12 +326,6 @@ CORROBORATION_ANCHOR_MIN_CONTENT_OVERLAP = 2
 CORROBORATION_ANCHOR_TITLE_MIN_SHARED = 3
 CORROBORATION_ANCHOR_TITLE_MIN_FRACTION = 0.34
 
-# Bounded retained page text used for matching after verification blanks the
-# full content (memory-release rule). Short enough to keep thousands of
-# results cheap.
-CORROBORATION_EXCERPT_CHARS = 800
-
-
 def _rare_anchors(text: str) -> Set[str]:
     return rare_content_tokens(text)
 

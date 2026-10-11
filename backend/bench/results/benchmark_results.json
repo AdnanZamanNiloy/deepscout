@@ -1,33 +1,11 @@
 {
   "suite": "deepscout-offline-benchmarks",
   "version": "2.0",
-  "ran_at": "2026-09-19T16:48:22.167499+00:00",
+  "ran_at": "2026-10-11T07:53:46.770872+00:00",
   "python": "3.12.13",
-  "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.43",
+  "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
   "quick": true,
   "components": {
-    "verification": {
-      "n": 16,
-      "tp": 8,
-      "fp": 0,
-      "fn": 0,
-      "tn": 8,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0,
-      "accuracy": 1.0,
-      "latency_ms": 2.65,
-      "per_case_us": 165.9,
-      "misses": []
-    },
-    "hallucination": {
-      "n": 6,
-      "rejected": 6,
-      "false_accepts": 0,
-      "hallucination_leak_rate": 0.0,
-      "rejection_rate": 1.0,
-      "leaked": []
-    },
     "citation_support": {
       "n": 5,
       "correct": 5,
@@ -50,7 +28,7 @@
         "polarity": 3,
         "temporal": 1
       },
-      "latency_ms": 4.35,
+      "latency_ms": 6.13,
       "errors": []
     },
     "confidence_calibration": {
@@ -146,7 +124,7 @@
     "semantic_engine": {
       "pairs": 20,
       "spearman_vs_labels": 0.7094,
-      "pair_latency_us": 153.5,
+      "pair_latency_us": 181.2,
       "dedup": {
         "n": 10,
         "precision": 1.0,
@@ -155,8 +133,8 @@
         "threshold": 0.86
       },
       "matrix_ms": {
-        "100": 376.3,
-        "300": 453.79
+        "100": 671.3,
+        "300": 796.57
       },
       "score_label_sample": [
         {
@@ -197,82 +175,30 @@
         }
       ]
     },
-    "intent_classification": {
-      "accuracy": 1.0,
-      "cases": [
-        {
-          "query": "What is transformer?",
-          "ambiguity": true,
-          "action": "research_both",
-          "domain": "machine_learning",
-          "expected_domain": "machine_learning",
-          "ok": true
-        },
-        {
-          "query": "python snake feeding habits",
-          "ambiguity": false,
-          "action": "research_dominant",
-          "domain": "science",
-          "expected_domain": "science",
-          "ok": true
-        },
-        {
-          "query": "compare nuclear vs solar economics in Bangladesh",
-          "ambiguity": false,
-          "action": "research_dominant",
-          "domain": "general",
-          "expected_domain": "general",
-          "ok": true
-        },
-        {
-          "query": "What is apple?",
-          "ambiguity": true,
-          "action": "research_both",
-          "domain": "general",
-          "expected_domain": "general",
-          "ok": true
-        }
-      ]
-    },
-    "query_router": {
-      "cases": 21,
-      "routing_pass_rate": 1.0,
-      "missed_research_count": 0,
-      "missed_research": [],
-      "passed": true,
-      "failed_cases": []
-    },
-    "answer_quality": {
-      "good_overall": 88,
-      "good_passed": true,
-      "bad_overall": 58,
-      "bad_passed": false,
-      "ordering_ok": true
-    },
     "llm_cache": {
       "prompts": 24,
       "unique": 8,
       "provider_calls_first_pass": 8,
       "provider_calls_second_pass": 8,
       "cache_hit_ratio_first_pass": 0.6667,
-      "uncached_pass_ms": 61.59,
-      "cached_pass_ms": 0.24,
-      "speedup": 254.0,
+      "uncached_pass_ms": 130.74,
+      "cached_pass_ms": 0.44,
+      "speedup": 293.81,
       "tokens_saved_per_repeat": 70,
       "note": "second pass serves 24/24 from cache; provider_calls unchanged"
     },
     "latency": {
-      "matrix_60_facts_ms": 218.24,
-      "matrix_200_facts_ms": 572.35,
-      "cross_40x200_ms": 10.61,
-      "contradictions_60_facts_ms": 280.53,
-      "dedupe_60_facts_ms": 242.05,
-      "answer_support_40sent_ms": 0.28
+      "matrix_60_facts_ms": 403.17,
+      "matrix_200_facts_ms": 1038.78,
+      "cross_40x200_ms": 24.17,
+      "contradictions_60_facts_ms": 492.96,
+      "dedupe_60_facts_ms": 435.4,
+      "answer_support_40sent_ms": 0.5
     },
     "memory": {
-      "rss_before_kib": 88428,
-      "rss_after_kib": 110364,
-      "delta_kib": 21936,
+      "rss_before_kib": 82968,
+      "rss_after_kib": 105068,
+      "delta_kib": 22100,
       "note": "ru_maxrss is process-lifetime max; delta bounds engine cost"
     }
   }

@@ -36,9 +36,6 @@ logger = get_logger(__name__)
 _MD_LINK_RE = re.compile(r"\[([^\]]*)\]\((https?://[^\s)]+)\)")
 # A bare URL, for sources that were not hyperlinked.
 _BARE_URL_RE = re.compile(r"https?://[^\s)\]>\"']+")
-# Engine source-list lines ("-  Title, year, Author [url](url)") or legends
-# ("[1] Title — https://...").
-_LEGEND_LINE_RE = re.compile(r"^\s*(?:-|\*)?\s*\[?(\d+)\]?[.)]?\s+(.*)$")
 _DOMAIN_RE = re.compile(r"^https?://([^/]+)", re.IGNORECASE)
 
 
@@ -57,16 +54,6 @@ def _extract_urls(text: str) -> List[str]:
             seen.add(url)
             found.append(url)
     return found
-
-
-def _title_for(url: str, sources_by_url: Dict[str, Dict[str, Any]]) -> str:
-    """A human title for ``url``: the captured page title, else the domain."""
-    meta = sources_by_url.get(url) or {}
-    title = str(meta.get("title") or "").strip()
-    if title:
-        return title
-    m = _DOMAIN_RE.match(url)
-    return m.group(1) if m else url
 
 
 def parse_engine_sources(engine_sources: Sequence[Any]) -> List[str]:

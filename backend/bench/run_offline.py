@@ -2,10 +2,9 @@
 """DeepScout offline benchmark suite.
 
 Deterministic, network-free measurement of the intelligence and performance
-properties the product claims: verification accuracy, citation quality,
-contradiction detection, confidence calibration, hallucination rejection,
-semantic engine fidelity, dedup precision, cache efficiency, end-to-end
-pipeline behavior (waves, stopping, budget) and component latency.
+properties the product claims: citation quality, contradiction detection,
+confidence calibration, semantic engine fidelity, dedup precision, and
+component latency.
 
 Run from backend/:
 
@@ -43,93 +42,6 @@ def _settings(tmp_dir: str) -> Settings:
         database_url=f"{tmp_dir}/bench.db",
         _env_file=None,
     )
-
-
-# ---------------------------------------------------------------------------
-# Benchmark 1: verification accuracy (precision/recall/F1)
-# ---------------------------------------------------------------------------
-
-def bench_verification(settings: Settings) -> Dict[str, Any]:
-    from app.agents.verifier import verify_facts
-    from bench.datasets import VERIFICATION_CASES
-
-    search_results = [
-        {"url": url, "content": text, "snippet": text[:180], "published_at": "2024-06-15"}
-        for (claim, url, text, expected) in VERIFICATION_CASES
-    ]
-    facts = [
-        {"claim": claim, "source": url, "confidence": 0.8}
-        for (claim, url, text, expected) in VERIFICATION_CASES
-    ]
-    t0 = time.perf_counter()
-    verified = verify_facts(facts, search_results)
-    elapsed = time.perf_counter() - t0
-
-    tp = fp = fn = tn = 0
-    misses: List[Dict[str, str]] = []
-    for fact, (claim, url, text, expected) in zip(verified, VERIFICATION_CASES):
-        got = bool(fact.get("verified"))
-        if expected and got:
-            tp += 1
-        elif expected and not got:
-            fn += 1
-            misses.append({"claim": claim, "expected": "verified",
-                           "reason": str(fact.get("verification_reason", ""))[:100]})
-        elif not expected and got:
-            fp += 1
-            misses.append({"claim": claim, "expected": "rejected",
-                           "reason": str(fact.get("verification_reason", ""))[:100]})
-        else:
-            tn += 1
-
-    precision = tp / (tp + fp) if (tp + fp) else 0.0
-    recall = tp / (tp + fn) if (tp + fn) else 0.0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
-    accuracy = (tp + tn) / len(VERIFICATION_CASES)
-    return {
-        "n": len(VERIFICATION_CASES),
-        "tp": tp, "fp": fp, "fn": fn, "tn": tn,
-        "precision": round(precision, 4),
-        "recall": round(recall, 4),
-        "f1": round(f1, 4),
-        "accuracy": round(accuracy, 4),
-        "latency_ms": round(elapsed * 1000, 2),
-        "per_case_us": round(elapsed * 1e6 / max(1, len(VERIFICATION_CASES)), 1),
-        "misses": misses,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Benchmark 2: hallucination rejection rate
-# ---------------------------------------------------------------------------
-
-def bench_hallucination(settings: Settings) -> Dict[str, Any]:
-    from app.agents.verifier import verify_facts
-    from bench.datasets import HALLUCINATION_CASES
-
-    search_results = [
-        {"url": url, "content": text, "snippet": text[:180], "published_at": "2024-06-15"}
-        for (claim, url, text) in HALLUCINATION_CASES
-    ]
-    facts = [
-        {"claim": claim, "source": url, "confidence": 0.8}
-        for (claim, url, text) in HALLUCINATION_CASES
-    ]
-    verified = verify_facts(facts, search_results)
-    accepted = [f for f, (c, _, _) in zip(verified, HALLUCINATION_CASES) if f.get("verified")]
-    false_accepts = [
-        {"claim": c, "reason": str(f.get("verification_reason", ""))[:100]}
-        for f, (c, _, _) in zip(verified, HALLUCINATION_CASES) if f.get("verified")
-    ]
-    rejected = len(HALLUCINATION_CASES) - len(accepted)
-    return {
-        "n": len(HALLUCINATION_CASES),
-        "rejected": rejected,
-        "false_accepts": len(accepted),
-        "hallucination_leak_rate": round(len(accepted) / max(1, len(HALLUCINATION_CASES)), 4),
-        "rejection_rate": round(rejected / max(1, len(HALLUCINATION_CASES)), 4),
-        "leaked": false_accepts,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -550,36 +462,20 @@ def write_markdown_report(report: Dict[str, Any], results_dir: Path) -> Path:
     a("")
     a("| Component | Headline metrics |")
     a("|---|---|")
-    v, hu, ci, co, cf = c["verification"], c["hallucination"], c["citation_support"], c["contradictions"], c["confidence_calibration"]
+    ci = c["citation_support"]
+    co = c["contradictions"]
+    cf = c["confidence_calibration"]
     se = c["semantic_engine"]
     cache = c["llm_cache"]
-    a(f"| Verification accuracy | P={_fmt(v['precision'])} R={_fmt(v['recall'])} F1={_fmt(v['f1'])} ({v['n']} labeled cases) |")
-    a(f"| Hallucination rejection | leak rate {_fmt(hu['hallucination_leak_rate'])} ({hu['rejected']}/{hu['n']} fabricated claims rejected) |")
     a(f"| Citation support | sentence accuracy {_fmt(ci['accuracy'])}, numeric grounding {_fmt(ci.get('numeric_rate') or 0)} |")
     a(f"| Contradiction detection | P={_fmt(co['precision'])} R={_fmt(co['recall'])} F1={_fmt(co['f1'])} across {len(co['kinds_detected'])} kinds {list(co['kinds_detected'])} |")
     a(f"| Confidence calibration | {int(cf['in_band_rate'] * 100)}% in expected band, monotonic ordering: {cf['monotonic_ordering']} |")
     a(f"| Semantic engine | Spearman {_fmt(se['spearman_vs_labels'])} vs labels, dedup F1 {_fmt(se['dedup']['f1'])} @ 0.86 |")
-    rt = c.get("query_router")
-    if rt:
-        a(f"| Query router | routing accuracy {_fmt(rt['routing_pass_rate'])} across {rt['cases']} labeled queries, "
-          f"missed-research {rt['missed_research_count']} |")
     a(f"| LLM response cache | {int((cache['cache_hit_ratio_first_pass'] or 0) * 100)}% hit ratio on repeat-heavy workload, {cache['speedup']}x repeat-pass speedup |")
     a("Raw numbers: `benchmark_results.json` alongside this file.")
     a("")
 
     a("## Intelligence detail")
-    a("")
-    a("### Verification (claim vs source)")
-    a("")
-    a(f"{v['tp']} true positives, {v['fp']} false accepts, {v['fn']} false rejects, {v['tn']} true rejects.")
-    a("Hard checks: weighted lexical overlap, source authority, unit-aware numeric grounding,")
-    a("polarity consistency vs the most-similar source sentence, direct-quote location.")
-    a(f"Per-claim latency {_fmt(v['per_case_us'])} µs. Misses: {len(v['misses'])}.")
-    a("")
-    a("### Hallucination adversarial set")
-    a("")
-    a("Fabricated numbers, invented facts, and retraction claims against clean sources.")
-    a(f"Rejected {hu['rejected']}/{hu['n']}; leak rate {_fmt(hu['hallucination_leak_rate'])}.")
     a("")
     a("### Contradiction engine v2")
     a("")
@@ -655,15 +551,10 @@ def run_all(quick: bool = False, out_dir: str | None = None) -> Dict[str, Any]:
     print("=" * 62)
 
     benchmarks: List[tuple] = [
-        ("verification", lambda: bench_verification(settings)),
-        ("hallucination", lambda: bench_hallucination(settings)),
         ("citation_support", lambda: bench_citation_support(settings)),
         ("contradictions", lambda: bench_contradictions(settings)),
         ("confidence_calibration", lambda: bench_confidence(settings)),
         ("semantic_engine", lambda: bench_semantic(settings)),
-        ("intent_classification", lambda: bench_intent(settings)),
-        ("query_router", lambda: bench_router(settings)),
-        ("answer_quality", lambda: bench_quality(settings)),
         ("llm_cache", lambda: asyncio.run(_bench_cache(settings))),
         ("latency", lambda: bench_latency(settings)),
         ("memory", lambda: bench_memory(settings)),
@@ -689,133 +580,6 @@ def run_all(quick: bool = False, out_dir: str | None = None) -> Dict[str, Any]:
         print(f"report generation failed: {exc}")
     print(f"results written: {json_path}")
     return report
-
-
-# ---------------------------------------------------------------------------
-# Benchmark 11: intent classification + answer quality gate
-# ---------------------------------------------------------------------------
-
-INTENT_CASES = [
-    # (query, expected_ambiguous, expected_dominant_domain)
-    ("What is transformer?", True, "machine_learning"),
-    ("python snake feeding habits", False, "science"),
-    # fallback is deliberately crude on unmarked domains: general (the LLM
-    # path classifies economics)
-    ("compare nuclear vs solar economics in Bangladesh", False, "general"),
-    ("What is apple?", True, "general"),
-]
-
-
-def bench_intent(settings: Settings) -> Dict[str, Any]:
-    """The deterministic intent fallback: ambiguity detection and dominant
-    domain on labeled queries (the LLM path is measured by live runs)."""
-    from app.agents.intent import heuristic_intent
-
-    rows: List[Dict[str, Any]] = []
-    hits = 0
-    for query, want_ambiguous, want_domain in INTENT_CASES:
-        report = heuristic_intent(query)
-        got_domain = report.senses[0].domain if report.senses else report.domain
-        ok = (report.ambiguity == want_ambiguous) and (got_domain == want_domain)
-        hits += 1 if ok else 0
-        rows.append({
-            "query": query,
-            "ambiguity": report.ambiguity,
-            "action": report.recommended_action,
-            "domain": got_domain,
-            "expected_domain": want_domain,
-            "ok": ok,
-        })
-    return {
-        "accuracy": round(hits / len(INTENT_CASES), 4),
-        "cases": rows,
-    }
-
-
-GOOD_QUALITY_ANSWER = (
-    "## Executive Summary\n\n"
-    "The transformer is a neural network architecture built on attention: every "
-    "token attends to every other, replacing recurrence entirely. [1]\n\n"
-    "## Key Findings\n\n"
-    "- Attention weighs every input token against every other [1].\n"
-    "- Self-attention removes the recurrence bottleneck of earlier models [2].\n\n"
-    "## Limitations\n\n"
-    "Could not verify: claims without a traceable source were discarded.\n\n"
-    "## Sources\n\n"
-    "[1] arxiv.org (preprint, primary) — https://arxiv.org/abs/1706.03762\n\n"
-    "[2] aclanthology.org (peer_reviewed, primary) — https://aclanthology.org/x"
-)
-
-BAD_QUALITY_ANSWER = (
-    "# Final Answer\n\n"
-    "Some statistics were found.\n\n"
-    "- 40% 2024 2000 GW\n"
-    "- 1.2 billion usd\n\n"
-    "## Sources\n\n[1] arxiv.org (preprint, primary) — https://arxiv.org/abs/1706.03762"
-)
-
-QUALITY_FACTS = [
-    {"claim": "The transformer architecture uses attention mechanisms.",
-     "source": "https://arxiv.org/abs/1706.03762", "verified": True,
-     "sub_question": "what is the transformer architecture"},
-    {"claim": "Attention weighs every input token against every other.",
-     "source": "https://aclanthology.org/x", "verified": True,
-     "sub_question": "transformer mechanism components"},
-]
-
-QUALITY_SUPPORT = {
-    "rate": 1.0, "cited": 2, "supported": 2, "uncited": 0, "numeric_rate": None,
-    "sentences": 4,
-    "sentence_details": [
-        {"sentence": "The transformer is a neural network architecture built on attention [1].",
-         "markers": [1], "status": "supported", "support": 0.8},
-        {"sentence": "Attention weighs every input token against every other [1].",
-         "markers": [1], "status": "supported", "support": 0.7},
-    ],
-}
-
-
-def bench_router(settings: Settings) -> Dict[str, Any]:
-    """Query-router deterministic gate on labeled queries: evidence-requiring
-    queries must never clear for a direct answer, and stable general-knowledge
-    queries must carry no hard blocker. The full evaluator lives in
-    bench/eval_router.py; this folds its aggregate into the main suite."""
-    from bench.eval_router import evaluate as evaluate_router
-
-    result = evaluate_router()
-    return {
-        "cases": len(result["cases"]),
-        "routing_pass_rate": result["metrics"]["router_routing_pass_rate"],
-        "missed_research_count": result["metrics"]["missed_research_count"],
-        "missed_research": result["missed_research"],
-        "passed": result["passed"],
-        "failed_cases": [
-            {"query": c["query"], "expected": c["expected_path"], "got": c["actual_path"]}
-            for c in result["cases"] if not c["passed"]
-        ],
-    }
-
-
-def bench_quality(settings: Settings) -> Dict[str, Any]:
-    """The answer-quality gate on labeled good/bad drafts: the good draft must
-    pass at the default threshold; the statistics dump must fail."""
-    from app.agents.answer_quality import evaluate_answer
-
-    intent = {"ambiguity": False, "senses": [], "explanation_level": "practical",
-              "recommended_action": "research_dominant", "domain": "machine_learning"}
-    good = evaluate_answer("What is the transformer architecture?", intent=intent,
-                           answer=GOOD_QUALITY_ANSWER, facts=QUALITY_FACTS,
-                           answer_support=QUALITY_SUPPORT, mode="quick")
-    bad = evaluate_answer("What is the transformer architecture?", intent=intent,
-                          answer=BAD_QUALITY_ANSWER, facts=QUALITY_FACTS,
-                          answer_support=QUALITY_SUPPORT, mode="standard")
-    return {
-        "good_overall": good.overall,
-        "good_passed": good.passed,
-        "bad_overall": bad.overall,
-        "bad_passed": bad.passed,
-        "ordering_ok": good.overall > bad.overall,
-    }
 
 
 def main() -> int:

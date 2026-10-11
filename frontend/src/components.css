@@ -416,18 +416,6 @@
 .degraded-banner svg { flex: none; margin-top: 2px; color: var(--amber); }
 .degraded-banner strong { color: var(--amber); }
 
-.typing-pill {
-  display: inline-flex; align-items: center; gap: 8px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 9px 15px;
-  font-size: 12px;
-  color: var(--t3);
-}
-.typing-pill i { width: 5px; height: 5px; border-radius: 50%; background: var(--deepscout); animation: typing-bounce 1.2s infinite; }
-.typing-pill i:nth-child(2) { animation-delay: 0.15s; }
-.typing-pill i:nth-child(3) { animation-delay: 0.3s; }
 
 /* ============================================================
    INTELLIGENCE WIDGETS
@@ -651,51 +639,6 @@
 .mode-menu button.picked { color: var(--deepscout); background: var(--deepscout-wash); }
 .mode-menu button.picked small { color: var(--t3); }
 .chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
-
-/* ============================================================
-   THINKING STEPS (inline trace)
-   ============================================================ */
-
-.steps-card {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: 4px 14px 10px;
-  margin-bottom: 16px;
-}
-.steps-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 9px 0;
-  border: 0;
-  background: none;
-  color: var(--t3);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-}
-.steps-head:hover { color: var(--t1); }
-.steps-head svg { transition: transform 0.18s ease; }
-.steps-head svg.flip { transform: rotate(180deg); }
-.steps-list { position: relative; padding: 2px 0 2px 2px; }
-.steps-list::before {
-  content: "";
-  position: absolute;
-  left: 10px; top: 10px; bottom: 10px;
-  width: 1px;
-  background: var(--line);
-}
-.steps-row { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 5px 0; }
-.steps-rail { width: 18px; flex: none; display: flex; justify-content: center; padding-top: 5px; }
-.steps-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dot-idle); flex: none; }
-.steps-dot.kind-done { background: var(--mint); }
-.steps-dot.kind-warn { background: var(--amber); }
-.steps-dot.kind-active { border: 2px solid var(--deepscout); background: transparent; width: 9px; height: 9px; animation: pulse 1.6s ease-in-out infinite; }
-.steps-text { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.55; color: var(--t2); }
-.steps-time { flex: none; font-size: 10.5px; color: var(--t4); font-variant-numeric: tabular-nums; padding-top: 2px; }
 
 /* ============================================================
    CLAIM DRAWER
