@@ -14,8 +14,6 @@ from pydantic import BaseModel, Field
 from app.core.logging import get_logger
 from app.db.sqlite import (
     complete_research_run,
-    record_event,
-    save_critic_review,
     save_final_report,
     save_report,
     save_trace_frames,
@@ -84,23 +82,6 @@ def _with_trace_capture(
                 )
 
     return _tee()
-
-
-async def _persist_save(db: str, run_id: str, facts: list) -> None:
-    from app.db.sqlite import save_claims as _sc
-    try:
-        await _sc(db, run_id, facts)
-    except Exception as exc:
-        logger.warning("persistence_failed", error=str(exc), exc_info=exc)
-
-
-async def _persist_record(db: str, run_id: str, iteration: int, critique: dict,
-                          breakdown: dict | None = None) -> None:
-    try:
-        await record_event(db, run_id, "critic", "end", payload=json.dumps({"iteration": iteration}))
-        await save_critic_review(db, run_id, iteration, critique, breakdown=breakdown or {})
-    except Exception as exc:
-        logger.warning("persistence_failed", error=str(exc), exc_info=exc)
 
 
 async def _persist_complete(

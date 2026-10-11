@@ -75,23 +75,6 @@ class ConfidenceReport:
             "degraded_capped": self.degraded_capped,
         }
 
-    def render(self) -> str:
-        """The Feature-10 panel, as text the report can embed verbatim."""
-        weights = self.stats.get("weights", {})
-        rows = [
-            f"{name.replace('_', ' ').title():<24}{value * 100:>4.0f}%"
-            for name, value in sorted(
-                self.signals.items(), key=lambda kv: -weights.get(kv[0], 0)
-            )
-        ]
-        body = "\n".join(rows)
-        return (
-            "RESEARCH CONFIDENCE\n\n"
-            f"{body}\n"
-            f"{'-' * 28}\n"
-            f"{'OVERALL CONFIDENCE':<24}{self.overall * 100:>4.0f}%"
-        )
-
 
 def _level(score: float) -> str:
     if score >= 0.85:

@@ -90,10 +90,6 @@ class ResearchBudget:
             return False
         return True
 
-    def afford_pass(self, sub_questions: int, avg_prompt_chars: int = 6000) -> bool:
-        """Can one more research pass run within the call/time ceilings?"""
-        return self.can_afford(stage="pass", calls=max(1, sub_questions) + 1)
-
     def _refuse(self, stage: str, reason: str) -> None:
         message = f"{stage}: {reason}"
         if message not in self.refusals:

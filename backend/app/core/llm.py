@@ -556,13 +556,3 @@ def _breaker_seconds_left(breaker: Any) -> float:
     if opened_at is None or cooldown <= 0:
         return 0.0
     return max(0.0, cooldown - (time.monotonic() - float(opened_at)))
-
-
-
-
-def clamp_confidence(value: Any) -> float:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return 0.0
-    return max(0.0, min(1.0, number))

@@ -96,7 +96,6 @@ function blankRun(query, mode) {
     startedAt: new Date().toISOString(),
     started: true,
     plan: [],
-    orchestration: {},
     snippets: 0,
     findings: [],
     verifiedCount: 0,
@@ -109,19 +108,8 @@ function blankRun(query, mode) {
     providerDegraded: false,
     providerKinds: [],
     answerSupport: null,
-    // v2 signals: dependency-wave plan shape, per-source citation health,
-    // contradiction count.
-    waves: [],
-    waveReport: [],
     citationHealth: null,
     contradictions: 0,
-    // v2.1: resolved intent (senses, domain, explanation level).
-    intent: null,
-    // Query router: direct-vs-research decision (path, reason, confidence).
-    route: null,
-    // Direct-answer path: the delivered answer, when the router answered
-    // without research.
-    directAnswer: null,
     quality: null,
     // Answer-first outline: the section shape the writer targeted.
     outline: null,
@@ -467,59 +455,10 @@ export default function App() {
           }
         }
         break;
-      case "intent":
-        patchRun(tempId, {
-          intent: {
-            domain: evt.domain, queryType: evt.query_type, level: evt.explanation_level,
-            ambiguity: evt.ambiguity, senses: Array.isArray(evt.senses) ? evt.senses : [],
-            action: evt.recommended_action, origin: evt.origin,
-          },
-        });
-        break;
-      case "ambiguity":
-        // The ambiguity POLICY (what the run decided to do), distinct from the
-        // intent event's ambiguous flag. `ask` ends the run with a clarifying
-        // question, so the state records it plainly rather than looking like the
-        // answer to the question.
-        patchRun(tempId, {
-          ambiguity: {
-            action: evt.action || "",
-            interpretations: Array.isArray(evt.interpretations) ? evt.interpretations : [],
-            question: evt.question || "",
-            assumption: evt.assumption || "",
-            reason: evt.reason || "",
-          },
-        });
-        break;
-      case "route":
-        patchRun(tempId, {
-          route: {
-            path: evt.path, reason: evt.reason || "",
-            confidence: typeof evt.confidence === "number" ? evt.confidence : null,
-            origin: evt.origin || "", signals: evt.signals && typeof evt.signals === "object" ? evt.signals : {},
-          },
-        });
-        break;
-      case "direct_answer":
-        patchRun(tempId, {
-          directAnswer: {
-            answer: evt.answer || "",
-            confidence: typeof evt.confidence === "number" ? evt.confidence : null,
-            selfConfidence: typeof evt.self_confidence === "number" ? evt.self_confidence : null,
-            reason: evt.reason || "",
-            kind: evt.kind || "",
-          },
-        });
-        break;
       case "plan":
         patchRun(tempId, {
           plan: Array.isArray(evt.items) ? evt.items : [],
-          orchestration: evt.orchestration || {},
-          waves: Array.isArray(evt.waves) ? evt.waves : [],
         });
-        break;
-      case "search_progress":
-        if (typeof evt.snippets === "number") patchRun(tempId, { snippets: evt.snippets });
         break;
       case "critic":
         if (evt.iteration) {
@@ -531,29 +470,6 @@ export default function App() {
                 } }
               : m
           ));
-        }
-        break;
-      case "findings":
-        if (Array.isArray(evt.items)) {
-          setMessages((prev) => prev.map((m) => {
-            if (m.kind !== "run" || m.run.tempId !== tempId) return m;
-            // verified_update re-emits annotated facts (same length): upsert
-            // by claim text instead of appending duplicates.
-            let findings;
-            if (evt.verified_update) {
-              const byClaim = new Map(m.run.findings.map((f) => [f.claim, f]));
-              for (const item of evt.items) byClaim.set(item.claim, item);
-              findings = [...byClaim.values()];
-            } else {
-              // Key on claim+source: two distinct claims can share text, and
-              // empty-claim items must not collapse into one "" key.
-              const byKey = new Map(m.run.findings.map((f) => [`${f.claim}||${f.source}`, f]));
-              for (const item of evt.items) byKey.set(`${item.claim}||${item.source}`, item);
-              findings = [...byKey.values()];
-            }
-            return { ...m, run: { ...m.run, findings,
-              verifiedCount: findings.filter((f) => f.verified === true).length } };
-          }));
         }
         break;
       case "final_report":
@@ -570,7 +486,6 @@ export default function App() {
             providerDegraded: evt.provider_degraded === true,
             providerKinds: Array.isArray(evt.provider_kinds) ? evt.provider_kinds : [],
             answerSupport: typeof evt.answer_support === "number" ? evt.answer_support : null,
-            waveReport: Array.isArray(evt.wave_report) ? evt.wave_report : m.run.waveReport,
             citationHealth: evt.citation_health && typeof evt.citation_health === "object"
               ? evt.citation_health : m.run.citationHealth,
             quality: evt.quality && typeof evt.quality === "object" ? evt.quality : m.run.quality,

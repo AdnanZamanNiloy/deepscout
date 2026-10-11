@@ -1,6 +1,6 @@
 import {
   IconAlert, IconChart, IconCheckCircle, IconChevronRight,
-  IconDoc, IconRefresh, IconRoute, IconSearch, IconShield, IconShieldCheck, IconTarget,
+  IconDoc, IconRefresh, IconSearch, IconShield, IconShieldCheck, IconTarget,
 } from "./icons";
 
 /* Mission Intelligence — the run's instrument rail.
@@ -235,7 +235,7 @@ function deriveAgents(run) {
   // must reach 8 to mark the 7th stage (Synthesizer) done — reaching 7 left
   // Synthesizer stuck on "Queued" after the report shipped.
   let reached = 0;
-  if (run.intent || run.route || planned) reached = 2;
+  if (planned) reached = 2;
   if (sources) reached = 3;
   if (claims) reached = 4;
   if (verified) reached = 5;
@@ -274,24 +274,6 @@ function deriveHealth(run) {
     { icon: IconAlert, label: "Critic passes", value: String(run.critiques.length), tone: run.critiques.length > 1 ? "warn" : "muted", hot: run.critiques.length > 1 },
     { icon: IconTarget, label: "Research confidence", value: typeof run.confidence === "number" ? `${Math.round(run.confidence * 100)}%` : "—", tone: "muted" },
   ];
-  if (run.intent && run.intent.domain) {
-    rows.unshift({
-      icon: IconTarget,
-      label: `Intent · ${run.intent.level || "practical"}`,
-      value: `${run.intent.domain}${run.intent.ambiguity ? " · ambiguous" : ""}`,
-      tone: run.intent.ambiguity ? "warn" : "good",
-      hot: run.intent.ambiguity,
-    });
-  }
-  if (run.route && run.route.path) {
-    rows.push({
-      icon: IconRoute,
-      label: "Router",
-      value: run.route.path === "direct" ? "direct answer" : "research",
-      tone: run.route.path === "direct" ? "warn" : "muted",
-      hot: run.route.path === "direct",
-    });
-  }
   if (typeof run.answerSupport === "number") {
     rows.push({
       icon: IconCheckCircle, label: "Answer support", tone: run.answerSupport >= 0.8 ? "good" : "warn",

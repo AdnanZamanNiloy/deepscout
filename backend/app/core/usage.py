@@ -80,9 +80,6 @@ class RunUsage:
     def exhausted(self) -> bool:
         return self.budget.exhausted
 
-    def can_afford_pass(self, sub_questions: int, avg_prompt_chars: int = 6000) -> bool:
-        return self.budget.afford_pass(sub_questions, avg_prompt_chars)
-
     # -- reporting ----------------------------------------------------------
 
     def snapshot(self) -> Dict[str, Any]:
@@ -120,20 +117,6 @@ def get_run_usage() -> Optional[RunUsage]:
 
 def clear_run_usage() -> None:
     _RUN_USAGE.set(None)
-
-
-def run_seconds_remaining() -> float:
-    """Wall-clock seconds left in the current research run's time ceiling.
-
-    Ladders consult this before spending a second provider attempt: a
-    budget-aware retry is worth it, a retry that will be killed by the run
-    timeout anyway is not. Outside a run (tests, scripts) the answer is
-    'plenty' — the caller's own timeout still protects it.
-    """
-    usage = _RUN_USAGE.get()
-    if usage is None:
-        return 10_000.0
-    return usage.budget.remaining_seconds
 
 
 def set_stage_hint(stage: str) -> None:

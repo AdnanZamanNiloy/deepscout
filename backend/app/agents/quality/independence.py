@@ -129,30 +129,6 @@ def assess_independence(facts: Sequence[Dict[str, Any]]) -> IndependenceReport:
     return report
 
 
-def apply_independence(
-    facts: Sequence[Dict[str, Any]],
-    report: IndependenceReport,
-) -> List[Dict[str, Any]]:
-    """Stamp each fact with `independent_corroboration`, never inflating it.
-
-    The raw `corroboration_count` is preserved so nothing downstream breaks;
-    the new field is what confidence and the findings bullets should read. When
-    a claim belongs to an echo group its independent count is 1, because every
-    copy traces to one origin.
-    """
-    out: List[Dict[str, Any]] = []
-    echo_domains: Set[str] = {d for group in report.echo_groups for d in group}
-    for fact in facts or []:
-        if not isinstance(fact, dict):
-            continue
-        item = dict(fact)
-        nominal = max(1, _safe_int(item.get("corroboration_count", 1), 1))
-        domain = extract_domain(str(item.get("source", "") or "")) or ""
-        item["independent_corroboration"] = 1 if domain in echo_domains else nominal
-        out.append(item)
-    return out
-
-
 def independent_corroboration(fact: Dict[str, Any]) -> int:
     """Independent-source count, falling back to the nominal one."""
     if "independent_corroboration" in fact:

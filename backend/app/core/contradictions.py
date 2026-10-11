@@ -520,17 +520,3 @@ def resolve_contradictions(
 ) -> List[Dict[str, Any]]:
     """Resolve every contradiction, preserving order. Total and non-mutating."""
     return [resolve_contradiction(c) for c in (contradictions or [])]
-
-
-def unresolved_contradictions(
-    contradictions: List[Dict[str, Any]] | None,
-) -> List[Dict[str, Any]]:
-    """Only the genuinely conflicting (resolved is not True) entries.
-
-    This is what confidence and the stopping policy must count: a period or
-    scope difference is recorded for the report but must not penalize a run.
-    """
-    return [
-        c for c in (contradictions or [])
-        if isinstance(c, dict) and not c.get("resolved")
-    ]

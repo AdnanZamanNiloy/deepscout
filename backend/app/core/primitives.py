@@ -60,15 +60,6 @@ def is_year(value: float) -> bool:
     return float(value).is_integer() and 1000.0 <= value <= 2999.0
 
 
-def normalize_key(text: Any) -> str:
-    """Whitespace-collapsed lowercase comparison/ordering key.
-
-    A deterministic key for comparing claims and labels, consolidating the
-    `_norm`/`_normalize` helpers that were previously copied around.
-    """
-    return " ".join(str(text or "").lower().split())
-
-
 def jaccard(a: Any, b: Any) -> float:
     """Jaccard similarity of two token sets; 0.0 when either is empty.
 

@@ -85,23 +85,6 @@ class TemporalProfile:
         total = self.dated + self.undated
         return round(self.dated / total, 3) if total else 0.0
 
-    def as_of_line(self) -> str:
-        """The dating line every research report should carry and most don't."""
-        if not self.newest:
-            return (
-                "- Evidence dating: no source carried a publication date, so the "
-                "currency of these findings cannot be established"
-            )
-        span = (
-            f"{self.oldest:%b %Y} to {self.newest:%b %Y}"
-            if self.oldest and self.oldest != self.newest
-            else f"{self.newest:%b %Y}"
-        )
-        line = f"- Evidence published: {span} (most recent source {self.newest:%d %b %Y})"
-        if self.undated:
-            line += f"; {self.undated} source(s) carried no date"
-        return line
-
     def warning(self) -> str:
         if not self.stale or not self.newest:
             return ""

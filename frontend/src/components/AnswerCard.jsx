@@ -230,9 +230,7 @@ export default function AnswerCard({ run }) {
         </div>
       ) : null}
 
-      {run.directAnswer ? (
-        <div className="answer-lead">{renderRichText(run.directAnswer.answer || "")}</div>
-      ) : sections.finalAnswer ? (
+      {sections.finalAnswer ? (
         <div className="answer-lead">{renderRichText(sections.finalAnswer)}</div>
       ) : (
         <p className="answer-lead">No answer was produced for this run.</p>

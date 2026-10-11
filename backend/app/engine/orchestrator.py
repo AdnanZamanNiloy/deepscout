@@ -45,11 +45,6 @@ _NODE_STAGE = {
 _MODE_SECTIONS = {"quick": 3, "standard": 5, "deep": 8}
 
 
-def _slug(text: str, limit: int = 40) -> str:
-    cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", str(text or "")).strip("-").lower()
-    return cleaned[:limit] or "run"
-
-
 # --- Report formatting normalisation ---------------------------------------
 
 _HTML_BREAK_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)

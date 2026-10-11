@@ -301,24 +301,6 @@ class SearchClient(CacheMixin, ProviderSearchMixin, ContentMixin):
                 results.append(r.to_dict())
 
         return results
-    async def run_grounding_search(self, query: str) -> List[Dict[str, Any]]:
-        """Cheap single-query search for the planner's terminology grounding.
-
-        Deliberately NOT `run_search`. A grounding search exists to hand the
-        planner a handful of `title: snippet` pairs, and it paid for a full
-        research retrieval to get them: as a bare string it was treated as a
-        contract with no `primary_source_query`, so `contract_queries` built
-        one and the call fanned out to 2-3 site-scoped queries AND downloaded
-        page bodies — every one of which was discarded unread. Measured ~20s
-        against a 0.28s LLM budget, of which the fetches and their retries were
-        the bulk.
-
-        Snippets come from the provider response, so dropping the fetch costs
-        nothing here. Evidence extraction is unaffected: it goes through
-        `run_search`, which still fetches bodies for the summarizer.
-        """
-        batch = await self._search(query, fetch_content=False)
-        return [r.to_dict() for r in batch]
     async def _search(self, query, *, fetch_content: bool = True) -> List[SearchResult]:
         settings = self.settings
         question_text, search_type = _split_query(query)
