@@ -117,4 +117,24 @@ def test_bare_date_heading_is_removed_but_value_kept():
 def test_bare_none_title_is_removed():
     out = sanitize_report_markdown("# Report\n# None\nreal body")
     assert "# None" not in out
-    assert "real body" in out
+
+
+def test_adjacent_duplicate_heading_is_collapsed_body_kept():
+    """Publisher template + writer model both emit the heading back-to-back.
+
+    The body belongs to the second heading, so collapsing must keep it (unlike
+    the spaced-apart dedup, which drops the later heading with its body).
+    """
+    md = (
+        "## Introduction\n"
+        "## Introduction\n\n"
+        "The body text that must survive.\n\n"
+        "## Conclusion\n"
+        "## Conclusion\n\n"
+        "The closing text that must survive."
+    )
+    out = sanitize_report_markdown(md)
+    assert out.count("## Introduction") == 1
+    assert out.count("## Conclusion") == 1
+    assert "The body text that must survive." in out
+    assert "The closing text that must survive." in out

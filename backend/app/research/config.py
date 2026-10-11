@@ -62,6 +62,11 @@ class ResearchConfig:
     max_scraper_workers: int = 15
     scraper_rate_limit_delay: float = 0.0
 
+    # How many report sections are researched at once. Sections in a wave cannot
+    # see each other's drafts; a smaller number means tighter dedup (later waves
+    # reference earlier ones) at the cost of latency.
+    max_parallel_agents: int = 3
+
     # Prompt family: "default" only. Kept for forward compatibility with
     # model-specific prompt sets.
     prompt_family: str = "default"
@@ -107,6 +112,7 @@ def load_config(**overrides) -> ResearchConfig:
         "user_agent": s.research_user_agent,
         "max_scraper_workers": s.research_max_scraper_workers,
         "scraper_rate_limit_delay": s.research_scraper_rate_limit_delay,
+        "max_parallel_agents": s.max_parallel_agents,
         "doc_path": s.research_doc_path,
         "curate_sources": s.research_curate_sources,
         "prompt_family": "default",

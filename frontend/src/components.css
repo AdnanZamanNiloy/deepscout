@@ -272,6 +272,28 @@
 }
 .answer-code code { background: none; border: 0; padding: 0; font-size: inherit; white-space: pre; }
 
+/* Mermaid diagram figure: rendered SVG, centered, scrollable if wide. The
+   fallback (a diagram that failed to parse) reuses .answer-code inside a
+   labelled figure so the source is still visible and honest. */
+.answer-figure {
+  margin: 4px 0 16px;
+  padding: 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow-x: auto;
+}
+.answer-figure-cap {
+  margin: 0 0 8px;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t3);
+}
+.answer-mermaid { display: flex; justify-content: center; }
+.answer-mermaid svg { max-width: 100%; height: auto; }
+.answer-figure--source .answer-code { margin: 0; border: 0; background: none; padding: 0; }
+
 .answer-quote {
   margin: 4px 0 16px;
   padding: 8px 14px;

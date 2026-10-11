@@ -258,3 +258,36 @@ def test_report_prose_cleanup_never_empties_a_report():
 
     assert _clean_report_prose("") == ""
     assert _clean_report_prose("plain body") == "plain body"
+
+
+def test_section_prior_context_feeds_titles_and_content():
+    """Later waves see the titles and drafts of already-written sections."""
+    from app.research.agents.editor import EditorAgent
+
+    written = [
+        {"section_title": "Section A", "draft": {"Section A": "A's written body."}},
+    ]
+    ctx = EditorAgent._prior_context(written, ["Section A", "Section B"])
+    assert ctx["existing_headers"][0]["subtopic task"] == "Section A"
+    assert ctx["relevant_written_contents"][0]["written_content"] == "A's written body."
+
+
+def test_section_prior_context_empty_for_first_wave():
+    from app.research.agents.editor import EditorAgent
+
+    ctx = EditorAgent._prior_context([], ["Section A", "Section B"])
+    assert ctx["existing_headers"] == []
+    assert ctx["relevant_written_contents"] == []
+
+
+def test_section_input_carries_prior_content():
+    from app.research.agents.editor import EditorAgent
+
+    prior = {
+        "existing_headers": [{"subtopic task": "A", "note": "x"}],
+        "relevant_written_contents": [{"section_title": "A", "written_content": "body"}],
+    }
+    inp = EditorAgent._section_input({"task": {}}, "B", "Title", ["A", "B"], prior)
+    assert inp["existing_headers"] == prior["existing_headers"]
+    assert inp["relevant_written_contents"] == prior["relevant_written_contents"]
+    assert inp["sibling_sections"] == ["A"]

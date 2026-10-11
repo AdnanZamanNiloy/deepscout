@@ -2,6 +2,7 @@ import { parseReport } from "../lib";
 import { parseBlocks } from "../markdown";
 import { IconAlert } from "./icons";
 import ExportMenu from "./ExportMenu";
+import MermaidDiagram from "./MermaidDiagram";
 /* Final report card — renders ONLY backend-produced content:
  * report markdown sections, findings events. */
 
@@ -107,6 +108,11 @@ function renderRichText(body) {
         out.push(renderTable(block, key++));
         break;
       case "code":
+        // A ```mermaid fence is a diagram, not code — render it as a figure.
+        if (String(block.lang || "").toLowerCase() === "mermaid") {
+          out.push(<MermaidDiagram key={`mermaid-${key++}`} source={block.text} />);
+          break;
+        }
         out.push(
           <pre key={`code-${key++}`} className="answer-code">
             <code>{block.text}</code>

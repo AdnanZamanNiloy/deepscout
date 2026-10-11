@@ -54,10 +54,17 @@ class SectionResearchAgent:
                 self.sink,
             )
 
-        existing_headers = [
-            {"subtopic task": section, "note": "covered by another section of this report"}
-            for section in sibling_sections
-        ]
+        # Coverage map for the writer/subtopic prompt: the sections already
+        # completed this run (their titles AND written text), so this section
+        # does not restate a statistic or argument a sibling already made.
+        # Falls back to sibling titles when no prior content exists yet.
+        existing_headers = draft_state.get("existing_headers")
+        if not existing_headers:
+            existing_headers = [
+                {"subtopic task": section, "note": "covered by another section of this report"}
+                for section in sibling_sections
+            ]
+        relevant_written_contents = draft_state.get("relevant_written_contents") or []
 
         researcher = self.researcher_factory(
             query=topic,
@@ -68,7 +75,10 @@ class SectionResearchAgent:
         )
         try:
             await researcher.conduct_research()
-            report = await researcher.write_report(existing_headers=existing_headers)
+            report = await researcher.write_report(
+                existing_headers=existing_headers,
+                relevant_written_contents=relevant_written_contents,
+            )
         except Exception as e:
             log_agent("RESEARCHER", f"Error researching topic {topic}: {e}")
             report = None

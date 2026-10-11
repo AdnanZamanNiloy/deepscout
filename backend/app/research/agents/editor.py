@@ -55,29 +55,87 @@ class EditorAgent:
     async def run_parallel_research(
         self, research_state: Dict[str, Any]
     ) -> Dict[str, List[str]]:
-        """Research every planned section concurrently and collect the drafts."""
+        """Research every planned section and collect the drafts.
+
+        Sections run in bounded waves rather than all at once: each wave's
+        writers receive the titles and written excerpts of the sections already
+        completed, so later sections can avoid restating earlier findings — the
+        duplication and overlap that independent parallel sections produced.
+        The first wave has nothing to reference, so it is the only one that
+        cannot dedupe against prior work.
+        """
         workflow = self._create_workflow()
         chain = workflow.compile()
 
-        queries = research_state.get("sections") or []
+        queries = list(research_state.get("sections") or [])
         title = research_state.get("title")
+        if not queries:
+            return {"research_data": []}
 
         if self.sink:
             await stream_output(
                 "logs",
                 "parallel_research",
-                f"Running parallel research for the following queries: {queries}",
+                f"Running research for the following queries: {queries}",
                 self.sink,
             )
 
-        final_drafts = [
-            chain.ainvoke(self._section_input(research_state, query, title, queries))
-            for query in queries
-        ]
-        research_results = [
-            result["draft"] for result in await asyncio.gather(*final_drafts)
-        ]
+        # Drafts completed so far, original planning order: {section: draft}.
+        written: List[Dict[str, Any]] = []
+        by_section: Dict[str, Any] = {}
+        wave_size = max(1, int(getattr(self.cfg, "max_parallel_agents", 2) or 2))
+
+        for start in range(0, len(queries), wave_size):
+            wave = queries[start : start + wave_size]
+            prior = self._prior_context(written, queries)
+            tasks = [
+                chain.ainvoke(
+                    self._section_input(research_state, query, title, queries, prior)
+                )
+                for query in wave
+            ]
+            for query, result in zip(wave, await asyncio.gather(*tasks)):
+                draft = result.get("draft")
+                by_section[query] = draft
+                written.append({"section_title": query, "draft": draft})
+
+        # Preserve the planner's section order in the returned data.
+        research_results = [by_section.get(q) for q in queries]
         return {"research_data": research_results}
+
+    @staticmethod
+    def _prior_context(
+        written: List[Dict[str, Any]], all_sections: List[str]
+    ) -> Dict[str, Any]:
+        """Titles + written excerpts of sections already completed.
+
+        Returns ``existing_headers`` (a compact coverage map so a writer knows
+        the ground its siblings own) and ``relevant_written_contents`` (the
+        actual drafted text, so a writer can avoid restating a statistic or
+        argument already made). Both are empty for the first wave.
+        """
+        existing_headers = [
+            {"subtopic task": entry["section_title"], "note": "covered by another section of this report"}
+            for entry in written
+        ]
+        relevant: List[Dict[str, str]] = []
+        for entry in written:
+            draft = entry.get("draft")
+            text = ""
+            if isinstance(draft, dict):
+                text = "\n\n".join(
+                    str(v) for v in draft.values() if isinstance(v, str)
+                )
+            elif isinstance(draft, str):
+                text = draft
+            if text.strip():
+                relevant.append(
+                    {"section_title": entry["section_title"], "written_content": text}
+                )
+        return {
+            "existing_headers": existing_headers,
+            "relevant_written_contents": relevant,
+        }
 
     def _planning_messages(
         self,
@@ -150,12 +208,17 @@ class EditorAgent:
         query: str,
         title: str,
         sections: Optional[List[str]] = None,
+        prior: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        prior = prior or {}
         return {
             "task": research_state.get("task"),
             "topic": query,
             "title": title,
-            # Sections are researched in parallel, so none can see what the
-            # others wrote; naming them lets each writer leave their ground alone.
+            # Every sibling section title, so a writer knows the report's shape.
             "sibling_sections": [s for s in (sections or []) if s != query],
+            # Content of sections already completed this run (empty for the
+            # first wave), so writers avoid restating earlier findings.
+            "existing_headers": prior.get("existing_headers") or [],
+            "relevant_written_contents": prior.get("relevant_written_contents") or [],
         }

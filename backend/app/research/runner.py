@@ -256,12 +256,26 @@ class ResearchRunner:
 
 
 def _sanitize_markdown(markdown: str) -> str:
-    """Trim trailing whitespace and collapse runs of blank lines."""
-    text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
-    text = re.sub(r"<br\s*/?>", " ", text, flags=re.IGNORECASE)
-    text = text.replace("&nbsp;", " ")
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+    """Normalise the assembled report for storage and rendering.
+
+    Normalises ragged pipe tables into aligned GFM tables, drops template
+    placeholders and repeated/adjacent duplicate headings (the publisher and the
+    writer both emit "Introduction"/"Conclusion"), and collapses blank-line
+    runs. Content is never dropped: a table row with too many cells keeps its
+    overflow in the last column. Falls back to a plain whitespace tidy if the
+    sanitizer is unavailable.
+    """
+    text = str(markdown or "")
+    try:
+        from app.engine.orchestrator import sanitize_report_markdown
+
+        return sanitize_report_markdown(text)
+    except Exception as exc:  # a sanitizer failure must never drop the report
+        logger.warning("[Runner] report sanitize failed: %s", exc, exc_info=exc)
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        text = re.sub(r"<br\s*/?>", " ", text, flags=re.IGNORECASE)
+        text = text.replace("&nbsp;", " ")
+        return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def _clean_report_prose(markdown: str) -> str:

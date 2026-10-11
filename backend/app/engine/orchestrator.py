@@ -84,6 +84,38 @@ def _remove_placeholder_lines(lines: List[str]) -> List[str]:
     return out
 
 
+def _collapse_adjacent_headings(lines: List[str]) -> List[str]:
+    """Drop the first of two identical headings with only blank lines between.
+
+    The publisher template emits ``## Introduction`` and the writer's model
+    output frequently begins with its own ``## Introduction`` heading, so the
+    assembled report can carry the heading twice back-to-back. For an *adjacent*
+    pair the body belongs to the second heading, so the first (empty) one is
+    dropped — unlike :func:`_dedupe_repeated_headings`, which removes the later
+    occurrence and its body.
+    """
+    out: List[str] = []
+    i = 0
+    while i < len(lines):
+        cur = _HEADING_RE.match(lines[i])
+        if cur:
+            j = i + 1
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            nxt = _HEADING_RE.match(lines[j]) if j < len(lines) else None
+            if (
+                nxt
+                and len(nxt.group(1)) == len(cur.group(1))
+                and nxt.group(2).strip().lower() == cur.group(2).strip().lower()
+            ):
+                # Identical heading immediately follows: keep the later pair.
+                i = j
+                continue
+        out.append(lines[i])
+        i += 1
+    return out
+
+
 def _dedupe_repeated_headings(lines: List[str]) -> List[str]:
     """Drop a heading (and its body) that repeats an earlier heading verbatim."""
     seen: set = set()
@@ -197,6 +229,7 @@ def sanitize_report_markdown(markdown: str) -> str:
         out.append(line.rstrip())
         i += 1
     out = _remove_placeholder_lines(out)
+    out = _collapse_adjacent_headings(out)
     out = _dedupe_repeated_headings(out)
     text = "\n".join(out)
     text = re.sub(r"\n{3,}", "\n\n", text)

@@ -163,6 +163,19 @@ IMPORTANT:Content and Sections Uniqueness:
 - Do not restate the same statistic, example or argument in more than one paragraph — state it once, with its citation, and build on it rather than repeating it.
 - If you have nested subsections, ensure they are unique and not covered in the existing written contents.
 - Ensure that your content is entirely new and does not overlap with any information already covered in the previous subtopic reports.
+- The "Existing written contents" below are sections of THIS SAME report that are already written. Treat them as already-spoken: reference them in passing if needed ("as the previous section established…"), but do NOT redevelop their arguments, restate their figures, or re-cite their sources for the same claim.
+
+Scope Discipline:
+- Write ONLY about this subtopic: "{current_subtopic}". Every paragraph must serve that subtopic directly.
+- Do not drift into adjacent subjects, sector case studies, or regional examples that do not bear directly on this subtopic — a loosely-related example belongs in the section whose subtopic it actually serves, and dilutes both. If a finding is only weakly connected, omit it or state plainly why the connection matters.
+
+Argument Quality (comparisons and rankings):
+- When the subtopic involves a comparison, ranking, or a claim that one item is "most/most important/best", you MUST state the criteria explicitly and apply the SAME criteria to every item you compare. A claim that X is the most demanding must be supported by evidence that measures X and its alternatives against the same yardstick; naming X without comparable evidence for the alternatives is not support.
+
+Readability:
+- Keep paragraphs short: at most 4-5 sentences each. One idea per paragraph.
+- Prefer plain language. If a technical term is unavoidable, define it once in plain words; do not stack jargon.
+- Lead each subsection with its point, then the evidence — do not bury the finding under setup.
 
 "Existing Subtopic Reports":
 - Existing subtopic reports and their section headers:
@@ -186,6 +199,10 @@ IMPORTANT:Content and Sections Uniqueness:
 - Use smaller Markdown headers (e.g., H2 or H3) for content structure, avoiding the largest header (H1) as it will be used for the larger report's heading.
 - Organize your content into distinct sections that complement but do not overlap with existing reports.
 - If a new subsection is similar to one already covered, title it with the ACTUAL subject it discusses and note the distinction in its own words. Never write a literal placeholder heading like "New header" or "similar to existing header".
+
+Citations:
+- Every in-text link MUST point to a specific publication or page — its title, author/site, and URL — not to a bare database, search page, or repository home (never cite "Google Scholar", a search results page, or a DOI landing page with no title).
+- If you cannot identify the specific work behind a figure, attribute it to the source that reports it ("according to <named source>") or omit the figure. Never present an unattributed number.
 
 "Date":
 Assume the current date is {datetime.now(timezone.utc).strftime('%B %d, %Y')} if required. Date every time-sensitive statement with an explicit as-of date drawn from the evidence ("as of March 2026"), never with a vague "currently" or "today". Never describe a future state or an event you cannot date as if it has already happened.
@@ -249,6 +266,8 @@ Using the above latest information, Prepare a detailed report introduction on th
 - As this introduction will be part of a larger report, do NOT include any other sections, which are generally present in a report.
 - The introduction should be preceded by an H1 heading with a suitable topic for the entire report.
 - You must use in-text citation references in {report_format.upper()} format and make it with markdown hyperlink placed at the end of the sentence or paragraph that references them like this: ([in-text citation](url)).
+- Length: 2-3 short paragraphs. State the question, why it matters, and what the report covers — then stop. Do not summarise the findings (the body does that) and do not preview statistics.
+- Do not begin with a heading line beyond the H1 title; do not repeat the H1 as an "## Introduction" heading (the report template already adds it).
 Assume that the current date is {datetime.now(timezone.utc).strftime('%B %d, %Y')} if required.
 - The output must be in {language} language.
 """
@@ -272,6 +291,11 @@ Assume that the current date is {datetime.now(timezone.utc).strftime('%B %d, %Y'
     2. Highlight the most important findings
     3. Discuss any implications or next steps
     4. Be approximately 2-3 paragraphs long
+
+    Requirements:
+    - Synthesise, do not repeat. Do not re-list statistics or re-state arguments already made in the body — refer to them in a phrase and draw the implication instead.
+    - Do not restate the introduction. The conclusion answers "so what?", it does not re-answer "what?".
+    - Do not emit an "## Introduction" heading; do not repeat the "## Conclusion" heading (the report template already adds it).
 
     If there is no "## Conclusion" section title written at the end of the report, please add it to the top of your conclusion.
     You must use in-text citation references in {report_format.upper()} format and make it with markdown hyperlink placed at the end of the sentence or paragraph that references them like this: ([in-text citation](url)).
