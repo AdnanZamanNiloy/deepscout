@@ -28,14 +28,14 @@
    * panel   → raised surface on a rail (alerts, active rows)
    * card    → cards in the workspace plane
    * card-2  → raised variant of card, genuinely lighter          */
-  --bg: #191919;
+  --bg: #171717;
   --bg-soft: #242424;
-  --side: #1e1e1e;
+  --side: #1f1f1f;
   --panel: #262626;
-  --card: #1f1f1f;
-  --card-2: #222222;
-  --line: #303030;
-  --line-soft: #262626;
+  --card: #242424;
+  --card-2: #2b2b2b;
+  --line: #353535;
+  --line-soft: #2b2b2b;
   --track: #303030;
 
   /* --- text ramp ---
@@ -135,6 +135,13 @@
 
   --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
+  /* Headings: bold sans-serif (Arial/Inter-like). Body reading: an editorial
+   * serif (Georgia-first), used for report/answer prose. Shared by BOTH themes
+   * so day and light render identically in size, weight and family. */
+  --font-heading: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
+    Palatino, "Times New Roman", serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo,
     Consolas, monospace;
 
@@ -213,22 +220,23 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --bg: #f4f2ef;
+  /* Warm off-white / cream paper, editorial-research look. */
+  --bg: #faf9f6;
   --bg-soft: #ffffff;
-  --side: #fbfaf8;
+  --side: #fbfaf7;
   --panel: #ffffff;
   --card: #ffffff;
-  --card-2: #f7f5f2;
-  --line: #ddd8d1;
-  --line-soft: #e7e2db;
-  --track: #e6e1d9;
+  --card-2: #f6f4ef;
+  --line: #ddd8cf;
+  --line-soft: #e8e4db;
+  --track: #eae6dd;
 
-  /* Worst light surfaces are --track #e6e1d9 / --row-active #eae5de.
-   *   t1 16.6:1 · t2 9.6:1 · t3 5.1:1 · t4 4.8:1   (worst case)     */
-  --t1: #16181c;
-  --t2: #4d535c;
-  --t3: #575d66;
-  --t4: #5b616a;
+  /* Worst light surfaces are --track #eae6dd / --row-active #eee9e0.
+   *   t1 17.5:1 · t2 9.4:1 · t3 5.4:1 · t4 5.0:1   (worst case)     */
+  --t1: #111111;
+  --t2: #4a4a46;
+  --t3: #585853;
+  --t4: #5d5d57;
 
   /* Accent is darkened vs the previous #c2521f so it clears AA both as
      brand text on --side/#fbfaf8 (5.53:1) and as a button fill behind
@@ -263,21 +271,21 @@
   --shadow-card: 0 8px 24px rgba(40, 30, 20, 0.07);
   --shadow-pop: 0 18px 46px rgba(40, 30, 20, 0.16);
 
-  --inset: #f4f2ef;
-  --inset-line: #e2ddd6;
-  --inset-2: #f4f2ef;
-  --chip: #f2efeb;
+  --inset: #f6f4ef;
+  --inset-line: #e4dfd6;
+  --inset-2: #f6f4ef;
+  --chip: #f3f0ea;
   --menu: #ffffff;
-  --menu-hover: #f2efeb;
-  --row-hover: #f2efeb;
-  --row-active: #eae5de;
-  --line-hover: #c6bfb6;
-  --dash: #bdb6ac;
+  --menu-hover: #f3f0ea;
+  --row-hover: #f3f0ea;
+  --row-active: #eee9e0;
+  --line-hover: #c8c2b8;
+  --dash: #c0bab0;
 
-  --bar: #b3aca3;
+  --bar: #b6afa4;
   --sel: rgba(173, 69, 23, 0.18);
   --scrim: rgba(30, 24, 18, 0.38);
-  --scrollbar: #cdc6bd;
+  --scrollbar: #cfc8be;
 
   /* Elevation on light paper: shadows are warmer and softer so raised cards
      separate without ringing. */
