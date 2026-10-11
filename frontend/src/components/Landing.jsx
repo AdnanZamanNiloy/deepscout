@@ -248,10 +248,6 @@ export default function Landing({ onStart, onDocs, onDemo }) {
 
       <main className="landing-main" id="landing-about">
         <div className="landing-copy">
-          <span className="landing-eyebrow">
-            <span className="dot live" aria-hidden="true" />
-            7 coordinated agents
-          </span>
           <h1 className="landing-title">
             Turn complex questions into{" "}
             <span className="landing-title-accent">verified answers.</span>
