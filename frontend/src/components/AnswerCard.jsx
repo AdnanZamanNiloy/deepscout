@@ -215,7 +215,6 @@ export default function AnswerCard({ run }) {
     ? describeDegradation(degraded, run.degradedReasons || {}, run.providerDegraded === true)
     : "";
   const support = typeof run.answerSupport === "number" ? Math.round(run.answerSupport * 100) : null;
-  const outlineSections = run.outline && Array.isArray(run.outline.sections) ? run.outline.sections : [];
 
   return (
     <div className="answer anim-rise">
@@ -239,22 +238,6 @@ export default function AnswerCard({ run }) {
       <div className="answer-actions">
         <ExportMenu runId={run.runId} />
       </div>
-
-      {outlineSections.length ? (
-        <div className="outline-block">
-          <h3 style={{ fontSize: 15.5, fontWeight: 650, margin: "0 0 8px" }}>
-            Report outline{run.sectionWise ? " (section-wise synthesis)" : ""}
-          </h3>
-          <ol className="outline-list">
-            {outlineSections.map((s) => (
-              <li key={`${s.axis}-${s.title}`}>
-                <b>{s.title}</b>
-                {s.coverage_goal ? <span className="sub2"> — {s.coverage_goal}</span> : null}
-              </li>
-            ))}
-          </ol>
-        </div>
-      ) : null}
 
       {sections.contradictions ? (
         <div className="contradiction">

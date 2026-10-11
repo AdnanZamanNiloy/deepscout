@@ -2,7 +2,7 @@
 
 The multi-agent engine (``app.engine.orchestrator``) produces a markdown report
 and a list of retrieved sources, but the retained audit layer — confidence,
-contradictions, evidence grading, citation health, answer support, outline
+contradictions, evidence grading, citation health, answer support, report
 quality (``app/core/*``) — was built for the *built-in* pipeline's structured
 fact pool (``{"claim", "source", "verified", "published_at", ...}``). This module
 is the seam between the two: it deterministically reconstructs that fact pool
@@ -261,18 +261,6 @@ def build_facts(
         return []
 
 
-def _outline_from_report(report: str) -> Dict[str, Any]:
-    """The section shape the report actually used (headings in order)."""
-    headings: List[str] = []
-    for line in (report or "").splitlines():
-        m = re.match(r"^\s{0,3}#{1,4}\s+(.+?)\s*$", line)
-        if m:
-            title = m.group(1).strip()
-            if title and title.lower() not in ("sources", "references"):
-                headings.append(title)
-    return {"broad": len(headings) > 1, "sections": headings, "section_wise": len(headings) > 1}
-
-
 def compute_audit(
     *,
     query: str,
@@ -353,5 +341,4 @@ def compute_audit(
         "answer_support": support,
         "evidence_distribution": evidence_distribution,
         "quality": quality,
-        "outline": _outline_from_report(report),
     }

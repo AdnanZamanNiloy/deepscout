@@ -75,8 +75,8 @@ def _final_frame_from_state(
     """Build the terminal ``final_report`` frame from the runner's final state.
 
     The audit fields (confidence breakdown, answer support, citation health,
-    quality, outline, contradictions) are produced by the engine's audit bridge
-    and carried on ``final_state``; this forwards them to the wire frame. Missing
+    quality, contradictions) are produced by the engine's audit bridge and
+    carried on ``final_state``; this forwards them to the wire frame. Missing
     keys fall back to the adapter's empty defaults — never invented values.
     """
     from app.engine.event_adapter import final_report_frame
@@ -90,8 +90,6 @@ def _final_frame_from_state(
         confidence_breakdown=final_state.get("confidence_breakdown") or {},
         answer_support=final_state.get("answer_support"),
         quality=final_state.get("quality") or {},
-        outline=final_state.get("outline") or {},
-        section_wise=bool((final_state.get("outline") or {}).get("section_wise")),
         contradictions=final_state.get("contradictions") or [],
     )
 

@@ -111,9 +111,6 @@ function blankRun(query, mode) {
     citationHealth: null,
     contradictions: 0,
     quality: null,
-    // Answer-first outline: the section shape the writer targeted.
-    outline: null,
-    sectionWise: false,
     done: false,
     error: "",
     resumable: false,
@@ -489,8 +486,6 @@ export default function App() {
             citationHealth: evt.citation_health && typeof evt.citation_health === "object"
               ? evt.citation_health : m.run.citationHealth,
             quality: evt.quality && typeof evt.quality === "object" ? evt.quality : m.run.quality,
-            outline: evt.outline && typeof evt.outline === "object" ? evt.outline : m.run.outline,
-            sectionWise: typeof evt.section_wise === "boolean" ? evt.section_wise : m.run.sectionWise,
             // The real source count for the run. The backend reports it here;
             // the panel's "Sources analyzed" reads it instead of guessing.
             snippets: typeof evt.source_count === "number" ? evt.source_count : m.run.snippets,

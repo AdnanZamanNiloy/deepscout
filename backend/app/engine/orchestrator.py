@@ -422,7 +422,7 @@ class MultiAgentRunner:
             "engine_state": state,
             **{k: audit[k] for k in (
                 "confidence", "confidence_breakdown", "contradictions",
-                "answer_support", "evidence_distribution", "quality", "outline",
+                "answer_support", "evidence_distribution", "quality",
             ) if k in audit},
         }
 

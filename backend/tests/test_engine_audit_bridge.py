@@ -126,7 +126,6 @@ def test_compute_audit_populates_confidence_and_grades():
     assert audit["confidence_breakdown"]
     # Two sources, two claims: at least one evidence grade must be recorded.
     assert sum(audit["evidence_distribution"].values()) >= 1
-    assert audit["outline"]["sections"]
 
 
 def test_compute_audit_is_total_on_empty_facts():

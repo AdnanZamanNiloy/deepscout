@@ -310,18 +310,6 @@
 .src-link { color: var(--t3); font-size: 12px; text-decoration: none; border-bottom: 1px dotted var(--dash); }
 .src-link:hover { color: var(--deepscout); border-bottom-color: var(--deepscout); }
 
-/* Report outline — restrained, numbered, no card-in-card. */
-.outline-block {
-  margin-top: 26px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line-soft);
-}
-.outline-list { margin: 0; padding-left: 20px; font-size: 13px; color: var(--t2); line-height: 1.65; }
-.outline-list li { margin-bottom: 6px; }
-.outline-list li::marker { color: var(--deepscout); font-weight: 700; }
-.outline-list b { color: var(--t1); font-weight: 600; }
-.outline-list .sub2 { color: var(--t3); font-size: 12.5px; }
-
 .evidence-block { margin-top: 26px; border-top: 1px solid var(--line-soft); padding-top: 18px; }
 .evidence-block .sub { font-size: 12.5px; color: var(--t3); margin: 6px 0 0; }
 

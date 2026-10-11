@@ -123,16 +123,14 @@ def final_report_frame(
     answer_support: Optional[Dict[str, Any]] = None,
     citation_health: Optional[Dict[str, Any]] = None,
     quality: Optional[Dict[str, Any]] = None,
-    outline: Optional[Dict[str, Any]] = None,
-    section_wise: Optional[bool] = None,
     contradictions: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Build the terminal ``final_report`` frame.
 
     Fields mirror what the frontend's ``final_report`` case reads. The audit
-    fields (confidence breakdown, answer support, citation health, quality,
-    outline) are populated by the engine's audit bridge from the reconstructed
-    fact pool; when a run produced no usable evidence they are passed through as
+    fields (confidence breakdown, answer support, citation health, quality) are
+    populated by the engine's audit bridge from the reconstructed fact pool;
+    when a run produced no usable evidence they are passed through as
     empty/defaults rather than invented — the panel renders them as "not
     available" rather than as authoritative zeros with meaning.
     """
@@ -142,12 +140,6 @@ def final_report_frame(
         raw = answer_support.get("rate")
         if isinstance(raw, (int, float)):
             support_rate = float(raw)
-    outline_data = outline or {}
-    resolved_section_wise = (
-        bool(section_wise)
-        if section_wise is not None
-        else bool(outline_data.get("section_wise"))
-    )
     return frame(
         "final_report",
         report=report,
@@ -161,8 +153,6 @@ def final_report_frame(
         wave_report=[],
         citation_health=citation_health or {},
         quality=quality or {},
-        outline=outline_data,
-        section_wise=resolved_section_wise,
         confidence_breakdown=confidence_breakdown or {},
         contradictions=contradictions or [],
         # The real number of source URLs the run gathered. The panel's
