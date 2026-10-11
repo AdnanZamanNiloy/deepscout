@@ -885,6 +885,15 @@
 .landing {
   --lp-ground: #0b0b0b;
   --lp-band: #121214;
+  /* The hero fills the viewport below the nav, so the nav's own height has to
+   * be known to it. Derived from the same three values the nav is built from
+   * (its padding, the brand link's padding, and the lg lockup's mark) rather
+   * than hardcoded, so the two cannot drift apart — change one of the three
+   * here and both move. The trailing 1px is the nav's bottom border. */
+  --lp-nav-pad: 12px;
+  --lp-brand-pad: 3px;
+  --lp-mark-h: 40px;
+  --lp-nav-h: calc(var(--lp-nav-pad) * 2 + var(--lp-brand-pad) * 2 + var(--lp-mark-h) + 1px);
   --lp-window: #121214;
   --lp-window-2: #191a1d;
   --lp-edge: color-mix(in srgb, var(--deepscout) 30%, transparent);
@@ -910,7 +919,7 @@
 
 .landing-nav {
   position: sticky; top: 0; z-index: var(--z-sticky);
-  padding: 12px 24px;
+  padding: var(--lp-nav-pad) 24px;
   background: color-mix(in srgb, var(--lp-ground) 86%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line-soft);
@@ -929,7 +938,7 @@
 }
 .landing-brand {
   display: flex; align-items: center;
-  padding: 3px 5px;
+  padding: var(--lp-brand-pad) 5px;
   text-decoration: none; color: var(--t1);
   border-radius: var(--r-md);
 }
@@ -974,11 +983,25 @@
   max-width: 1240px;
   margin: 0 auto;
   padding: 64px 24px 40px;
+  /* One full viewport minus the nav: the hero owns the first screen and the
+     provider row starts below the fold, instead of both being squeezed into
+     one short page.
+   *
+   * min() with a ceiling, because "fill the viewport" is only true up to a
+   * point: on a very tall window (a portrait monitor, a maximized browser on
+   * a 4K panel) an uncapped 100dvh buries a 540px hero in ~900px of nothing.
+   * The cap holds the section at a size the content still fills. And it is
+   * min-height, not height — a short viewport or a long translation grows the
+   * section instead of clipping the preview. */
+  min-height: min(calc(100dvh - var(--lp-nav-h)), 1040px);
 }
 .landing-copy { min-width: 0; }
 .landing-title {
   margin: 0;
-  font-size: clamp(34px, 5vw, 62px);
+  /* Height-aware as well as width-aware: now that the hero owns a whole
+     viewport, a headline sized only off vw strands a lot of empty space on a
+     tall display. The vh term lets the type grow into the room. */
+  font-size: clamp(34px, min(5vw, 7vh), 68px);
   font-weight: 800;
   letter-spacing: -0.035em;
   line-height: 1.04;
@@ -990,7 +1013,7 @@
 .landing-title-accent { display: block; color: var(--deepscout); }
 .landing-desc {
   margin: 20px 0 0;
-  font-size: 16px;
+  font-size: clamp(15px, 1.05vw, 17px);
   line-height: 1.68;
   color: var(--t2);
   max-width: 44ch;
@@ -1478,7 +1501,7 @@
 @media (max-width: 1100px) {
   .landing-main { grid-template-columns: 1fr; gap: 40px; padding: 44px 22px 34px; }
   .landing-copy { max-width: 640px; }
-  .landing-title { font-size: clamp(34px, 7vw, 52px); }
+  .landing-title { font-size: clamp(34px, min(7vw, 6vh), 52px); }
   .lp-window { max-width: 720px; }
   .landing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .landing-split { grid-template-columns: 1fr; gap: 32px; }
@@ -1493,8 +1516,8 @@
   /* The nav row is the tightest constraint on small screens: brand + two
      links + toggle measured 409px against a 390px viewport, so the last
      child was clipped. Compress rather than overflow. */
-  .landing-nav { padding: 12px 14px; gap: 10px; }
-  .landing-brand { padding: 4px 2px; gap: 9px; }
+  .landing-nav { padding: var(--lp-nav-pad) 14px; gap: 10px; }
+  .landing-brand { padding: 3px 2px; gap: 9px; }
   .landing-links { gap: 2px; min-width: 0; }
   .landing-link { padding: 7px 9px; font-size: 12.5px; gap: 5px; }
   /* Icon-only for the least essential link keeps the row within bounds
