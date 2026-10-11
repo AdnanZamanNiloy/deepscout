@@ -1,50 +1,44 @@
-"""Adapters that wire the vendored engine to DeepScout's provider stack.
+"""Runtime wiring for the research pipeline.
 
-Importing this package does nothing side-effecting beyond making the two
-bridges available. Call :func:`configure` once at app startup (from the
-FastAPI lifespan) to install them; the engine then:
+Keeps the handles the pipeline needs (the LLM client and the search client) in
+one place and hands them to a run when it starts. Unlike the previous
+adapter-based design there is nothing to patch: the first-party pipeline
+(:mod:`app.research`) calls :class:`app.core.llm.LLMClient` and
+:class:`app.agents.search.SearchClient` directly, so the Model Control Center
+and the product's retrieval govern every call with no monkeypatching seam.
 
-* generates text through ``app.core.llm.LLMClient`` (Model Control Center), and
-* retrieves web content through ``app.agents.search.SearchClient``.
-
-Keeping the installation explicit (rather than at import time) means tests and
-benchmarks can import the engine without a live provider configuration.
+:func:`configure` is called once at app startup; :func:`runtime` returns the
+installed handles (or ``None`` before configuration), which the resume/export
+paths and tests read.
 """
 from __future__ import annotations
 
 from typing import Optional
 
-from app.core.llm import LLMClient
 from app.agents.search import SearchClient
-
-from app.engine.llm_bridge import EngineLLMBridge, install as _install_llm
-from app.engine.retriever_bridge import install as _install_retriever
+from app.core.llm import LLMClient
 
 _configured: Optional["EngineRuntime"] = None
 
 
 class EngineRuntime:
-    """The installed bridge handles, kept for diagnostics and tests."""
+    """The installed runtime handles, kept for diagnostics and tests."""
 
-    def __init__(self, llm_bridge: EngineLLMBridge, retriever_cls: type):
-        self.llm_bridge = llm_bridge
-        self.retriever_cls = retriever_cls
+    def __init__(self, llm: LLMClient, search_client: SearchClient):
+        self.llm = llm
+        self.search_client = search_client
+        #: Retained for callers that referenced a retriever class on the old
+        #: runtime; the pipeline builds its retriever per run instead.
+        self.retriever_cls = None
 
 
 def configure(llm: LLMClient, search_client: SearchClient) -> EngineRuntime:
-    """Install both bridges. Idempotent: the last call wins.
-
-    Re-invocation is safe and is the intended path after a hot-reload or in a
-    test that swaps clients — each call re-binds the engine seams to the
-    handles it is given.
-    """
+    """Install the runtime handles. Idempotent: the last call wins."""
     global _configured
-    llm_bridge = _install_llm(llm)
-    retriever_cls = _install_retriever(search_client)
-    _configured = EngineRuntime(llm_bridge, retriever_cls)
+    _configured = EngineRuntime(llm, search_client)
     return _configured
 
 
 def runtime() -> Optional[EngineRuntime]:
-    """The installed runtime, or None when :func:`configure` has not run."""
+    """The installed runtime, or ``None`` when :func:`configure` has not run."""
     return _configured

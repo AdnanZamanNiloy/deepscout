@@ -19,11 +19,12 @@ async def lifespan(app: FastAPI):
     llm = LLMClient(settings)
     search_client = SearchClient(settings)
 
-    # Wire the engine's LLM and retrieval seams to the backend's clients so the
-    # Model Control Center and SearchClient govern every engine call.
+    # Wire the runtime handles (LLM client + search client) so the research
+    # pipeline picks them up. The pipeline calls both clients directly — this
+    # only publishes the handles the routes read per request.
     from app import engine as engine_runtime
 
-    engine_runtime.configure(llm, search_client)
+    runtime = engine_runtime.configure(llm, search_client)
 
     # SearXNG is a separate application reached over HTTP. Start it here so one
     # command runs the whole system; it degrades to Wikipedia/arXiv/Crossref on
@@ -35,7 +36,7 @@ async def lifespan(app: FastAPI):
 
     app.state.settings = settings
     app.state.llm = llm
-    app.state.workflow = engine_runtime
+    app.state.workflow = runtime
     app.state.searxng = searxng
     try:
         yield

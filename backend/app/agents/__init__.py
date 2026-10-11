@@ -1,81 +1,12 @@
-"""DeepScout upgraded agents package.
+"""Retrieval and evidence/quality helpers.
 
-Deliberately lazy: importing `app.agents` costs nothing, and each name pulls
-in only the module that defines it. That matters in the host application,
-where `app.agents.search` drags in httpx and provider SDKs that workers
-running only the engine bridges should not pay for.
-
-Public surface (stable names, additive-only evolution). Every name here
-MUST resolve to a real module — a name pointing at a module that was never
-built (or was removed) is a silent trap for any consumer, so the mapping is
-guarded by `tests/test_agents_facade.py::test_every_lazy_export_resolves`.
-
-    orchestrate, OrchestrationPlan, ...          — adaptive orchestration
-    planner_agent, execution_waves, ...          — planning contracts
-    SearchClient, contract_queries, ...          — multi-provider search
-    compute_confidence, ConfidenceReport         — scoring
-    ResearchBudget, retry/breaker helpers        — operational limits + reliability
+This package is shared infrastructure, not an agent layer: it holds the
+multi-provider search client the research pipeline retrieves through
+(``app.agents.search``) and the evidence/source/quality helpers the audit layer
+and ``app/core`` consume (``app.agents.evidence``, ``app.agents.sources``,
+``app.agents.quality``, ``app.agents.evidence_utils``). Import the submodule you
+need directly, e.g. ``from app.agents.search import SearchClient``.
 """
 from __future__ import annotations
 
-from typing import Any
-
-_LAZY: dict[str, str] = {
-    # orchestration
-    "ComplexityScore": "app.agents.orchestrator",
-    "PlanTargets": "app.agents.orchestrator",
-    "plan_targets": "app.agents.orchestrator",
-    "score_complexity": "app.agents.orchestrator",
-    "classify_query_type": "app.agents.orchestrator",
-    "MODE_PRESETS": "app.agents.orchestrator",
-    # planning
-    "planner_agent": "app.agents.planner",
-    "execution_waves": "app.agents.planner",
-    "fallback_plan": "app.agents.planner",
-    "enforce_axis_coverage": "app.agents.planner",
-    "sanitize_dependencies": "app.agents.planner",
-    # search
-    "SearchClient": "app.agents.search",
-    "contract_queries": "app.agents.search",
-    "SearchResult": "app.agents.search",
-    # conflicts / scoring
-    "compute_confidence": "app.agents.confidence",
-    "ConfidenceReport": "app.agents.confidence",
-    # operational limits / reliability
-    "ResearchBudget": "app.agents.budget",
-    "MODE_LIMIT_MULTIPLIER": "app.agents.budget",
-    "retry_async": "app.agents.reliability",
-    "CircuitBreaker": "app.agents.reliability",
-    "gather_bounded": "app.agents.reliability",
-    "apply_epistemic_adjustments": "app.agents.confidence",
-    # sources / evidence
-    "classify_source": "app.agents.sources",
-    "authority_score": "app.agents.sources",
-    "is_primary_source": "app.agents.sources",
-    "build_primary_source_query": "app.agents.sources",
-    "dedupe_semantic_facts": "app.agents.evidence_utils",
-    "evidence_stats": "app.agents.evidence_utils",
-    "verify_answer_support": "app.agents.evidence_utils",
-    "numbers_grounded": "app.agents.evidence_utils",
-}
-
-
-def __getattr__(name: str) -> Any:
-    module_path = _LAZY.get(name)
-    if module_path is None:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    import importlib
-
-    module = importlib.import_module(module_path)
-    try:
-        value = getattr(module, name)
-    except AttributeError as exc:  # pragma: no cover - drift guard
-        raise AttributeError(
-            f"{module_path} no longer exports {name!r}; update agents/__init__.py"
-        ) from exc
-    globals()[name] = value  # cache for subsequent lookups
-    return value
-
-
-def __dir__() -> list[str]:
-    return sorted(list(globals().keys()) + list(_LAZY.keys()))
+__all__: list[str] = []

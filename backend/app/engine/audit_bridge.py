@@ -1,25 +1,25 @@
-"""Bridge the vendored engine's output to DeepScout's retained audit core.
+"""Bridge the research pipeline's output to the audit core.
 
-The multi-agent engine (``app.engine.orchestrator``) produces a markdown report
-and a list of retrieved sources, but the retained audit layer — confidence,
-contradictions, evidence grading, citation health, answer support, report
-quality (``app/core/*``) — was built for the *built-in* pipeline's structured
-fact pool (``{"claim", "source", "verified", "published_at", ...}``). This module
-is the seam between the two: it deterministically reconstructs that fact pool
-from (a) the sources the run actually retrieved and (b) the claims the engine's
-report cites, then runs the retained core over it so the right-side panel keeps
+The research pipeline (``app.research``, driven by
+``app.engine.orchestrator``) produces a markdown report and a list of retrieved
+sources, but the audit layer — confidence, contradictions, evidence grading,
+citation health, answer support, report quality (``app/core/*``) — consumes a
+structured fact pool (``{"claim", "source", "verified", "published_at", ...}``).
+This module is the seam between the two: it deterministically reconstructs that
+fact pool from (a) the sources the run actually retrieved and (b) the claims the
+report cites, then runs the audit core over it so the right-side panel keeps
 full audit data instead of empty fields.
 
 Design rules
 ------------
 * **Deterministic, LLM-free.** Same shape as the verifier/evidence grader: the
   audit must be cheap enough to run on every request, and an LLM call here would
-  double the run's cost. Claims are extracted from the engine's own prose by
+  double the run's cost. Claims are extracted from the report prose by
   sentence splitting + citation attribution, never by asking a model.
 * **Total and fail-safe.** Every step is guarded; a failure yields fewer audit
   fields (and a logged warning), never a broken run — mirroring
   ``assess_report_quality``'s ``_guarded`` pattern.
-* **Honest empty.** When the engine retrieved nothing usable, the audit reports
+* **Honest empty.** When the run retrieved nothing usable, the audit reports
   that (empty facts -> no confidence invention) rather than fabricating signals.
 """
 from __future__ import annotations
@@ -307,7 +307,6 @@ def compute_audit(
             max_iterations=1,
             contradictions=contradictions,
             answer_support=support,
-            query=query,
         )
     except Exception as exc:
         logger.warning("[AuditBridge] confidence failed: %s", exc, exc_info=exc)

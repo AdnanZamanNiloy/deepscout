@@ -292,6 +292,8 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                     return
 
             runner = MultiAgentRunner(
+                llm=llm_client,
+                search_client=getattr(getattr(request.app.state, "workflow", None), "search_client", None),
                 query=payload.query,
                 mode=str(payload.mode or "standard"),
                 headers={},
@@ -513,7 +515,13 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
             from app.engine.orchestrator import MultiAgentRunner
             from app.engine.event_adapter import EngineEventAdapter, final_report_frame
 
-            runner = MultiAgentRunner(query=query, mode="standard", headers={})
+            runner = MultiAgentRunner(
+                llm=llm_client,
+                search_client=getattr(getattr(request.app.state, "workflow", None), "search_client", None),
+                query=query,
+                mode="standard",
+                headers={},
+            )
             adapter = EngineEventAdapter(query)
             try:
                 async with asyncio.timeout(settings.research_timeout_sec):

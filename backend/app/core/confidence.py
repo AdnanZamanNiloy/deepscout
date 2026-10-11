@@ -505,8 +505,6 @@ def compute_confidence(
     answer_support: Dict[str, Any] | None = None,
     sub_questions: List[Dict[str, Any]] | None = None,
     provider_degraded: bool = False,
-    epistemics: Any = None,
-    query: str = "",
 ) -> Dict[str, Any]:
     """Return {"overall": float, "signals": {...}} with per-signal values.
 
@@ -584,14 +582,11 @@ def compute_confidence(
     if not measured:
         notes.append("freshness not yet measured (no publish dates captured) — weighted 0")
 
-    # When an adjudicated EpistemicReport is supplied, it owns conflict
-    # penalization (it separates genuine conflicts from time-series/scope
-    # artifacts). Applying the raw count penalty as well would double-count the
-    # same conflict, so the core penalty is skipped in that case. Without
-    # epistemics, behavior is unchanged.
+    # Contradiction penalty: the raw count of unresolved, cross-source
+    # conflicts reduces confidence. There is no separate adjudication layer, so
+    # the penalty always applies.
     penalty = 0.0
-    if epistemics is None:
-        penalty = _contradiction_penalty(contradictions, fact_count=len(facts or []))
+    penalty = _contradiction_penalty(contradictions, fact_count=len(facts or []))
     if penalty > 0:
         overall = round(max(0.0, overall - penalty), 3)
         unresolved = sum(
@@ -662,40 +657,4 @@ def compute_confidence(
         # as a live signal (see frontend replayPanelRun).
         "engine_version": ENGINE_VERSION,
     }
-    # Epistemic adjustments (conflict caps, claim standards, coverage
-    # asymmetry, staleness). Applied here so the LIVE workflow path gets them:
-    # the same layer the app.agents.confidence wrapper uses, imported
-    # deferred to avoid a circular import. Only fires when the caller supplies
-    # `epistemics`/`query` (or the other epistemic inputs); otherwise the
-    # result is returned unchanged, so existing callers/tests are unaffected.
-    if epistemics is not None:
-        from app.agents.confidence import (
-            ConfidenceReport,
-            _level as _confidence_level,
-            apply_epistemic_adjustments,
-        )
-
-        adjusted = apply_epistemic_adjustments(
-            ConfidenceReport(
-                overall=result["overall"],
-                level=_confidence_level(result["overall"]),
-                signals=dict(result["signals"]),
-                caps_applied=[],
-                notes=list(result["notes"]),
-                stats={"weights": dict(result["weights"]), "engine_overall": result["overall"]},
-            ),
-            facts=facts,
-            contradictions=contradictions,
-            citation_support=answer_support,
-            covered_axes=0,
-            target_domains=5,
-            epistemics=epistemics,
-            query=query,
-        )
-        result["overall"] = round(adjusted.overall, 3)
-        result["notes"] = list(adjusted.notes)
-        result["caps_applied"] = list(adjusted.caps_applied)
-        result["stats"] = dict(adjusted.stats)
-        result.setdefault("signals", {})
-        result["signals"].update(adjusted.signals)
     return result

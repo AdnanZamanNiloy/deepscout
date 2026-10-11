@@ -1,48 +1,54 @@
-"""Run the engine's multi-agent team for one DeepScout research request.
+"""Run the research pipeline for one request.
 
-Responsibilities
-----------------
-* Build the engine's ``task`` dict from a DeepScout request (query, mode,
-  section count, model).
-* Compile and drive the ``ChiefCoordinatorAgent`` LangGraph team, streaming node
-  updates so the API route can translate them into NDJSON frames.
-* Capture the engine's own log/web-socket events through a small sink object
-  shaped like the engine's ``websocket`` (``send_json``), which is the
-  documented streaming seam the engine already uses.
-* Assemble a final state dict shaped like the backend's ``ResearchState``
-  (``final_report``, ``sources``, ``facts`` ...) so existing persistence and
-  the audit layer keep working unchanged.
+This is the API route's entry point. It constructs a
+:class:`app.research.runner.ResearchRunner` for the request and exposes it under
+the runner interface the route already calls (``run()`` streaming node events,
+``final_state()`` returning the assembled state). The pipeline itself lives in
+:mod:`app.research`; this module is the thin seam between the route and it.
 
-The engine talks to the outside world through two injected seams only — the
-``websocket`` object and (via app.engine bridges) the LLM/search clients — so
-this module needs no modification to the vendored code.
+Report markdown normalisation (:func:`sanitize_report_markdown`) lives here
+because the route and the report export path share it.
 """
 from __future__ import annotations
 
-import asyncio
 import re
-from dataclasses import dataclass, field
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, Dict, List
 
-from app.core.logging import get_logger
+from app.core.llm import LLMClient
+from app.research.runner import ResearchRunner, build_final_state
 
-logger = get_logger(__name__)
 
-# Engine node name -> the DeepScout pipeline stage it corresponds to. Used to
-# emit node-completion events with readable stage names.
-_NODE_STAGE = {
-    "browser": "search",
-    "planner": "planner",
-    "human": "plan_review",
-    "researcher": "search",
-    "writer": "synthesizer",
-    "fact_checker": "verifier",
-    "visualizer": "visualizer",
-    "publisher": "finalize",
-}
+class MultiAgentRunner:
+    """Thin facade over :class:`ResearchRunner` for one research request.
 
-# Mode presets: how many report sections and how strictly the team iterates.
-_MODE_SECTIONS = {"quick": 3, "standard": 5, "deep": 8}
+    ``run()`` streams ``{stage, engine_node, ...}`` events as the team makes
+    progress; ``final_state()`` returns the assembled report + audit state once
+    the stream is exhausted.
+    """
+
+    def __init__(
+        self,
+        *,
+        llm: LLMClient,
+        search_client,
+        query: str,
+        mode: str = "standard",
+        headers: Dict[str, str] | None = None,
+    ):
+        self._runner = ResearchRunner(
+            llm=llm,
+            search_client=search_client,
+            query=query,
+            mode=mode,
+            headers=headers or {},
+        )
+
+    async def run(self):
+        async for event in self._runner.run():
+            yield event
+
+    def final_state(self) -> Dict[str, Any]:
+        return self._runner.final_state()
 
 
 # --- Report formatting normalisation ---------------------------------------
@@ -53,27 +59,14 @@ _HTML_TAG_RE = re.compile(
     re.IGNORECASE,
 )
 _TABLE_SEP_CELL_RE = re.compile(r"^\s*:?-{1,}:?\s*$")
-# A literal placeholder heading that leaks from the report template and takes
-# its (example) body with it. "# None" is a heading with no body at all, so it
-# is dropped on its own line.
 _PLACEHOLDER_HEADING_RE = re.compile(r"^#{1,6}\s+new header\b.*$", re.IGNORECASE)
 _PLACEHOLDER_NONE_RE = re.compile(r"^#{1,6}\s*none\s*$", re.IGNORECASE)
-# A bare "Date:" heading with no value on the line — the date, if any, is the
-# next line, so only this heading line is dropped (not its body).
 _PLACEHOLDER_DATE_RE = re.compile(r"^#{1,6}\s*date\s*:\s*$", re.IGNORECASE)
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 
 
 def _remove_placeholder_lines(lines: List[str]) -> List[str]:
-    """Drop unfilled template headings/lines ("New header …", "# None", "Date:").
-
-    A "New header" placeholder also takes its (example) body with it: the
-    prompt's example is ``### New header (…)`` followed by an illustrative
-    paragraph, so the following lines are example text, not report content.
-    Lines are only dropped while inside that block, so real content that
-    happens to follow is preserved. A bare ``Date:`` or ``None`` heading is
-    dropped on its own line — it has no body of its own.
-    """
+    """Drop unfilled template headings/lines ("New header", "# None", "Date:")."""
     out: List[str] = []
     skipping = False
     for line in lines:
@@ -83,8 +76,6 @@ def _remove_placeholder_lines(lines: List[str]) -> List[str]:
             skipping = True
             continue
         if skipping:
-            # A placeholder never has a real subsection under it, so the next
-            # heading ends the placeholder block.
             if _HEADING_RE.match(line):
                 skipping = False
             else:
@@ -94,15 +85,7 @@ def _remove_placeholder_lines(lines: List[str]) -> List[str]:
 
 
 def _dedupe_repeated_headings(lines: List[str]) -> List[str]:
-    """Drop a heading (and its body) that repeats an earlier heading verbatim.
-
-    The engine assembles one subtopic report per planned section, and both the
-    writer and individual sections can emit their own ``## Introduction`` /
-    ``## Conclusion``. The publisher already writes canonical ones, so a second
-    identical heading is duplication — keep the first occurrence and remove
-    later ones up to (but not including) the next heading of equal or higher
-    level.
-    """
+    """Drop a heading (and its body) that repeats an earlier heading verbatim."""
     seen: set = set()
     out: List[str] = []
     i = 0
@@ -155,26 +138,16 @@ def _split_table_row(line: str) -> List[str]:
 
 
 def _normalize_pipe_table(block_lines: List[str]) -> List[str]:
-    """Turn a run of pipe-delimited lines into a clean, aligned GFM table.
-
-    Handles the shapes the writer emits in practice: a proper header +
-    separator, a header with no separator, and ragged rows with a mismatched
-    number of cells. Every row is padded (or its overflow folded into the last
-    cell) so columns line up, and a separator row is always emitted — a table
-    without one renders as a paragraph in most viewers.
-    """
+    """Turn a run of pipe-delimited lines into a clean, aligned GFM table."""
     rows = [_split_table_row(line) for line in block_lines]
     rows = [r for r in rows if any(c for c in r)]
     if not rows:
         return block_lines
-    # Drop an explicit separator row if present; we re-emit a canonical one.
     body = [r for r in rows if not all(_TABLE_SEP_CELL_RE.match(c or "") for c in r)]
     if not body:
         return block_lines
     header = body[0]
     data = body[1:]
-    # The header defines the column count (GFM semantics); a wider body row has
-    # its overflow folded into the last column so nothing is lost.
     width = max(len(header), 2)
     if width < 2:
         return block_lines
@@ -197,14 +170,12 @@ def _normalize_pipe_table(block_lines: List[str]) -> List[str]:
 def sanitize_report_markdown(markdown: str) -> str:
     """Clean report markdown for storage and rendering.
 
-    Removes literal HTML artifacts the writer/LLM emits (``<br>`` and stray
-    inline tags), normalises ragged pipe tables into aligned GFM tables with a
-    real separator row, and trims trailing whitespace. Content is never
-    dropped: a table row with too many cells keeps its overflow in the last
-    column, and unclassifiable text is preserved verbatim.
+    Removes literal HTML artifacts, normalises ragged pipe tables into aligned
+    GFM tables, drops template placeholders and repeated headings, and trims
+    trailing whitespace. Content is never dropped: a table row with too many
+    cells keeps its overflow in the last column.
     """
     text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
-    # Stray HTML break/tag artifacts become a space (they separated content).
     text = _HTML_TAG_RE.sub("", text)
     text = _HTML_BREAK_RE.sub(" ", text)
     text = text.replace("&nbsp;", " ")
@@ -215,7 +186,6 @@ def sanitize_report_markdown(markdown: str) -> str:
     while i < len(lines):
         line = lines[i]
         if line.strip().startswith("|") and line.count("|") >= 2:
-            # Gather the whole pipe block, then normalise it as one table.
             block: List[str] = []
             j = i
             while j < len(lines) and lines[j].strip() and "|" in lines[j]:
@@ -226,9 +196,6 @@ def sanitize_report_markdown(markdown: str) -> str:
             continue
         out.append(line.rstrip())
         i += 1
-    # Drop template placeholders ("New header", "# None", "Date:") and repeated
-    # top-level headings (duplicated Introduction/Conclusion from the section
-    # assembly), then collapse runs of 3+ blank lines.
     out = _remove_placeholder_lines(out)
     out = _dedupe_repeated_headings(out)
     text = "\n".join(out)
@@ -236,292 +203,4 @@ def sanitize_report_markdown(markdown: str) -> str:
     return text.strip()
 
 
-@dataclass
-class EngineEvent:
-    """One captured event from the engine's streaming seams.
-
-    ``kind`` is the engine's coarse type (currently always ``"logs"``);
-    ``action`` is the finer content key (``"initial_research"`` etc.);
-    ``payload`` carries structured data when available.
-    """
-
-    kind: str
-    action: str
-    message: str
-    payload: Dict[str, Any] = field(default_factory=dict)
-
-
-class _EventSink:
-    """Object shaped like the engine's websocket, capturing events in memory.
-
-    The engine calls ``await websocket.send_json({...})``. This sink normalizes
-    those dicts into :class:`EngineEvent` and pushes them onto an asyncio queue
-    the runner drains. Bounded by the run's lifetime: created per run and
-    garbage-collected with it (no module-level state).
-    """
-
-    def __init__(self, queue: "asyncio.Queue[EngineEvent]"):
-        self._queue = queue
-
-    async def send_json(self, data: Dict[str, Any]) -> None:
-        if not isinstance(data, dict):
-            return
-        kind = str(data.get("type") or "logs")
-        action = str(data.get("content") or "")
-        message = str(data.get("output") or "")
-        await self._queue.put(
-            EngineEvent(kind=kind, action=action, message=message, payload=data)
-        )
-
-
-class MultiAgentRunner:
-    """Drives the engine team for one query and yields normalized events."""
-
-    def __init__(
-        self,
-        *,
-        query: str,
-        mode: str = "standard",
-        model: Optional[str] = None,
-        headers: Optional[Dict[str, str]] = None,
-    ):
-        self.query = str(query or "").strip()
-        self.mode = str(mode or "standard").strip().lower()
-        self.model = model or "deepscout"
-        self.headers = headers or {}
-        self._queue: "asyncio.Queue[EngineEvent]" = asyncio.Queue()
-        self.sink = _EventSink(self._queue)
-        self.sources: List[str] = []
-        # Raw backend search dicts (title/url/content/published_at/...) as
-        # retrieved during the run. Deduped by URL as they arrive; this is the
-        # evidence the audit bridge reconstructs facts from — captured here
-        # rather than scraped back out of the report text.
-        self.captured_sources: List[Dict[str, Any]] = []
-        self._seen_source_urls: set = set()
-
-    def _record_sources(self, results: List[Dict[str, Any]]) -> None:
-        """Collect retrieved sources for the audit layer (deduped by URL).
-
-        Bound to the retriever class for the run's lifetime. Prefers entries
-        whose content was actually fetched (a real page body) over snippet-only
-        duplicates of the same URL.
-        """
-        for item in results or []:
-            if not isinstance(item, dict):
-                continue
-            url = str(item.get("url") or "").strip()
-            if not url:
-                continue
-            if url in self._seen_source_urls:
-                # Keep the richest copy: a later fetched body beats an earlier
-                # snippet for the same URL.
-                if item.get("is_content_fetched"):
-                    for i, existing in enumerate(self.captured_sources):
-                        if str(existing.get("url")) == url:
-                            self.captured_sources[i] = item
-                            break
-                continue
-            self._seen_source_urls.add(url)
-            self.captured_sources.append(item)
-
-    def _build_task(self) -> Dict[str, Any]:
-        sections = _MODE_SECTIONS.get(self.mode, _MODE_SECTIONS["standard"])
-        return {
-            "query": self.query,
-            "model": self.model,
-            "max_sections": sections,
-            "max_plan_revisions": 1 if self.mode == "quick" else 2,
-            "max_fact_check_revisions": 1,
-            "publish_formats": {"markdown": False, "pdf": False, "docx": False},
-            # No interactive human step in an API context: the plan is accepted
-            # immediately so the team proceeds to research.
-            "include_human_feedback": False,
-            "follow_guidelines": False,
-            "guidelines": "",
-            "source": "web",
-            "verbose": False,
-        }
-
-    async def run(self) -> AsyncGenerator[Dict[str, Any], None]:
-        """Yield ``{type, ...}`` event dicts as the team makes progress.
-
-        On exhaustion the caller reads :meth:`final_state` for the assembled
-        report. Uses ``stream_mode="updates"`` so each yielded item is the set
-        of channels a node wrote — the basis for per-stage events.
-        """
-        # Ensure the vendored engine package is imported so its sys.path
-        # bootstrap is in effect before the absolute `agent_team.*` import.
-        import engine  # noqa: F401
-        from agent_team.agents.orchestrator import ChiefCoordinatorAgent
-
-        task = self._build_task()
-        agent = ChiefCoordinatorAgent(
-            task=task,
-            websocket=self.sink,
-            stream_output=self._engine_stream_output,
-            headers=self.headers,
-        )
-        graph = agent.init_research_team()
-        chain = graph.compile()
-
-        # Drain engine log events concurrently while the graph runs.
-        drainer = asyncio.create_task(self._drain_sink())
-
-        # Bind this run's source collector to the installed retriever class so
-        # real retrieved sources reach the audit layer. Restored in `finally`
-        # (a nested/overlapping run must not steal the outer run's sink).
-        restore_sink = self._bind_source_sink()
-
-        self._state: Dict[str, Any] = {"task": task}
-        try:
-            async for chunk in chain.astream(
-                {"task": task},
-                stream_mode="updates",
-                config={"recursion_limit": 60},
-            ):
-                # `updates` yields {node_name: node_output} per superstep.
-                if not isinstance(chunk, dict):
-                    continue
-                for node, output in chunk.items():
-                    if isinstance(output, dict):
-                        self._state.update(output)
-                    yield self._node_event(node, output)
-        finally:
-            restore_sink()
-            # Give the drainer a chance to flush, then stop it.
-            await asyncio.sleep(0)
-            drainer.cancel()
-            try:
-                await drainer
-            except asyncio.CancelledError:
-                pass
-
-    def _bind_source_sink(self):
-        """Bind ``_record_sources`` to the installed retriever; return restorer.
-
-        When no retriever has been installed (unit tests driving the runner
-        without the app's bridges) this is a no-op that returns a no-op.
-        """
-        from app.engine import runtime
-
-        rt = runtime()
-        retriever_cls = getattr(rt, "retriever_cls", None) if rt else None
-        if retriever_cls is None:
-            return lambda: None
-        previous = retriever_cls.bind_source_sink(self._record_sources)
-
-        def _restore() -> None:
-            retriever_cls.bind_source_sink(previous)
-
-        return _restore
-
-    async def _engine_stream_output(self, *args: Any, **kwargs: Any) -> None:
-        """Engine ``stream_output`` replacement.
-
-        The engine's real ``stream_output`` signature is
-        ``(type, content, output, websocket, ...)``. We accept it positionally
-        and route the message through the same sink so all engine signals share
-        one ordering.
-        """
-        kind = args[0] if len(args) > 0 else kwargs.get("type", "logs")
-        content = args[1] if len(args) > 1 else kwargs.get("content", "")
-        output = args[2] if len(args) > 2 else kwargs.get("output", "")
-        await self._queue.put(
-            EngineEvent(kind=str(kind), action=str(content), message=str(output))
-        )
-
-    async def _drain_sink(self) -> None:
-        while True:
-            event = await self._queue.get()
-            try:
-                self._last_engine_event = event
-            except Exception:  # pragma: no cover - diagnostics only
-                pass
-
-    def _node_event(self, node: str, output: Any) -> Dict[str, Any]:
-        """Map a completed graph node to a DeepScout-shaped event."""
-        stage = _NODE_STAGE.get(node, node)
-        event: Dict[str, Any] = {"engine_node": node, "stage": stage}
-        if isinstance(output, dict):
-            if node == "planner" and output.get("sections"):
-                event["sections"] = list(output.get("sections") or [])
-            if node == "browser" and output.get("initial_research"):
-                event["initial_research_chars"] = len(
-                    str(output.get("initial_research") or "")
-                )
-            if node in ("researcher",) and output.get("research_data") is not None:
-                event["research_sections"] = len(output.get("research_data") or [])
-            if node == "writer":
-                event["has_introduction"] = bool(output.get("introduction"))
-            if node == "fact_checker":
-                event["fact_check_notes"] = output.get("fact_check_notes")
-            if node == "publisher" and output.get("report"):
-                event["report_chars"] = len(str(output.get("report") or ""))
-        return event
-
-    def final_state(self) -> Dict[str, Any]:
-        """Assemble a backend-shaped final state from the engine's state.
-
-        Keys mirror what ``app/api/routes.py`` reads after a run:
-        ``final_report`` (primary answer), ``sources`` (for persistence and the
-        trace), and the audit fields the right-side panel renders. The audit
-        layer (confidence, contradictions, evidence grades, quality) is rebuilt
-        deterministically from the retrieved sources + report by
-        :mod:`app.engine.audit_bridge` — the engine emits no structured fact
-        pool of its own.
-        """
-        from app.engine.audit_bridge import build_facts, build_source_index, compute_audit
-
-        state = getattr(self, "_state", {}) or {}
-        report = sanitize_report_markdown(
-            str(state.get("report") or self._render_report(state) or "")
-        )
-
-        # Merge captured retrieval + the engine's citation strings into one
-        # metadata-rich source index; this supersedes the old URL-scraping path
-        # (which produced bare URLs with no titles or dates for the audit).
-        source_index = build_source_index(
-            self.captured_sources, state.get("sources") or [], report
-        )
-        sources = [s["url"] for s in source_index if s.get("url")]
-
-        facts = build_facts(report, source_index, self.query)
-        audit = compute_audit(query=self.query, report=report, sources=source_index, facts=facts)
-
-        return {
-            "final_report": report,
-            "sources": sources,
-            "source_index": source_index,
-            "facts": facts,
-            "title": state.get("title"),
-            "sections": state.get("sections") or [],
-            "fact_check_notes": state.get("fact_check_notes"),
-            "engine_state": state,
-            **{k: audit[k] for k in (
-                "confidence", "confidence_breakdown", "contradictions",
-                "answer_support", "evidence_distribution", "quality",
-            ) if k in audit},
-        }
-
-    def _render_report(self, state: Dict[str, Any]) -> str:
-        """Fallback markdown assembly if the publisher node did not run.
-
-        The publisher node normally writes ``report``. If a run ends early
-        (fact-check ceiling, cancellation), assemble what exists so the user
-        still receives the draft rather than nothing.
-        """
-        parts: List[str] = []
-        if state.get("title"):
-            parts.append(f"# {state['title']}\n")
-        if state.get("introduction"):
-            parts.extend(["## Introduction", str(state["introduction"]), ""])
-        for section in state.get("research_data") or []:
-            if isinstance(section, dict):
-                for _, value in section.items():
-                    parts.append(str(value))
-            else:
-                parts.append(str(section))
-            parts.append("")
-        if state.get("conclusion"):
-            parts.extend(["## Conclusion", str(state["conclusion"]), ""])
-        return "\n".join(parts).strip()
+__all__ = ["MultiAgentRunner", "ResearchRunner", "build_final_state", "sanitize_report_markdown"]

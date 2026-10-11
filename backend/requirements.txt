@@ -1,9 +1,9 @@
 fastapi==0.116.1
 uvicorn[standard]==0.35.0
-# langgraph v1 backs both the existing workflow (during the engine migration)
-# and the vendored multi-agent engine under backend/engine/, which requires
-# langchain-core v1 + langgraph>=1.0. One shared resolution serves both.
+# langgraph backs the research pipeline's agent graph (app/research/agents/) and
+# langchain-text-splitters backs its BM25 context chunking.
 langgraph>=1.0.0
+langchain-text-splitters>=1.0.0
 httpx==0.28.1
 cryptography==50.0.1
 pydantic==2.11.7
@@ -20,40 +20,10 @@ pymupdf>=1.24  # optional at runtime: PDF extraction only; missing lib skips PDF
 python-docx>=1.1  # optional at runtime: DOCX report export
 weasyprint>=60  # optional at runtime: PDF report export (HTML/CSS -> PDF)
 Markdown>=3.5  # report markdown parsing helpers
-
-# Engine dependencies (backend/engine/) -------------------------------------
-# The multi-agent research engine under backend/engine/ builds on the
-# LangChain v1 / LangGraph stack and a small set of research utilities.
-# langgraph is pinned to the same version the existing workflow already uses
-# so a single resolution satisfies both.
-langchain>=1.0.0
-langchain-classic>=1.0.0
-langchain-community>=0.4.0
-langchain-core>=1.0.0
-langchain-openai>=1.0.0
-langchain-text-splitters>=1.0.0
-langgraph>=0.2.76
-openai>=1.3.3
-tavily-python>=0.7.12
-ddgs>=9.0.0
-arxiv>=2.0.0
-beautifulsoup4>=4.12.2
-tiktoken>=0.7.0
-aiofiles>=23.2.1
-requests>=2.31.0
-pyyaml>=6.0.1
-loguru>=0.7.2
-colorama>=0.4.6
-json-repair>=0.29.8
-json5>=0.9.25
-mistune>=3.0.2
-# Optional engine capability (MCP retrievers). The engine imports these
-# lazily and degrades cleanly if absent; listed so startup logs stay clean.
-mcp>=1.9.1,<2.0.0
-langchain-mcp-adapters>=0.1.0
-# Pin starlette below 1.0: the MCP adapter stack pulls starlette>=1.x, but
-# fastapi 0.116.1 (above) is incompatible with it (APIRouter no longer accepts
-# on_startup). Kept here so a fresh resolve stays working.
+beautifulsoup4>=4.12.2  # HTML text extraction for the pipeline's fetcher
+json-repair>=0.29.8  # tolerant JSON parsing of model responses
+# Pin starlette below 1.0: fastapi 0.116.1 is incompatible with it (APIRouter
+# no longer accepts on_startup). Kept so a fresh resolve stays working.
 starlette>=0.40,<0.48
 
 pytest==9.1.1

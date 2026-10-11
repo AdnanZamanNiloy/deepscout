@@ -374,6 +374,37 @@ class Settings(BaseSettings):
     # Hard ceiling on expansion depth; 0 means "use MAX_ITERATIONS".
     max_research_depth: int = 0
 
+    # --- research pipeline composition (app/research/) ---------------------
+    # These shape how a run is composed (report length, retrieval breadth,
+    # context filtering). Model/provider selection is NOT here — the Model
+    # Control Center owns it.
+    research_total_words: int = 1200
+    research_report_format: str = "APA"
+    research_language: str = "english"
+    research_report_source: str = "web"
+    research_fast_token_limit: int = 6000
+    research_smart_token_limit: int = 12000
+    research_strategic_token_limit: int = 8000
+    research_max_results_per_query: int = 5
+    research_context_filter: str = "auto"  # auto | keyword | none
+    research_compression_threshold: int = 8000
+    research_keyword_relative_threshold: float = 0.5
+    research_keyword_max_results: int = 25
+    research_user_agent: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0"
+    )
+    research_max_scraper_workers: int = 15
+    research_scraper_rate_limit_delay: float = 0.0
+    research_doc_path: str = "./my-docs"
+    research_curate_sources: bool = False
+    # Per-document character cap for context building (guards against
+    # pathologically large pages).
+    research_max_content_chars: int = 50000
+    # Opt out of the SSRF/local-file guard when intentionally fetching internal
+    # or self-hosted resources. Off by default.
+    allow_private_urls: bool = False
+
     # NOTE: there is deliberately NO "at least one provider" validator here.
     # It used to raise at import time when GROQ_API_KEY / HUGGINGFACE_API_KEY /
     # CUSTOM_LLM_* were all empty, which made a stock `.env.example` copy

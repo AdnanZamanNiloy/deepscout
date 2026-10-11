@@ -5,11 +5,47 @@ import json
 import httpx
 import pytest
 import respx
+from pydantic import BaseModel, Field, model_validator
 
 from app.core.llm import CircuitBreaker, LLMClient
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 HF_URL = "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-7B-Instruct"
+
+
+class _SubQuestionModel(BaseModel):
+    id: int = 1
+    question: str = Field(min_length=1)
+    axis: str = "general"
+
+
+class _PlanModel(BaseModel):
+    """Response model exercising generate_json's schema validation + retry.
+
+    Mirrors the planning shape the pipeline requests: a required, non-empty
+    ``sub_questions`` list, so a payload missing the key fails validation.
+    """
+
+    sub_questions: list[_SubQuestionModel] = Field(min_length=1)
+
+
+class _FactsModel(BaseModel):
+    """Response model whose claim/source fields accept the near-miss key names
+    fast models actually emit ({"claims": [...]}, bare lists)."""
+
+    facts: list = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data):
+        if not isinstance(data, dict):
+            return {"facts": data} if isinstance(data, list) else data
+        if "facts" not in data:
+            for alt in ("claims", "items", "results", "data"):
+                if isinstance(data.get(alt), list):
+                    data = {**data, "facts": data[alt]}
+                    break
+        return data
 
 
 def _groq_response(content: dict) -> httpx.Response:
@@ -83,7 +119,6 @@ async def test_breaker_resets_on_success(client):
 
 async def test_malformed_output_rejected_and_retried(hf_client):
     """Phase 1.2: payload failing response_model validation triggers retry, not silent accept."""
-    from app.core.schemas import PlannerOutputModel
 
     with respx.mock(assert_all_called=False) as mock:
         route = mock.post(GROQ_URL).mock(
@@ -120,24 +155,22 @@ async def test_malformed_output_rejected_and_retried(hf_client):
                 ],
             )
         )
-        result = await hf_client.generate_json("sp", "up", response_model=PlannerOutputModel)
+        result = await hf_client.generate_json("sp", "up", response_model=_PlanModel)
         assert result["sub_questions"][0]["question"].startswith("what is")
         assert route.call_count == 2, "malformed response must be retried"
 
 
 async def test_validation_failure_after_all_retries_raises(client):
-    from app.core.schemas import PlannerOutputModel
 
     with respx.mock(assert_all_called=False) as mock:
         mock.post(GROQ_URL).mock(return_value=_groq_response(json.dumps({"no_sub_questions": True})))
         with pytest.raises(Exception):
-            await client.generate_json("sp", "up", response_model=PlannerOutputModel)
+            await client.generate_json("sp", "up", response_model=_PlanModel)
 
 
 async def test_facts_schema_aliases_accepted(client):
     """Fast models return near-miss shapes ({"claims": [...]}, bare lists).
     The facts model coerces them instead of burning retries + quota."""
-    from app.core.schemas import SummarizerFactsModel
 
     good = [{"claim": "Transformers use attention", "source": "https://a.com", "confidence": 0.9}]
     with respx.mock(assert_all_called=False) as mock:
@@ -146,9 +179,9 @@ async def test_facts_schema_aliases_accepted(client):
                 _groq_response({"sub_question": "q", "claims": good}),
                 _groq_response(good),
             ])
-        first = await client.generate_json("sp", "up", response_model=SummarizerFactsModel)
+        first = await client.generate_json("sp", "up", response_model=_FactsModel)
         assert first["facts"][0]["claim"] == "Transformers use attention"
-        second = await client.generate_json("sp", "up", response_model=SummarizerFactsModel)
+        second = await client.generate_json("sp", "up", response_model=_FactsModel)
         assert second["facts"][0]["source"] == "https://a.com"
         assert route.call_count == 2, "near-miss shapes must not trigger retries"
 

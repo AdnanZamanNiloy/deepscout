@@ -20,27 +20,31 @@ Generation: remote LLM APIs only — no local model inference. The provider or
 Hardware:   target host has 8GB RAM. Concurrency and memory footprint
             are real constraints, not theoretical ones — see Section 5.
 
-Entrypoint:      main.py (FastAPI app, lifespan init; installs the engine bridges)
-Engine:          backend/engine/ — vendored multi-agent engine (refeng/ research
-                 core + agent_team/ LangGraph agent team). Imported via the
-                 `engine` package's sys.path bootstrap.
-Engine adapters: app/engine/ — orchestrator.py (drives the team, streams node
-                 updates), llm_bridge.py + retriever_bridge.py (route engine
-                 LLM/retrieval through the backend clients), event_adapter.py
-                 (engine events → NDJSON). Engine generation goes through
-                 app.core.llm.LLMClient and retrieval through
-                 app.agents.search.SearchClient.
+Entrypoint:      main.py (FastAPI app, lifespan init; installs the runtime
+                 handles)
+Pipeline:        app/research/ — the first-party research pipeline: config,
+                 prompts, LLM funnel, context filters (BM25), retrieval,
+                 scraping, document loaders, the researcher + skills, and the
+                 LangGraph agent team (app/research/agents/). It calls
+                 app.core.llm.LLMClient for generation and
+                 app.agents.search.SearchClient for retrieval directly — no
+                 adapter/bridge monkeypatching.
+Runtime seam:    app/engine/ — orchestrator.py (the route's entry point,
+                 delegating to app.research.runner.ResearchRunner),
+                 event_adapter.py (pipeline events → NDJSON), audit_bridge.py
+                 (rebuilds the fact pool + audit from the report and captured
+                 sources), __init__.py (configure/runtime handle store).
 Answer/audit:    the primary answer (state["final_report"]) NEVER carries
                  process metadata; the audit/trace carries confidence, quality,
                  evidence ledger, conflicts, decisions.
 API:             app/api/routes.py (stream, resume, trace, export, sessions);
                  app/api/providers_routes.py (providers + chains).
-Retained core:   app/core/*.py (config, llm client + response cache, usage
+Core:            app/core/*.py (config, llm client + response cache, usage
                  ledger, semantic engine, confidence, contradictions,
                  evidence grading, isolation, degradation, providers).
 Shared helpers:  app/agents/ retains search + evidence/source helpers used by
-                 app/core and the retriever bridge; app/graph/{evidence,state}.py
-                 are shared helpers (the old orchestration was removed).
+                 app/core and the audit bridge (app/agents/search.py,
+                 app/agents/evidence/, app/agents/sources/, app/agents/quality/).
 Persistence:     app/db/sqlite.py (auto-initializing schema)
 Benchmarks:      bench/ (run_offline.py deterministic component suite,
                  datasets.py labeled fixtures, eval_depth/eval_router/
@@ -49,11 +53,14 @@ Frontend:        frontend/src/App.jsx consumes the NDJSON stream; components
                  in frontend/src/components/
 ```
 
-> Migration note: the built-in LangGraph pipeline (`app/graph/workflow.py`,
-> `app/graph/nodes/`) was replaced by the vendored engine team. `app/graph/`
-> now holds only shared helpers. Do not reintroduce a second orchestration
-> path; new pipeline behavior belongs in the engine adapters (`app/engine/`) or
-> the retained helpers.
+> Architecture note: the retrieval + report pipeline is fully first-party under
+> `app/research/`. There is no external research engine and no `sys.path`
+> bootstrap. The pipeline's only outside seams are
+> `app.core.llm.LLMClient` (generation) and `app.agents.search.SearchClient`
+> (retrieval), so the Model Control Center governs every call. Do not
+> reintroduce a second orchestration path; new pipeline behavior belongs in
+> `app/research/`.
+
 
 Commands:
 
@@ -299,6 +306,23 @@ These are real bugs found by reading the code, not hypotheticals. Each one below
   query type the classifier can emit, not only the demo query's type; and a
   substring marker like "definition" inside is_semantic_gap must not be
   satisfiable by an ordinary uncovered-axis name.
+
+[CONSOLIDATED — first-party pipeline] app/research/* (backend/engine/ removed)
+  The research pipeline was fully re-authored as first-party code under
+  `app/research/` and the external engine dependency was deleted. Why this
+  matters for future sessions: (a) there is now ONE orchestration path — the
+  LangGraph team in `app/research/agents/` — and no `sys.path` bootstrap, no
+  monkeypatched provider factory, and no vendored tree; (b) the pipeline calls
+  `app.core.llm.LLMClient` and `app.agents.search.SearchClient` DIRECTLY, so
+  the Model Control Center governs every call with no bridge seam to keep in
+  sync; (c) the dead first-party modules the engine had already replaced
+  (`app/agents/orchestrator.py`, `app/agents/confidence.py`,
+  `app/agents/planner.py`, `app/agents/planning/`, `app/core/schemas.py`) were
+  removed, as was the inert epistemic-adjustment branch in
+  `app/core/confidence.py`; (d) retrieval is unified — every retriever name
+  resolves to `app/research/retrieval/base.py::SearchClientRetriever`. Rule:
+  new pipeline behavior belongs in `app/research/`; do not add a second
+  orchestration path or reintroduce an external research dependency.
 ```
 
 If you find a new instance of any of these patterns anywhere in the codebase while working on something else, fix it or flag it in your commit message — don't leave it for later just because it's outside your current task's file scope.
@@ -350,13 +374,13 @@ Each rule below exists because of a specific, real bug (Section 2). Apply all of
 
 ### 4.1 — Never reference a constant/prompt without defining it in scope
 
-The exact failure mode that broke the planner. Before finishing any task that adds or edits an agent module:
+The exact failure mode that broke the planner. Before finishing any task that adds or edits a pipeline module:
 
 ```bash
-python -c "import app.agents.<module_you_touched>"
+python -c "import app.research.<module_you_touched>"
 ```
 
-This alone would have caught the undefined `PLANNER_SYSTEM_PROMPT` immediately. Run it for every agent file you touch, every time — it costs one second and it is the single highest-value check in this repo.
+This alone would have caught the undefined `PLANNER_SYSTEM_PROMPT` immediately. Run it for every module you touch, every time — it costs one second and it is the single highest-value check in this repo.
 
 ### 4.2 — A system prompt's declared schema and the parser must match, always
 
@@ -408,14 +432,13 @@ Preferred:       await asyncio.gather(*(do_io(item) for item in items))
 
 ### 4.7 — Every LLM-calling agent needs a deterministic fallback
 
-Match the existing shape in `planner.py`/`summarizer.py`/`synthesizer.py`/`critic.py`:
+Match the shape used throughout `app/research/` (a model call wrapped so any
+failure or empty output degrades to a deterministic default, never a crash):
 
 ```python
-NAME_SYSTEM_PROMPT = """...""".strip()   # defined in this file, verified importable
-
-async def name_agent(llm: LLMClient, ...) -> ...:
+async def name_step(llm: LLMFunnel, ...) -> ...:
     try:
-        payload = await llm.generate_json(NAME_SYSTEM_PROMPT, user_prompt)
+        payload = await llm.generate_json(SYSTEM_PROMPT, user_prompt)
     except Exception as exc:
         logger.warning("[Name] LLM failed, using fallback", exc_info=exc)
         return deterministic_fallback(...)
@@ -427,7 +450,9 @@ async def name_agent(llm: LLMClient, ...) -> ...:
     return result
 ```
 
-Every new agent must follow this shape. A new agent with no non-LLM fallback is a regression relative to the rest of the codebase, even if it "works" when the API is up.
+Every new LLM-calling step must follow this shape. A new step with no non-LLM
+fallback is a regression relative to the rest of the codebase, even if it
+"works" when the API is up.
 
 ### 4.8 — DB schema changes are additive and idempotent
 

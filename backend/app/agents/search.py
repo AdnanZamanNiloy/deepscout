@@ -17,7 +17,7 @@ import re  # noqa: F401
 import time  # noqa: F401
 from dataclasses import dataclass, field  # noqa: F401
 from html.parser import HTMLParser  # noqa: F401
-from typing import Any, Dict, List, Optional, Sequence, Union  # noqa: F401
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Union  # noqa: F401
 from urllib.parse import quote  # noqa: F401
 from xml.etree import ElementTree  # noqa: F401
 
@@ -26,7 +26,9 @@ import httpx
 from app.core.cache import cache_key, get_cache
 from app.core.config import Settings
 from app.core.logging import get_logger
-from app.agents.planner import SubQuestion
+
+if TYPE_CHECKING:  # pragma: no cover - annotation-only, never evaluated
+    SubQuestion = Any
 from app.agents.searchkit.cache_mixin import CacheMixin
 from app.agents.searchkit.diversity import aggregate_reports as _aggregate_diversity
 from app.agents.searchkit.providers_mixin import ProviderSearchMixin
@@ -255,7 +257,7 @@ class SearchClient(CacheMixin, ProviderSearchMixin, ContentMixin):
         )
         self.health = RetrievalHealth()
     async def run_search(
-        self, sub_questions: List[Union[SubQuestion, str, tuple]]
+        self, sub_questions: List[Union["SubQuestion", str, tuple]]
     ) -> List[Dict[str, Any]]:
         """Search a batch of delegation contracts (or raw strings).
 

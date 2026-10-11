@@ -140,11 +140,11 @@ def test_compute_audit_is_total_on_empty_facts():
 
 def test_retriever_source_sink_is_per_run_and_restorable():
     """The source collector binds to the retriever class and restores cleanly."""
-    from app.engine.retriever_bridge import DeepScoutRetriever
+    from app.research.retrieval.base import SearchClientRetriever
 
     collected: list = []
 
-    class _Probe(DeepScoutRetriever):
+    class _Probe(SearchClientRetriever):
         pass
 
     previous = _Probe.bind_source_sink(collected.extend)
@@ -161,9 +161,9 @@ def test_retriever_source_sink_is_per_run_and_restorable():
 
 def test_retriever_source_sink_failure_does_not_raise():
     """A broken collector must never break retrieval (AGENTS.md 4.4)."""
-    from app.engine.retriever_bridge import DeepScoutRetriever
+    from app.research.retrieval.base import SearchClientRetriever
 
-    class _Probe(DeepScoutRetriever):
+    class _Probe(SearchClientRetriever):
         pass
 
     def _boom(_):
