@@ -896,8 +896,6 @@
   --lp-nav-h: calc(var(--lp-nav-pad) * 2 + var(--lp-brand-pad) * 2 + var(--lp-mark-h) + 1px);
   --lp-window: #121214;
   --lp-window-2: #191a1d;
-  --lp-edge: color-mix(in srgb, var(--deepscout) 30%, transparent);
-  --lp-glow: 0 30px 90px -30px color-mix(in srgb, var(--deepscout) 42%, transparent);
 
   position: relative;
   min-height: 100vh;
@@ -913,8 +911,6 @@
   --lp-band: #efebe4;
   --lp-window: #ffffff;
   --lp-window-2: #f4f2ed;
-  --lp-edge: color-mix(in srgb, var(--deepscout) 34%, transparent);
-  --lp-glow: 0 26px 70px -34px color-mix(in srgb, var(--deepscout) 34%, transparent);
 }
 
 .landing-nav {
@@ -1064,9 +1060,12 @@
 .lp-window {
   min-width: 0;
   background: var(--lp-window);
-  border: 1px solid var(--lp-edge);
+  border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  box-shadow: var(--lp-glow), var(--elev-3);
+  /* Plane separation only. The window used to carry a brand-orange halo; on a
+     near-black ground it read as a glow effect rather than as an edge, and it
+     competed with the accent the headline and CTAs already spend. */
+  box-shadow: var(--elev-3);
   overflow: hidden;
 }
 .lp-window-bar {
@@ -1110,7 +1109,7 @@
   padding: 7px 9px;
   font-size: 12px; font-weight: 600; color: var(--t1);
   background: var(--lp-window);
-  border: 1px solid var(--lp-edge);
+  border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
 .lp-rail-new svg { color: var(--deepscout); }
