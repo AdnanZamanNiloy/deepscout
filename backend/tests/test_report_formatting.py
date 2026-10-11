@@ -76,3 +76,45 @@ def test_content_is_never_dropped():
     out = sanitize_report_markdown(md)
     for token in ("## Heading", "A paragraph with **bold**", "https://x.org", "- one", "- two"):
         assert token in out
+
+
+def test_duplicate_introduction_heading_is_removed():
+    md = (
+        "# Report\n\n"
+        "## Introduction\nFirst intro.\n\n"
+        "## Body\nBody text.\n\n"
+        "## Introduction\nA second intro block.\n\n"
+        "## Conclusion\nDone."
+    )
+    out = sanitize_report_markdown(md)
+    assert out.count("## Introduction") == 1
+    assert "First intro." in out
+    assert "A second intro block." not in out
+    assert "## Conclusion" in out and "Done." in out
+
+
+def test_placeholder_new_header_block_is_removed():
+    md = (
+        "# Report\n\n"
+        "## Body\n\n"
+        "### New header (similar to existing header)\n\n"
+        "While the previous section discussed A, this explores B.\n\n"
+        "### Real Point\nReal content."
+    )
+    out = sanitize_report_markdown(md)
+    assert "New header" not in out
+    assert "While the previous section" not in out
+    assert "### Real Point" in out and "Real content." in out
+
+
+def test_bare_date_heading_is_removed_but_value_kept():
+    md = "# Report\n\n## Date:\n2026-06-01\n\n## Body\nx"
+    out = sanitize_report_markdown(md)
+    assert "## Date:" not in out
+    assert "2026-06-01" in out
+
+
+def test_bare_none_title_is_removed():
+    out = sanitize_report_markdown("# Report\n# None\nreal body")
+    assert "# None" not in out
+    assert "real body" in out

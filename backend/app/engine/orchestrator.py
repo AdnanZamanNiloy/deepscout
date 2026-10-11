@@ -53,6 +53,79 @@ _HTML_TAG_RE = re.compile(
     re.IGNORECASE,
 )
 _TABLE_SEP_CELL_RE = re.compile(r"^\s*:?-{1,}:?\s*$")
+# A literal placeholder heading that leaks from the report template and takes
+# its (example) body with it. "# None" is a heading with no body at all, so it
+# is dropped on its own line.
+_PLACEHOLDER_HEADING_RE = re.compile(r"^#{1,6}\s+new header\b.*$", re.IGNORECASE)
+_PLACEHOLDER_NONE_RE = re.compile(r"^#{1,6}\s*none\s*$", re.IGNORECASE)
+# A bare "Date:" heading with no value on the line — the date, if any, is the
+# next line, so only this heading line is dropped (not its body).
+_PLACEHOLDER_DATE_RE = re.compile(r"^#{1,6}\s*date\s*:\s*$", re.IGNORECASE)
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+
+
+def _remove_placeholder_lines(lines: List[str]) -> List[str]:
+    """Drop unfilled template headings/lines ("New header …", "# None", "Date:").
+
+    A "New header" placeholder also takes its (example) body with it: the
+    prompt's example is ``### New header (…)`` followed by an illustrative
+    paragraph, so the following lines are example text, not report content.
+    Lines are only dropped while inside that block, so real content that
+    happens to follow is preserved. A bare ``Date:`` or ``None`` heading is
+    dropped on its own line — it has no body of its own.
+    """
+    out: List[str] = []
+    skipping = False
+    for line in lines:
+        if _PLACEHOLDER_DATE_RE.match(line) or _PLACEHOLDER_NONE_RE.match(line):
+            continue
+        if _PLACEHOLDER_HEADING_RE.match(line):
+            skipping = True
+            continue
+        if skipping:
+            # A placeholder never has a real subsection under it, so the next
+            # heading ends the placeholder block.
+            if _HEADING_RE.match(line):
+                skipping = False
+            else:
+                continue
+        out.append(line)
+    return out
+
+
+def _dedupe_repeated_headings(lines: List[str]) -> List[str]:
+    """Drop a heading (and its body) that repeats an earlier heading verbatim.
+
+    The engine assembles one subtopic report per planned section, and both the
+    writer and individual sections can emit their own ``## Introduction`` /
+    ``## Conclusion``. The publisher already writes canonical ones, so a second
+    identical heading is duplication — keep the first occurrence and remove
+    later ones up to (but not including) the next heading of equal or higher
+    level.
+    """
+    seen: set = set()
+    out: List[str] = []
+    i = 0
+    while i < len(lines):
+        m = _HEADING_RE.match(lines[i])
+        if not m:
+            out.append(lines[i])
+            i += 1
+            continue
+        level = len(m.group(1))
+        key = (level, m.group(2).strip().lower())
+        if key in seen:
+            i += 1
+            while i < len(lines):
+                nxt = _HEADING_RE.match(lines[i])
+                if nxt and len(nxt.group(1)) <= level:
+                    break
+                i += 1
+            continue
+        seen.add(key)
+        out.append(lines[i])
+        i += 1
+    return out
 
 
 def _split_table_row(line: str) -> List[str]:
@@ -153,7 +226,11 @@ def sanitize_report_markdown(markdown: str) -> str:
             continue
         out.append(line.rstrip())
         i += 1
-    # Collapse runs of 3+ blank lines to a single blank line.
+    # Drop template placeholders ("New header", "# None", "Date:") and repeated
+    # top-level headings (duplicated Introduction/Conclusion from the section
+    # assembly), then collapse runs of 3+ blank lines.
+    out = _remove_placeholder_lines(out)
+    out = _dedupe_repeated_headings(out)
     text = "\n".join(out)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
