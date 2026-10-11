@@ -1245,39 +1245,6 @@
   border-radius: var(--r-xs);
 }
 
-/* ---- Provider row ----------------------------------------------------------
-   States what the marks mean (DeepScout routes to these models) rather than
-   borrowing a "trusted by" claim none of these vendors made about us. */
-.landing-providers {
-  position: relative; z-index: var(--z-base);
-  padding: 34px 24px 30px;
-  border-top: 1px solid var(--line-soft);
-}
-.landing-providers-head {
-  margin: 0;
-  text-align: center;
-  font-size: 11px; font-weight: 700;
-  letter-spacing: 0.16em; text-transform: uppercase;
-  color: var(--t4);
-}
-.landing-providers-row {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0;
-  margin: 22px auto 0;
-  padding: 0;
-  max-width: 760px;
-}
-.landing-provider {
-  display: flex; align-items: center; gap: 10px;
-  padding: 6px 30px;
-  font-size: 15px; font-weight: 600; color: var(--t2);
-}
-.landing-provider + .landing-provider { border-left: 1px solid var(--line-soft); }
-.landing-provider svg { color: var(--t3); flex: none; }
-
 /* ---- Landing sections below the hero --------------------------------------- */
 
 .landing-section {
@@ -1510,7 +1477,6 @@
 }
 @media (max-width: 720px) {
   .landing-modes { grid-template-columns: 1fr; }
-  .landing-provider { padding: 6px 18px; }
 }
 @media (max-width: 560px) {
   /* The nav row is the tightest constraint on small screens: brand + two
@@ -1529,12 +1495,6 @@
   .landing-actions { flex-direction: column; align-items: stretch; gap: 10px; }
   .landing-cta, .landing-cta-ghost { justify-content: center; }
   .lp-window { display: none; }
-  .landing-providers { padding: 28px 16px 24px; }
-  /* Four marks wrapping to 3+1 left one provider stranded under a rule; a
-     2x2 grid keeps the row balanced at phone widths. */
-  .landing-providers-row { display: grid; grid-template-columns: 1fr 1fr; max-width: 320px; }
-  .landing-provider { justify-content: center; padding: 6px 8px; font-size: 14px; }
-  .landing-provider + .landing-provider { border-left: 0; }
   .landing-section { padding: 42px 16px; }
   .landing-grid { grid-template-columns: 1fr; gap: 12px; }
   .landing-cta-band { padding: 42px 16px; }

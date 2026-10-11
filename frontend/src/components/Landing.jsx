@@ -17,7 +17,6 @@
 
 import ThemeToggle from "./ThemeToggle";
 import BrandLockup, { BrandMark } from "./Brand";
-import { PROVIDER_MARKS } from "./ProviderMarks";
 import {
   IconAgents, IconArrowUp, IconArrowRight, IconChart, IconCheckCircle,
   IconCompass, IconDoc, IconFlask, IconGithub, IconLayers, IconMissions,
@@ -282,23 +281,6 @@ export default function Landing({ onStart, onDocs, onDemo }) {
 
         <ConsolePreview />
       </main>
-
-      {/* Which models the run can be pointed at. The heading states what the
-          marks mean — DeepScout routes to these providers — rather than a
-          "trusted by" claim the vendor never made. */}
-      <section className="landing-providers" aria-labelledby="landing-providers-head">
-        <h2 className="landing-providers-head" id="landing-providers-head">
-          Runs on the models you already use
-        </h2>
-        <ul className="landing-providers-row">
-          {PROVIDER_MARKS.map(({ name, Mark }) => (
-            <li className="landing-provider" key={name}>
-              <Mark size={18} />
-              <span>{name}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
 
       {/* Capabilities — the product, section by section. */}
       <section className="landing-section" id="landing-capabilities" aria-labelledby="landing-cap-head">
