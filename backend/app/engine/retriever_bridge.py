@@ -17,7 +17,8 @@ pages already read here.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List, Optional
+import contextvars
+from typing import Any, Callable, Dict, List, Optional
 
 from app.agents.search import SearchClient
 from app.core.logging import get_logger
@@ -26,6 +27,30 @@ logger = get_logger(__name__)
 
 # Distinguishes "no fetch requested" from "fetch returned nothing".
 _DEFAULT_MAX_RESULTS = 10
+
+# Per-run source collector. The engine instantiates the retriever class itself,
+# so there is no constructor seam to hand it a run-scoped object. A ContextVar
+# carries the active collector on the async task that owns the run — the search
+# runs on the app's main loop via run_coroutine_threadsafe, but we set the
+# ContextVar from within the same coroutine that calls ``search`` would break:
+# the sync ``search`` runs in a worker thread, so the collector is read here
+# through the bound instance instead. See ``make_retriever_class``.
+_SOURCE_SINK: contextvars.ContextVar[Optional[Callable[[List[Dict[str, Any]]], None]]] = (
+    contextvars.ContextVar("engine_source_sink", default=None)
+)
+
+
+def set_source_sink(
+    sink: Optional[Callable[[List[Dict[str, Any]]], None]],
+) -> contextvars.Token:
+    """Install the per-run collector for retrieved sources.
+
+    Returns the ContextVar token so the caller can ``reset`` it in a finally
+    block (AGENTS.md 4.3: run-scoped, explicitly cleaned up). ``sink`` receives
+    the raw backend search dicts (title/url/content/published_at/...) before
+    they are shaped for the engine.
+    """
+    return _SOURCE_SINK.set(sink)
 
 
 class DeepScoutRetriever:
@@ -48,6 +73,11 @@ class DeepScoutRetriever:
     #: marshalled onto this loop so the client's loop-bound semaphores stay
     #: valid (see ``search``).
     _loop: Optional[asyncio.AbstractEventLoop] = None
+    #: Per-run collector for retrieved sources, or None. Read in ``search`` as
+    #: the raw backend dicts come back, so the run's audit layer sees the real
+    #: sources (title/url/content/metadata) rather than URLs scraped out of the
+    #: final report text. Class-scoped so it survives the worker-thread hop.
+    _source_sink: Optional[Callable[[List[Dict[str, Any]]], None]] = None
 
     def __init__(self, query: str, query_domains: Optional[List[str]] = None):
         self.query = str(query or "").strip()
@@ -88,7 +118,40 @@ class DeepScoutRetriever:
             results = future.result()
         else:
             results = asyncio.run(client.run_search([self.query]))
+        self._record_sources(results)
         return self._to_engine_results(results, max_results)
+
+    @classmethod
+    def bind_source_sink(
+        cls, sink: Optional[Callable[[List[Dict[str, Any]]], None]]
+    ) -> Optional[Callable[[List[Dict[str, Any]]], None]]:
+        """Bind a per-run source collector to this retriever class.
+
+        Called by the orchestrator at run start and cleared at run end. Returns
+        the PREVIOUS sink so the caller can restore it in a finally block (a
+        nested/overlapping run must not permanently steal the outer run's sink).
+        Class-scoped so the benchmark/test path can bind an isolated collector
+        without touching the process-wide wiring.
+        """
+        previous = cls._source_sink
+        cls._source_sink = sink
+        return previous
+
+    @classmethod
+    def _record_sources(cls, results: List[Dict[str, Any]]) -> None:
+        """Hand the raw backend search dicts to the run's collector, if any.
+
+        The sink is best-effort observability for the audit layer: a failing
+        collector must never break retrieval, so errors are logged and swallowed
+        with context (AGENTS.md 4.4).
+        """
+        sink = cls._source_sink
+        if sink is None or not results:
+            return
+        try:
+            sink([r for r in results if isinstance(r, dict)])
+        except Exception as exc:  # pragma: no cover - observer must not break search
+            logger.warning("[RetrieverBridge] source sink failed: %s", exc, exc_info=exc)
 
     @staticmethod
     def _to_engine_results(
@@ -127,18 +190,27 @@ def make_retriever_class(
     client: SearchClient,
     name: str = "DeepScoutRetriever",
     loop: Optional[asyncio.AbstractEventLoop] = None,
+    source_sink: Optional[Callable[[List[Dict[str, Any]]], None]] = None,
 ):
     """Build the retriever class carrying ``client`` (and the main loop).
 
     A distinct subclass (rather than a module-level class mutated in place)
     keeps `install` idempotent and lets tests construct an isolated retriever
-    without touching the process-wide wiring.
+    without touching the process-wide wiring. ``source_sink`` (optional) is
+    stored class-side so it survives the worker-thread hop where the engine
+    calls the synchronous ``search``.
     """
-    return type(name, (DeepScoutRetriever,), {"_search_client": client, "_loop": loop})
+    return type(
+        name,
+        (DeepScoutRetriever,),
+        {"_search_client": client, "_loop": loop, "_source_sink": source_sink},
+    )
 
 
 def install(
-    client: SearchClient, loop: Optional[asyncio.AbstractEventLoop] = None
+    client: SearchClient,
+    loop: Optional[asyncio.AbstractEventLoop] = None,
+    source_sink: Optional[Callable[[List[Dict[str, Any]]], None]] = None,
 ) -> type:
     """Patch the engine's retrieval seams to use ``client``.
 
@@ -158,7 +230,7 @@ def install(
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
-    retriever_cls = make_retriever_class(client, loop=loop)
+    retriever_cls = make_retriever_class(client, loop=loop, source_sink=source_sink)
 
     def _get_retrievers(headers, cfg):  # noqa: ANN001 - engine signature
         return [retriever_cls]

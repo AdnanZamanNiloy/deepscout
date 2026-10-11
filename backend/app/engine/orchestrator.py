@@ -221,6 +221,37 @@ class MultiAgentRunner:
         self._queue: "asyncio.Queue[EngineEvent]" = asyncio.Queue()
         self.sink = _EventSink(self._queue)
         self.sources: List[str] = []
+        # Raw backend search dicts (title/url/content/published_at/...) as
+        # retrieved during the run. Deduped by URL as they arrive; this is the
+        # evidence the audit bridge reconstructs facts from — captured here
+        # rather than scraped back out of the report text.
+        self.captured_sources: List[Dict[str, Any]] = []
+        self._seen_source_urls: set = set()
+
+    def _record_sources(self, results: List[Dict[str, Any]]) -> None:
+        """Collect retrieved sources for the audit layer (deduped by URL).
+
+        Bound to the retriever class for the run's lifetime. Prefers entries
+        whose content was actually fetched (a real page body) over snippet-only
+        duplicates of the same URL.
+        """
+        for item in results or []:
+            if not isinstance(item, dict):
+                continue
+            url = str(item.get("url") or "").strip()
+            if not url:
+                continue
+            if url in self._seen_source_urls:
+                # Keep the richest copy: a later fetched body beats an earlier
+                # snippet for the same URL.
+                if item.get("is_content_fetched"):
+                    for i, existing in enumerate(self.captured_sources):
+                        if str(existing.get("url")) == url:
+                            self.captured_sources[i] = item
+                            break
+                continue
+            self._seen_source_urls.add(url)
+            self.captured_sources.append(item)
 
     def _build_task(self) -> Dict[str, Any]:
         sections = _MODE_SECTIONS.get(self.mode, _MODE_SECTIONS["standard"])
@@ -265,6 +296,11 @@ class MultiAgentRunner:
         # Drain engine log events concurrently while the graph runs.
         drainer = asyncio.create_task(self._drain_sink())
 
+        # Bind this run's source collector to the installed retriever class so
+        # real retrieved sources reach the audit layer. Restored in `finally`
+        # (a nested/overlapping run must not steal the outer run's sink).
+        restore_sink = self._bind_source_sink()
+
         self._state: Dict[str, Any] = {"task": task}
         try:
             async for chunk in chain.astream(
@@ -280,6 +316,7 @@ class MultiAgentRunner:
                         self._state.update(output)
                     yield self._node_event(node, output)
         finally:
+            restore_sink()
             # Give the drainer a chance to flush, then stop it.
             await asyncio.sleep(0)
             drainer.cancel()
@@ -287,6 +324,25 @@ class MultiAgentRunner:
                 await drainer
             except asyncio.CancelledError:
                 pass
+
+    def _bind_source_sink(self):
+        """Bind ``_record_sources`` to the installed retriever; return restorer.
+
+        When no retriever has been installed (unit tests driving the runner
+        without the app's bridges) this is a no-op that returns a no-op.
+        """
+        from app.engine import runtime
+
+        rt = runtime()
+        retriever_cls = getattr(rt, "retriever_cls", None) if rt else None
+        if retriever_cls is None:
+            return lambda: None
+        previous = retriever_cls.bind_source_sink(self._record_sources)
+
+        def _restore() -> None:
+            retriever_cls.bind_source_sink(previous)
+
+        return _restore
 
     async def _engine_stream_output(self, *args: Any, **kwargs: Any) -> None:
         """Engine ``stream_output`` replacement.
@@ -337,21 +393,43 @@ class MultiAgentRunner:
 
         Keys mirror what ``app/api/routes.py`` reads after a run:
         ``final_report`` (primary answer), ``sources`` (for persistence and the
-        trace), and ``facts``/``confidence`` where the engine provides them.
-        The audit layer's richer fields are produced separately by the adapter.
+        trace), and the audit fields the right-side panel renders. The audit
+        layer (confidence, contradictions, evidence grades, quality) is rebuilt
+        deterministically from the retrieved sources + report by
+        :mod:`app.engine.audit_bridge` — the engine emits no structured fact
+        pool of its own.
         """
+        from app.engine.audit_bridge import build_facts, build_source_index, compute_audit
+
         state = getattr(self, "_state", {}) or {}
         report = sanitize_report_markdown(
             str(state.get("report") or self._render_report(state) or "")
         )
-        sources = self._collect_sources(state)
+
+        # Merge captured retrieval + the engine's citation strings into one
+        # metadata-rich source index; this supersedes the old URL-scraping path
+        # (which produced bare URLs with no titles or dates for the audit).
+        source_index = build_source_index(
+            self.captured_sources, state.get("sources") or [], report
+        )
+        sources = [s["url"] for s in source_index if s.get("url")]
+
+        facts = build_facts(report, source_index, self.query)
+        audit = compute_audit(query=self.query, report=report, sources=source_index, facts=facts)
+
         return {
             "final_report": report,
             "sources": sources,
+            "source_index": source_index,
+            "facts": facts,
             "title": state.get("title"),
             "sections": state.get("sections") or [],
             "fact_check_notes": state.get("fact_check_notes"),
             "engine_state": state,
+            **{k: audit[k] for k in (
+                "confidence", "confidence_breakdown", "contradictions",
+                "answer_support", "evidence_distribution", "quality", "outline",
+            ) if k in audit},
         }
 
     def _render_report(self, state: Dict[str, Any]) -> str:
@@ -376,27 +454,3 @@ class MultiAgentRunner:
         if state.get("conclusion"):
             parts.extend(["## Conclusion", str(state["conclusion"]), ""])
         return "\n".join(parts).strip()
-
-    def _collect_sources(self, state: Dict[str, Any]) -> List[str]:
-        """Extract cited URLs from the assembled report and research data.
-
-        The default engine graph does not populate ``sources``; this recovers
-        the URLs actually cited so persistence, the citation legend and the
-        export path have real data instead of an empty list.
-        """
-        text = str(state.get("report") or self._render_report(state) or "")
-        found: List[str] = []
-        seen: set = set()
-        for match in re.findall(r"https?://[^\s)\]>\"']+", text):
-            url = match.rstrip(".,;")
-            if url not in seen:
-                seen.add(url)
-                found.append(url)
-        # Engine-provided sources (subtopic reports append a Sources section).
-        for source in state.get("sources") or []:
-            text_source = str(source)
-            if text_source.startswith("http") and text_source not in seen:
-                seen.add(text_source)
-                found.append(text_source)
-        self.sources = found
-        return found

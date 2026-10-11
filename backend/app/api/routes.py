@@ -30,6 +30,8 @@ from app.db.sqlite import (
     mark_run_resumable_reset,
     record_event,
     save_citations,
+    save_claims,
+    mark_challenged_claims,
     save_evidence,
     save_final_report,
     save_report,
@@ -59,6 +61,39 @@ logger = get_logger(__name__)
 
 # Applied to the expensive research stream only; other routes stay open.
 limiter = Limiter(key_func=get_remote_address)
+
+
+def _final_frame_from_state(
+    final_state: Dict[str, Any],
+    *,
+    report: str,
+    sources: Any,
+    confidence: float,
+    degraded: Any,
+    degraded_reasons: Any,
+) -> Dict[str, Any]:
+    """Build the terminal ``final_report`` frame from the runner's final state.
+
+    The audit fields (confidence breakdown, answer support, citation health,
+    quality, outline, contradictions) are produced by the engine's audit bridge
+    and carried on ``final_state``; this forwards them to the wire frame. Missing
+    keys fall back to the adapter's empty defaults — never invented values.
+    """
+    from app.engine.event_adapter import final_report_frame
+
+    return final_report_frame(
+        report=report,
+        sources=sources,
+        confidence=confidence,
+        degraded=degraded,
+        degraded_reasons=degraded_reasons,
+        confidence_breakdown=final_state.get("confidence_breakdown") or {},
+        answer_support=final_state.get("answer_support"),
+        quality=final_state.get("quality") or {},
+        outline=final_state.get("outline") or {},
+        section_wise=bool((final_state.get("outline") or {}).get("section_wise")),
+        contradictions=final_state.get("contradictions") or [],
+    )
 
 
 
@@ -325,20 +360,34 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
             final_state = runner.final_state()
             report = str(final_state.get("final_report") or "")
             sources = list(final_state.get("sources") or [])
+            source_index = list(final_state.get("source_index") or [])
+            facts = list(final_state.get("facts") or [])
+            contradictions = list(final_state.get("contradictions") or [])
             confidence = float(final_state.get("confidence", 0.0) or 0.0)
 
             await _finish_run("completed", confidence)
 
-            # Persist sources so the trace, citation legend and export have real
-            # data. Engine source entries are URLs; saved as minimal rows.
-            if sources:
+            # Persist sources + claims + contradictions so the trace and the
+            # evidence ledger are real (not just the final report text).
+            if source_index:
                 await _persist(save_sources(
                     settings.database_url, request_id,
-                    [{"url": url} for url in sources],
+                    [{"url": s.get("url"), "title": s.get("title"),
+                      "publisher": s.get("publisher"),
+                      "source_domain": s.get("source_domain"),
+                      "retrieval_provider": s.get("retrieval_provider"),
+                      "retrieval_engine": s.get("retrieval_engine")}
+                     for s in source_index if s.get("url")],
                 ))
                 await _persist(save_evidence(
                     settings.database_url, request_id,
-                    [{"url": url} for url in sources],
+                    [{"url": s.get("url")} for s in source_index if s.get("url")],
+                ))
+            if facts:
+                await _persist(save_claims(settings.database_url, request_id, facts))
+            if contradictions:
+                await _persist(mark_challenged_claims(
+                    settings.database_url, request_id, contradictions,
                 ))
 
             degraded = take_fallbacks()
@@ -361,11 +410,9 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                     audit_markdown="",
                 ))
                 await _persist(save_citations(settings.database_url, request_id, report))
-                frame = final_report_frame(
-                    report=report,
-                    sources=sources,
-                    confidence=confidence,
-                    degraded=degraded,
+                frame = _final_frame_from_state(
+                    final_state, report=report, sources=sources,
+                    confidence=confidence, degraded=degraded,
                     degraded_reasons=degradation["reasons"],
                 )
                 yield frame_line(frame)
@@ -498,23 +545,30 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
 
             final_state = runner.final_state()
             report = str(final_state.get("final_report") or "")
+            source_index = list(final_state.get("source_index") or [])
             sources = list(final_state.get("sources") or [])
+            facts = list(final_state.get("facts") or [])
             confidence = float(final_state.get("confidence", 0.0) or 0.0)
             await _finish("completed", confidence)
 
-            if sources:
+            if source_index:
                 await _persist(save_sources(
-                    settings.database_url, request_id, [{"url": url} for url in sources],
+                    settings.database_url, request_id,
+                    [{"url": s.get("url"), "title": s.get("title"),
+                      "publisher": s.get("publisher")} for s in source_index if s.get("url")],
                 ))
+            if facts:
+                await _persist(save_claims(settings.database_url, request_id, facts))
 
             if report:
                 await _persist_report(settings.database_url, request_id, query, report, confidence, audit="")
                 await _persist(save_citations(settings.database_url, request_id, report))
                 degraded = take_fallbacks()
                 degradation = degradation_summary()
-                frame = final_report_frame(
-                    report=report, sources=sources, confidence=confidence,
-                    degraded=degraded, degraded_reasons=degradation["reasons"],
+                frame = _final_frame_from_state(
+                    final_state, report=report, sources=sources,
+                    confidence=confidence, degraded=degraded,
+                    degraded_reasons=degradation["reasons"],
                 )
                 yield frame_line(frame)
             else:
