@@ -30,7 +30,7 @@ const GITHUB_URL = "https://github.com/AdnanZamanNiloy/deepscout-ai";
 /* The sample "Watch demo" runs. Exported so App can launch the exact question
  * the hero advertises — a demo that ran something else than the button
  * promised would be the kind of quiet mismatch this repo keeps fixing. */
-export const DEMO_QUERY = "what can be the most demanding skill in 2027";
+export const DEMO_QUERY = "What will be the most in demand skill in 2027?";
 
 const PIPELINE = [
   { name: "Orchestrator", desc: "Scores complexity, sets agent count and iteration caps" },
@@ -43,12 +43,12 @@ const PIPELINE = [
 ];
 
 /* Console preview content. Sample questions only — nothing here is read from a
- * run, and no statistic is presented as a measured result. */
+ * run, and no statistic is presented as a measured result. Rows mirror the real
+ * sidebar's shape: a title line that truncates, and the mode beneath it. */
 const PREVIEW_RECENT = [
-  { label: DEMO_QUERY, tone: "live", active: true },
-  { label: "What are the latest advances in AI agents", tone: "done" },
-  { label: "current trend of ai research", tone: "done" },
-  { label: "How does graph RAG differ from vector search", tone: "done" },
+  { title: DEMO_QUERY, mode: "standard", tone: "live", active: true },
+  { title: "What are the latest advances in AI agents", mode: "standard", tone: "done" },
+  { title: "How does graph RAG differ from vector search", mode: "standard", tone: "done" },
 ];
 
 /* Capabilities — what the system does that a single-prompt assistant does not.
@@ -151,21 +151,32 @@ function ConsolePreview() {
             <span className="lp-rail-item"><IconCompass size={12} /> Model Controls</span>
             <span className="lp-rail-item"><IconAgents size={12} /> Agents</span>
           </div>
-          <div className="lp-rail-head">Recent</div>
+          {/* The real rail's section head carries a "+N more" affordance; without
+              it the preview reads as a sidebar that has nothing to scroll to. */}
+          <div className="lp-rail-head">
+            <span>Recent</span>
+            <span className="lp-rail-more">+24 more</span>
+          </div>
           <div className="lp-recent">
             {PREVIEW_RECENT.map((item) => (
-              <span className={`lp-recent-row${item.active ? " active" : ""}`} key={item.label}>
+              <span className={`lp-recent-row${item.active ? " active" : ""}`} key={item.title}>
                 <span className={`dot ${item.tone}`} />
-                <span className="lp-recent-label">{item.label}</span>
+                <span className="lp-recent-body">
+                  <span className="lp-recent-name">{item.title}</span>
+                  <span className="lp-recent-sub">{item.mode}</span>
+                </span>
               </span>
             ))}
           </div>
         </div>
 
         <div className="lp-stage">
+          {/* The real title bar: chat title on the left, collapse control on the
+              right. The title is the question here, so the preview states what
+              the run was about instead of showing a generic label. */}
           <div className="lp-stage-top">
             <span className="lp-stage-query">{DEMO_QUERY}</span>
-            <span className="lp-chev" aria-hidden="true">⌄</span>
+            <span className="lp-collapse" aria-hidden="true">‹</span>
           </div>
 
           <div className="lp-stage-body">
@@ -184,11 +195,10 @@ function ConsolePreview() {
             <div className="lp-report-date">Date: {today}</div>
             <h4 className="lp-report-sub">Introduction</h4>
             <p className="lp-report-text">
-              When a procedure that has been reliably executed for years suddenly rests on
-              assumptions that no longer hold, the demand placed on the operator is not simply
-              to learn a new procedure but to recognize that the old one has become invalid,
-              suppress the habit that automates it, and construct a workable substitute under
-              time pressure and incomplete information…
+              When a procedure that has run reliably for years suddenly rests on assumptions
+              that no longer hold, the operator&rsquo;s job is not to learn a new procedure but to
+              recognize the old one is invalid, suppress the habit that automates it, and build a
+              workable substitute…
             </p>
           </div>
 

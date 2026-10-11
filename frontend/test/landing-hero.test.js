@@ -39,7 +39,7 @@ test("the demo query is defined once and used for the promise and the run", () =
   // so the question shown cannot differ from the question run.
   assert.match(landing, /onDemo\?\.\(DEMO_QUERY\)/, "the button must send DEMO_QUERY");
   assert.match(preview, /lp-bubble">\{DEMO_QUERY\}/, "the preview bubble must show DEMO_QUERY");
-  assert.match(landing, /\{ label: DEMO_QUERY/, "the preview's recent list must list it");
+  assert.match(landing, /\{ title: DEMO_QUERY/, "the preview's recent list must list it");
   assert.ok(!preview.includes(demo[1]), "the preview must not hardcode a second copy of the question");
 });
 
