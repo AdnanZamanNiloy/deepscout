@@ -48,7 +48,10 @@ class EditorAgent:
         plan = await self.llm.call_model_json(prompt)
         return {
             "title": plan.get("title"),
-            "date": plan.get("date"),
+            # The run's actual date, not the model's guess: a model date is
+            # often ambiguous (11/10/2026) or wrong, and the report should be
+            # dated when it was produced.
+            "date": datetime.now().strftime("%d %B %Y"),
             "sections": plan.get("sections"),
         }
 
@@ -166,6 +169,8 @@ class EditorAgent:
                    based on the research summary report above.
                    You must generate a maximum of {max_sections} section headers.
                    You must focus ONLY on related research topics for subheaders and do NOT include introduction, conclusion and references.
+                   The 'title' must be a plain, specific title that names the actual subject of the report. Do NOT use empty booster words like "A Comprehensive Analysis of", "An In-Depth Look at", or "A Structured Framework for" — they promise breadth the report may not deliver. Name the subject; do not advertise it.
+                   The section headers must be distinct from one another: each must own a clearly different part of the subject, with no two headers covering the same ground.
                    You must return nothing but a JSON with the fields 'title' (str) and 
                    'sections' (maximum {max_sections} section headers) with the following structure:
                    '{{title: string research title, date: today's date, 

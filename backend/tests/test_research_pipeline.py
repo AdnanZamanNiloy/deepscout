@@ -8,6 +8,7 @@ test driven by fakes (no live provider).
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import pytest
 
@@ -39,6 +40,39 @@ def test_report_type_method_mapping_resolves():
 def test_search_queries_prompt_forbids_operators():
     prompt = PromptFamily.generate_search_queries_prompt("q", "", ReportType.ResearchReport.value, 3)
     assert "site:" in prompt and "Do not use search operator syntax" in prompt
+
+
+def test_all_report_prompts_render_without_error():
+    """Every prompt generator must build a non-empty string (AGENTS.md 4.1).
+
+    A bad f-string reference (e.g. date.date()) raises at call time; this drives
+    each generator so that failure is caught here, not mid-run.
+    """
+    from app.research.enums import Tone
+
+    report = PromptFamily.generate_report_prompt(
+        "q", "ctx", "web", report_format="APA", total_words=500,
+        tone=Tone.Objective, language="english",
+    )
+    assert report and "References" in report and date_marker_ok(report)
+
+    subtopic = PromptFamily.generate_subtopic_report_prompt(
+        "sub", [], [], "main", "ctx", tone=Tone.Objective,
+    )
+    assert subtopic and "sub" in subtopic
+
+    intro = PromptFamily.generate_report_introduction("q", "summary")
+    assert intro and "q" in intro
+
+    conclusion = PromptFamily.generate_report_conclusion("q", "report body")
+    assert conclusion and "q" in conclusion
+
+
+def date_marker_ok(text: str) -> bool:
+    """The report prompt must state a concrete current date."""
+    import re
+
+    return bool(re.search(r"current date is \d{1,2} \w+ \d{4}", text))
 
 
 # --- context -----------------------------------------------------------------
@@ -291,3 +325,49 @@ def test_section_input_carries_prior_content():
     assert inp["existing_headers"] == prior["existing_headers"]
     assert inp["relevant_written_contents"] == prior["relevant_written_contents"]
     assert inp["sibling_sections"] == ["A"]
+
+
+# --- source relevance gate ---------------------------------------------------
+
+
+def _conductor():
+    from app.research.skills.researcher import ResearchConductor
+
+    class _R:
+        query = "The most demanding skills in 2027"
+
+    rc = ResearchConductor.__new__(ResearchConductor)
+    rc.researcher = _R()
+    rc.logger = logging.getLogger("test.relevance")
+    return rc
+
+
+def test_relevance_gate_drops_off_topic_sources():
+    """A solar-wind / piano study must not reach a labor-market report."""
+    rc = _conductor()
+    pages = [
+        {"url": "http://arxiv.org/bz4cast", "title": "Bz4Cast Verification",
+         "raw_content": "A benchmark for solar wind and ionospheric Bz forecasting."},
+        {"url": "http://europepmc.org/skills", "title": "In-demand skills 2027",
+         "raw_content": "This study examines the most demanding skills in the 2027 labor market and workforce."},
+        {"url": "http://arxiv.org/piano", "title": "Piano Skill Assessment Dataset",
+         "raw_content": "A MIDI dataset for assessing piano performance."},
+    ]
+    kept = rc._filter_by_relevance(pages)
+    titles = [p["title"] for p in kept]
+    assert "In-demand skills 2027" in titles
+    assert "Bz4Cast Verification" not in titles
+    assert "Piano Skill Assessment Dataset" not in titles
+
+
+def test_relevance_gate_keeps_all_when_nothing_relevant():
+    """The gate must never empty a sub-query's context."""
+    rc = _conductor()
+    pages = [{"url": "http://a.test", "title": "Odd", "raw_content": "unrelated text"}]
+    assert rc._filter_by_relevance(pages) == pages
+
+
+def test_relevance_gate_passes_single_page():
+    rc = _conductor()
+    pages = [{"url": "http://a.test", "title": "X", "raw_content": "anything"}]
+    assert rc._filter_by_relevance(pages) == pages

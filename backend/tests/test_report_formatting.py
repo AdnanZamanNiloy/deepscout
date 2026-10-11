@@ -138,3 +138,13 @@ def test_adjacent_duplicate_heading_is_collapsed_body_kept():
     assert out.count("## Conclusion") == 1
     assert "The body text that must survive." in out
     assert "The closing text that must survive." in out
+
+
+def test_placeholder_link_targets_are_unwrapped():
+    """`[text](link)` (a literal placeholder for a URL) must not render broken."""
+    out = sanitize_report_markdown("See [the 2027 report](link) and [x](url).")
+    assert "(link)" not in out and "(url)" not in out
+    assert "the 2027 report" in out and "x" in out
+    # A real URL target is untouched.
+    kept = sanitize_report_markdown("Real [paper](https://a.test/x) stays.")
+    assert "[paper](https://a.test/x)" in kept

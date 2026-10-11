@@ -199,18 +199,53 @@ def _normalize_pipe_table(block_lines: List[str]) -> List[str]:
     return lines
 
 
+def _strip_placeholder_links(text: str) -> str:
+    """Unwrap links whose target is a placeholder, not a URL.
+
+    The model sometimes emits ``[some text](link)`` or ``[title](url)`` — a
+    literal placeholder word where a real URL belongs. Left as-is these render
+    as broken links. The link text is kept as plain prose; only the fake target
+    is removed.
+    """
+    # [text](link) / [text](url) / [text](source) — a bare placeholder token.
+    return re.sub(
+        r"\[([^\]]+)\]\((?:link|url|source|website|link url|source url)\)",
+        r"\1",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+
+# Filler an author slot the model could not fill. Left in, every reference
+# reads "..., Author not specified in provided metadata [url]" — a visible
+# defect. The phrase (and its variants) is removed from reference lines only,
+# so the entry falls back to "Title (Year). Site. [url]", which is traceable.
+_AUTHOR_PLACEHOLDER_RE = re.compile(
+    r"\bAuthor not specified(?: in provided metadata)?\.?,?\s*",
+    re.IGNORECASE,
+)
+
+
+def _strip_author_placeholders(text: str) -> str:
+    """Remove literal "Author not specified..." filler from reference entries."""
+    return _AUTHOR_PLACEHOLDER_RE.sub("", text)
+
+
 def sanitize_report_markdown(markdown: str) -> str:
     """Clean report markdown for storage and rendering.
 
-    Removes literal HTML artifacts, normalises ragged pipe tables into aligned
-    GFM tables, drops template placeholders and repeated headings, and trims
-    trailing whitespace. Content is never dropped: a table row with too many
-    cells keeps its overflow in the last column.
+    Removes literal HTML artifacts, unwraps placeholder links, strips
+    "Author not specified" reference filler, normalises ragged pipe tables into
+    aligned GFM tables, drops template placeholders and repeated headings, and
+    trims trailing whitespace. Content is never dropped: a table row with too
+    many cells keeps its overflow in the last column.
     """
     text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
     text = _HTML_TAG_RE.sub("", text)
     text = _HTML_BREAK_RE.sub(" ", text)
     text = text.replace("&nbsp;", " ")
+    text = _strip_placeholder_links(text)
+    text = _strip_author_placeholders(text)
 
     lines = text.split("\n")
     out: List[str] = []

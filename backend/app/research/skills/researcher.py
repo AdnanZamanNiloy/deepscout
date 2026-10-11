@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import re
 
 import json_repair
 
@@ -363,7 +364,72 @@ class ResearchConductor:
 
         scraped_content = await self.researcher.scraper_manager.browse_urls(new_search_urls)
         scraped_content.extend(prefetched_content)
-        return scraped_content
+        return self._filter_by_relevance(scraped_content)
+
+    def _filter_by_relevance(self, pages: list) -> list:
+        """Drop pages that do not engage the research topic at all.
+
+        A sub-query ("solar PV employment forecast") can surface papers that are
+        topically unrelated to the report's subject ("sector-specific skill
+        demands"): a photovoltaic forecasting benchmark, a particle-detection
+        study. Those pages then crowd the writer's context and leak into the
+        report as irrelevant examples. This gate scores each page against the
+        report's own subject and keeps only pages that engage it; it is a floor,
+        not a ranker, and it never discards the whole set — when nothing clears
+        the floor the pages are kept as-is so a run is never left without
+        context.
+
+        Uses the shared topical-engagement signal (content-word overlap +
+        entity engagement), so a paraphrase still passes. Degrades to "keep all"
+        if the helper is unavailable, so a missing dependency can only widen
+        context, never empty it.
+        """
+        pages = list(pages or [])
+        if len(pages) <= 1:
+            return pages
+        try:
+            from app.agents.sources import (
+                entity_miss,
+                is_topically_irrelevant,
+                topicality_floor_applies,
+            )
+
+            query = self.researcher.query
+            entity_tokens = self._entity_tokens(query)
+            # Only filter when the query names a subject; a vague query has no
+            # basis for "off-topic" and filtering it would discard results for
+            # no reason.
+            if not topicality_floor_applies(query, entity_tokens):
+                return pages
+
+            kept = []
+            for page in pages:
+                if not isinstance(page, dict):
+                    continue
+                text = str(page.get("raw_content") or page.get("content") or "")
+                title = str(page.get("title") or "")
+                url = str(page.get("url") or "")
+                if is_topically_irrelevant(query, text, entity_tokens, title, url):
+                    self.logger.info("Dropped off-topic source: %s", url)
+                    continue
+                # Entity-miss is a second, sharper signal: a page that never
+                # mentions any subject the question named is off-topic even when
+                # it shares generic vocabulary. entity_miss returns a negative
+                # penalty when the subject is engaged nowhere salient.
+                if text and entity_miss(query, entity_tokens, text, url) < 0:
+                    self.logger.info("Dropped entity-miss source: %s", url)
+                    continue
+                kept.append(page)
+            # Never let the gate empty the context for a sub-query.
+            return kept or pages
+        except Exception as exc:  # a gate failure must not break retrieval
+            self.logger.warning("Source relevance filter unavailable: %s", exc)
+            return pages
+
+    @staticmethod
+    def _entity_tokens(query: str) -> list:
+        """Capitalised / acronym tokens of the query, used by entity_miss."""
+        return re.findall(r"\b[A-Z][A-Za-z0-9]+\b", query or "")
 
     async def _get_new_urls(self, url_set_input):
         """Return URLs not yet visited, marking them visited."""

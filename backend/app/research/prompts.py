@@ -87,15 +87,20 @@ The response should contain ONLY the list.
         """Main report-generation prompt (the research_report type)."""
         if report_source == ReportSource.Web.value:
             reference_prompt = """
-You MUST write all used source urls at the end of the report as references, and make sure to not add duplicated sources, but only one reference for each.
-Every url should be hyperlinked: [url website](url)
-Additionally, you MUST include hyperlinks to the relevant URLs wherever they are referenced in the report:
+You MUST list every source you used at the end of the report under a "## References" heading: one entry per source, no duplicates.
+Every reference entry MUST identify the SPECIFIC publication or page and link to it, in this form:
 
-eg: Author, A. A. (Year, Month Date). Title of web page. Website Name. [url website](url)
+    - Title of the specific work (Year). Publisher or site. [link text](full URL)
+
+Rules for references (these are mandatory):
+- The title is the real title of the specific article, paper, report or page you actually used — read it from the source. NEVER write a placeholder such as "Author not specified", "Author not specified in provided metadata", "Untitled", or leave the author slot blank.
+- NEVER cite a database, repository, or search page as the reference: no "Europe PMC", "Semantic Scholar PDF", "IEEE", "arXiv:2011.00001", "Google Scholar", "PubMed" or a bare DOI/PMID landing page with no title. Cite the named work behind it, with its title and the URL of the specific page.
+- If a source has a known author, include it before the year ("Smith, J. (2024). Title. Site."). If the author is genuinely not recoverable from the source, OMIT the author field entirely — do not invent one and do not write a placeholder.
+- Link text must be the work's title or site name, never a raw URL pasted as the link text.
 """
         else:
             reference_prompt = """
-You MUST write all used source document names at the end of the report as references, and make sure to not add duplicated sources, but only one reference for each."
+You MUST write all used source document names at the end of the report as references, and make sure to not add duplicated sources, but only one reference for each.
 """
 
         tone_prompt = f"Write the report in a {tone.value} tone." if tone else ""
@@ -119,10 +124,11 @@ Please follow all of the following guidelines in your report:
 - Use in-text citation references in {report_format} format and make it with markdown hyperlink placed at the end of the sentence or paragraph that references them like this: ([in-text citation](url)).
 - Every substantive claim, figure or quote MUST carry an in-text citation to the source it came from. Do NOT cite sources that do not appear in the provided information.
 - Don't forget to add a reference list at the end of the report in {report_format} format.
+- Every claim must be supported; where the evidence only shows research potential rather than established fact (a method, a prototype, a dataset), say so — do not present it as demonstrated employer demand or real-world outcome.
 - {reference_prompt}
 - {tone_prompt}
 You MUST write the report in the following language: {language}.
-Assume that the current date is {date.today()}.
+Assume that the current date is {date.today().strftime('%d %B %Y')}.
 """
 
     @staticmethod

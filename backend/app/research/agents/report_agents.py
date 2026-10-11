@@ -265,12 +265,9 @@ class PublisherAgent:
         )
         date_value = research_state.get("date") or ""
         # ``headers["date"]`` is the literal label "Date", not a value; only
-        # render the line when a real date exists.
-        date_line = (
-            f"#### {headers.get('date', 'Date')}: {date_value}\n"
-            if str(date_value).strip()
-            else ""
-        )
+        # render the line when a real date exists. The value is already
+        # human-readable ("11 October 2026"), so no ambiguous numeric format.
+        date_line = f"*{date_value}*\n" if str(date_value).strip() else ""
 
         return f"""# {title}
 {date_line}
