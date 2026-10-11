@@ -52,6 +52,10 @@ export const IconArrowUp = (p) => base({ ...p, strokeWidth: 2, children: <><line
 export const IconStop = (p) => base({ ...p, children: <rect x="6" y="6" width="12" height="12" rx="2" /> });
 export const IconClock = (p) => base({ ...p, children: <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></> });
 export const IconInfo = (p) => base({ ...p, children: <><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></> });
+export const IconArrowRight = (p) => base({ ...p, children: <><line x1="4" y1="12" x2="19" y2="12" /><polyline points="13 6 19 12 13 18" /></> });
+/* Play-in-a-circle for "Watch demo": reads as playback next to a filled
+   "Start research" button, where a bare triangle would read as a menu caret. */
+export const IconPlay = (p) => base({ ...p, children: <><circle cx="12" cy="12" r="9" /><polygon points="10 8.5 16 12 10 15.5" /></> });
 export const IconCopy = (p) => base({ ...p, children: <><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></> });
 /* GitHub mark is a filled glyph, not a stroked outline — override the
    stroke-based base so it renders correctly at small sizes. */

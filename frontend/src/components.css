@@ -876,24 +876,43 @@
    LANDING — a working front door, not a cinematic poster
    ============================================================ */
 
+/* Landing-scoped palette. The landing is the one marketing surface in the
+   product, so it gets its own deeper ground and a brighter window than the
+   console's working surfaces: the preview window has to read as a lit object
+   sitting on a stage, which it cannot do when it shares the console's own
+   background. Text tokens are still the shared ramp, so the pages stay one
+   product — only the planes move. */
 .landing {
+  --lp-ground: #0b0b0b;
+  --lp-band: #121214;
+  --lp-window: #121214;
+  --lp-window-2: #191a1d;
+  --lp-edge: color-mix(in srgb, var(--deepscout) 30%, transparent);
+  --lp-glow: 0 30px 90px -30px color-mix(in srgb, var(--deepscout) 42%, transparent);
+
   position: relative;
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
-  /* Flat base only: the corner washes (warm top-right, blue bottom-left)
-     made the page read as two different themes. One theme, no texture. */
-  background: var(--bg);
+  background: var(--lp-ground);
   color: var(--t1);
+}
+:root[data-theme="light"] .landing {
+  --lp-ground: #f7f5f1;
+  --lp-band: #efebe4;
+  --lp-window: #ffffff;
+  --lp-window-2: #f4f2ed;
+  --lp-edge: color-mix(in srgb, var(--deepscout) 34%, transparent);
+  --lp-glow: 0 26px 70px -34px color-mix(in srgb, var(--deepscout) 34%, transparent);
 }
 
 .landing-nav {
-  position: sticky; top: 0; z-index: 10;
-  padding: 11px 20px;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(10px);
+  position: sticky; top: 0; z-index: var(--z-sticky);
+  padding: 12px 24px;
+  background: color-mix(in srgb, var(--lp-ground) 86%, transparent);
+  backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line-soft);
 }
 /* The bar itself stays full-bleed so the blur and rule reach both edges, but
@@ -905,7 +924,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  max-width: 1080px;
+  max-width: 1240px;
   margin: 0 auto;
 }
 .landing-brand {
@@ -921,8 +940,8 @@
 .landing-links { display: flex; gap: 6px; align-items: center; }
 .landing-link {
   display: inline-flex; align-items: center; gap: 7px;
-  padding: 7px 13px;
-  color: var(--t2); font-size: 13px; font-weight: 550; text-decoration: none;
+  padding: 8px 13px;
+  color: var(--t2); font-size: 13.5px; font-weight: 550; text-decoration: none;
   border-radius: var(--r-sm);
   border: 1px solid transparent;
   transition: color 0.16s ease, background 0.16s ease, border-color 0.16s ease;
@@ -931,7 +950,7 @@
 
 .theme-toggle {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; flex: none;
+  width: 34px; height: 34px; flex: none;
   padding: 0;
   color: var(--t2);
   background: var(--card);
@@ -943,19 +962,18 @@
 .theme-toggle svg { width: 15px; height: 15px; }
 .theme-toggle:hover { color: var(--deepscout); background: var(--card-2); border-color: var(--line-hover); }
 
-/* Hero: split — the pitch reads, and a real pipeline spine shows the
-   product's actual shape. No oversized centred wordmark. */
+/* ---- Hero: the promise on the left, the product on the right -------------- */
 .landing-main {
-  position: relative; z-index: 1;
+  position: relative; z-index: var(--z-base);
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
-  gap: 44px;
+  grid-template-columns: minmax(0, 0.88fr) minmax(0, 1fr);
+  gap: 48px;
   align-items: center;
   width: 100%;
-  max-width: 1180px;
+  max-width: 1240px;
   margin: 0 auto;
-  padding: 40px 30px 34px;
+  padding: 64px 24px 40px;
 }
 .landing-copy { min-width: 0; }
 .landing-eyebrow {
@@ -963,32 +981,41 @@
   font-size: 10.5px; font-weight: 700;
   letter-spacing: 0.13em; text-transform: uppercase;
   color: var(--deepscout);
-  padding: 5px 12px;
+  padding: 6px 13px;
   border: 1px solid color-mix(in srgb, var(--deepscout) 32%, transparent);
   background: var(--deepscout-wash);
   border-radius: 999px;
 }
 .landing-title {
-  margin: 18px 0 0;
-  font-size: clamp(30px, 4.4vw, 46px);
-  font-weight: 750;
-  letter-spacing: -0.03em;
-  line-height: 1.08;
+  margin: 22px 0 0;
+  font-size: clamp(34px, 5vw, 62px);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.04;
   color: var(--t1);
+  text-wrap: balance;
 }
-.landing-title em { font-style: normal; color: var(--deepscout); }
+/* The promise lands on its own line in the brand colour — the one place the
+   accent carries meaning rather than decoration. */
+.landing-title-accent { display: block; color: var(--deepscout); }
 .landing-desc {
-  margin: 16px 0 0;
-  font-size: 15px;
-  line-height: 1.72;
+  margin: 20px 0 0;
+  font-size: 16px;
+  line-height: 1.68;
   color: var(--t2);
-  max-width: 56ch;
+  max-width: 44ch;
+}
+
+.landing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 30px;
 }
 .landing-cta {
-  margin-top: 24px;
   display: inline-flex; align-items: center; gap: 9px;
-  padding: 12px 24px;
-  font-size: 14px; font-weight: 650;
+  padding: 13px 22px;
+  font-size: 14.5px; font-weight: 650;
   color: var(--ink-on-accent);
   background: var(--deepscout);
   border: 1px solid color-mix(in srgb, var(--deepscout) 70%, #000 30%);
@@ -999,83 +1026,404 @@
 }
 .landing-cta:hover { filter: brightness(1.07); transform: translateY(-1px); box-shadow: 0 6px 22px color-mix(in srgb, var(--deepscout) 34%, transparent); }
 .landing-cta:active { transform: translateY(0); }
-.landing-cta-note { display: block; margin-top: 10px; font-size: 11.5px; color: var(--t4); }
-.landing-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 26px;
-  margin-top: 28px;
-  padding-top: 20px;
-  border-top: 1px solid var(--line-soft);
-}
-.landing-metric .m-val { font-size: 20px; font-weight: 750; letter-spacing: -0.02em; color: var(--t1); font-variant-numeric: tabular-nums; }
-.landing-metric .m-lab { font-size: 11px; color: var(--t4); margin-top: 3px; }
-
-/* The evidence panel: an actual pipeline spine + a claim ledger. */
-.landing-panel {
-  min-width: 0;
-  background: var(--side);
+/* Secondary action: same weight as the primary, held back by the outline
+   instead of a fill, so "Watch demo" is a peer and not a demotion. */
+.landing-cta-ghost {
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 13px 22px;
+  font-size: 14.5px; font-weight: 650;
+  color: var(--t1);
+  background: var(--lp-window-2);
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  padding: 16px 18px 18px;
-  box-shadow: var(--shadow-card);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
-.landing-panel-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding-bottom: 12px;
+.landing-cta-ghost svg { color: var(--deepscout); }
+.landing-cta-ghost:hover { border-color: var(--line-hover); background: var(--lp-window); }
+.landing-cta-note { display: block; margin-top: 14px; font-size: 12px; color: var(--t4); }
+
+/* ---- Console preview -------------------------------------------------------
+   The window chrome. Sized in its own scale (0.78x the console's own text
+   ramp) so a seven-row report plus a sidebar fits the hero without becoming a
+   thumbnail — the point is that it is recognisably the product, not an
+   illustration of one. */
+.lp-window {
+  min-width: 0;
+  background: var(--lp-window);
+  border: 1px solid var(--lp-edge);
+  border-radius: var(--r-lg);
+  box-shadow: var(--lp-glow), var(--elev-3);
+  overflow: hidden;
+}
+.lp-window-bar {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--line-soft);
 }
-.landing-panel-head .t { font-size: 10.5px; font-weight: 700; letter-spacing: 0.11em; text-transform: uppercase; color: var(--t4); }
-.landing-panel-head .q { font-size: 12.5px; font-weight: 600; color: var(--t1); margin: 5px 0 0; line-height: 1.45; }
-.landing-panel .spine { margin-top: 12px; }
-.landing-ledger { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
-.landing-ledger-row {
-  display: flex; align-items: center; gap: 9px;
-  padding: 9px 11px;
-  margin-bottom: 7px;
-  font-size: 12px;
+.lp-traffic { display: inline-flex; gap: 6px; }
+.lp-traffic i { width: 9px; height: 9px; border-radius: 50%; display: block; }
+.lp-stop { background: #ff5f57; }
+.lp-min { background: #febc2e; }
+.lp-max { background: #28c840; }
+
+.lp-window-body {
+  display: grid;
+  grid-template-columns: minmax(0, 27%) minmax(0, 1fr);
+  min-height: 404px;
+}
+
+/* The console rail, built from the same nav the real sidebar renders. */
+.lp-rail {
+  min-width: 0;
+  padding: 12px 10px;
+  background: var(--lp-window-2);
+  border-right: 1px solid var(--line-soft);
+}
+.lp-rail-brand {
+  display: flex; align-items: center; gap: 7px;
+  padding: 0 4px 10px;
+  font-size: 12.5px; font-weight: 700; color: var(--t1);
+}
+.lp-rail-new {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 9px;
+  font-size: 12px; font-weight: 600; color: var(--t1);
+  background: var(--lp-window);
+  border: 1px solid var(--lp-edge);
+  border-radius: var(--r-sm);
+}
+.lp-rail-new svg { color: var(--deepscout); }
+.lp-rail-nav { display: flex; flex-direction: column; gap: 1px; margin-top: 10px; }
+.lp-rail-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 9px;
+  font-size: 12px; color: var(--t2);
+  border-radius: var(--r-sm);
+}
+.lp-rail-item svg { color: var(--t4); flex: none; }
+.lp-rail-count {
+  margin-left: auto;
+  font-size: 10px; font-weight: 650;
+  color: var(--t3);
+  background: var(--lp-window);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-variant-numeric: tabular-nums;
+}
+.lp-rail-head {
+  margin: 16px 0 6px;
+  padding: 0 4px;
+  font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--t4);
+}
+.lp-recent { display: flex; flex-direction: column; gap: 2px; }
+.lp-recent-row {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 7px 9px;
+  font-size: 11.5px; line-height: 1.42;
+  color: var(--t3);
+  border-radius: var(--r-sm);
+}
+.lp-recent-row.active {
+  color: var(--t1);
+  background: var(--lp-window);
+  border: 1px solid var(--line-soft);
+}
+.lp-recent-row .dot { margin-top: 5px; width: 6px; height: 6px; }
+.lp-recent-label { min-width: 0; }
+
+/* The run itself. */
+.lp-stage { display: flex; flex-direction: column; min-width: 0; }
+.lp-stage-top {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 14px;
+  font-size: 12px; font-weight: 600; color: var(--t2);
+  border-bottom: 1px solid var(--line-soft);
+}
+.lp-stage-query { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-chev { color: var(--t4); font-size: 13px; line-height: 1; }
+
+.lp-stage-body { flex: 1; padding: 16px 14px 14px; min-width: 0; }
+.lp-bubble {
+  max-width: 78%;
+  margin-left: auto;
+  padding: 8px 12px;
+  font-size: 12px; line-height: 1.45;
+  color: var(--t1);
+  background: var(--lp-window-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+}
+/* The run's own summary bar — a bordered strip, not loose meta text, so it
+   reads as the console's collapsible step trace rather than a caption. */
+.lp-run-meta {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 16px;
+  padding: 8px 12px;
+  font-size: 11px; color: var(--t3);
+  background: var(--lp-window-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.lp-run-steps { display: inline-flex; align-items: center; gap: 5px; color: var(--t2); font-weight: 600; }
+.lp-run-count { font-variant-numeric: tabular-nums; color: var(--t4); }
+.lp-report-title {
+  margin: 0;
+  font-size: 16px; font-weight: 700; line-height: 1.34;
+  letter-spacing: -0.015em;
+  color: var(--t1);
+}
+.lp-report-date { margin-top: 8px; font-size: 11px; color: var(--t4); font-variant-numeric: tabular-nums; }
+.lp-report-sub {
+  margin: 14px 0 0;
+  font-size: 13px; font-weight: 650; color: var(--t1);
+}
+.lp-report-text {
+  margin: 7px 0 0;
+  font-size: 12.5px; line-height: 1.62;
   color: var(--t2);
-  background: var(--card);
+}
+.lp-composer {
+  margin: 0 14px 14px;
+  padding: 10px 10px 8px;
+  background: var(--lp-window-2);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
 }
-.landing-ledger-row:last-child { margin-bottom: 0; }
-.landing-ledger-row .tag {
+.lp-composer-field { display: block; font-size: 12px; color: var(--t4); }
+.lp-composer-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.lp-composer-mode {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 8px;
+  font-size: 11px; font-weight: 600; color: var(--t2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+}
+.lp-composer-send {
   margin-left: auto;
-  padding: 3px 9px;
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  border-radius: var(--r-sm);
-  border: 1px solid transparent;
-  white-space: nowrap;
-}
-.landing-ledger-row .tag.tone-good {
-  color: var(--mint);
-  background: color-mix(in srgb, var(--mint) 14%, transparent);
-  border-color: color-mix(in srgb, var(--mint) 32%, transparent);
-}
-.landing-ledger-row .tag.tone-warn {
-  color: var(--amber);
-  background: color-mix(in srgb, var(--amber) 14%, transparent);
-  border-color: color-mix(in srgb, var(--amber) 32%, transparent);
-}
-.landing-ledger-row .tag.tone-bad {
-  color: var(--red);
-  background: color-mix(in srgb, var(--red) 14%, transparent);
-  border-color: color-mix(in srgb, var(--red) 32%, transparent);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px;
+  color: var(--ink-on-accent);
+  background: var(--deepscout);
+  border-radius: var(--r-xs);
 }
 
-/* ---- Landing footer: brand + section/resource columns + legal base ---- */
-.landing-footer {
-  position: relative; z-index: 1;
-  padding: 48px 30px 26px;
+/* ---- Provider row ----------------------------------------------------------
+   States what the marks mean (DeepScout routes to these models) rather than
+   borrowing a "trusted by" claim none of these vendors made about us. */
+.landing-providers {
+  position: relative; z-index: var(--z-base);
+  padding: 34px 24px 30px;
   border-top: 1px solid var(--line-soft);
-  background: var(--bg);
+}
+.landing-providers-head {
+  margin: 0;
+  text-align: center;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--t4);
+}
+.landing-providers-row {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0;
+  margin: 22px auto 0;
+  padding: 0;
+  max-width: 760px;
+}
+.landing-provider {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 30px;
+  font-size: 15px; font-weight: 600; color: var(--t2);
+}
+.landing-provider + .landing-provider { border-left: 1px solid var(--line-soft); }
+.landing-provider svg { color: var(--t3); flex: none; }
+
+/* ---- Landing sections below the hero --------------------------------------- */
+
+.landing-section {
+  position: relative; z-index: var(--z-base);
+  padding: 68px 24px;
+  border-top: 1px solid var(--line-soft);
+}
+.landing-section-alt { background: var(--lp-band); }
+.landing-section-inner {
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+.landing-section-head { max-width: 720px; }
+.landing-section-eyebrow {
+  display: inline-block;
+  font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--deepscout);
+}
+.landing-section-title {
+  margin: 12px 0 0;
+  font-size: clamp(24px, 3.2vw, 36px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.12;
+  color: var(--t1);
+}
+.landing-section-desc {
+  margin: 16px 0 0;
+  font-size: 15px;
+  line-height: 1.68;
+  color: var(--t2);
+  max-width: 62ch;
+}
+
+/* Capability grid */
+.landing-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 38px;
+}
+.landing-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 20px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  transition: border-color 0.16s ease, transform 0.16s ease;
+}
+.landing-card:hover { border-color: var(--line-hover); transform: translateY(-2px); }
+.landing-card-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  color: var(--deepscout);
+  background: var(--deepscout-wash);
+  border: 1px solid color-mix(in srgb, var(--deepscout) 26%, transparent);
+  border-radius: var(--r-md);
+}
+.landing-card-title { font-size: 14px; font-weight: 650; color: var(--t1); margin: 2px 0 0; }
+.landing-card-desc { font-size: 12.5px; line-height: 1.62; color: var(--t3); margin: 0; }
+
+/* Trust split */
+.landing-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.92fr);
+  gap: 48px;
+  align-items: center;
+}
+.landing-split-copy { min-width: 0; }
+.landing-guarantees {
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+.landing-guarantee {
+  display: flex; align-items: flex-start; gap: 11px;
+  font-size: 13.5px; line-height: 1.55; color: var(--t2);
+}
+.landing-guarantee-icon {
+  display: inline-flex; flex: none;
+  margin-top: 2px;
+  color: var(--deepscout);
+}
+.landing-split-panel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+}
+.landing-split-panel-head {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--t4);
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.landing-split-panel-head svg { color: var(--deepscout); }
+
+/* Modes */
+.landing-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 34px;
+}
+.landing-mode {
+  padding: 20px 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  transition: border-color 0.16s ease, transform 0.16s ease;
+}
+.landing-mode:hover { border-color: var(--line-hover); transform: translateY(-2px); }
+.landing-mode-name { font-size: 15px; font-weight: 650; color: var(--t1); margin: 0; }
+.landing-mode-desc { font-size: 12.5px; line-height: 1.62; color: var(--t3); margin: 9px 0 0; }
+
+/* Closing band */
+.landing-cta-band {
+  position: relative; z-index: var(--z-base);
+  padding: 58px 24px;
+  border-top: 1px solid var(--line-soft);
+  background: var(--lp-band);
+}
+.landing-cta-band-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: center;
+  justify-content: space-between;
+}
+.landing-cta-band-title {
+  margin: 0;
+  font-size: clamp(23px, 3.2vw, 34px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--t1);
+}
+.landing-cta-band-desc {
+  margin: 12px 0 0;
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: var(--t2);
+  max-width: 52ch;
+}
+.landing-cta-band-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.landing-cta-secondary {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 13px 20px;
+  font-size: 14px; font-weight: 600;
+  color: var(--t1);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.landing-cta-secondary:hover { color: var(--deepscout); border-color: var(--line-hover); background: var(--card-2); }
+
+/* ---- Landing footer -------------------------------------------------------- */
+.landing-footer {
+  position: relative; z-index: var(--z-base);
+  padding: 50px 24px 28px;
+  border-top: 1px solid var(--line-soft);
+  background: var(--lp-ground);
 }
 .landing-footer-inner {
   width: 100%;
-  max-width: 1180px;
+  max-width: 1240px;
   margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr));
@@ -1083,9 +1431,6 @@
 }
 .landing-footer-brand { min-width: 0; }
 .landing-footer-mark { display: inline-flex; align-items: center; gap: 10px; }
-.landing-footer-name {
-  font-size: 15px; font-weight: 800; letter-spacing: 5px; color: var(--deepscout);
-}
 .landing-footer-tag {
   margin: 14px 0 0;
   font-size: 12.5px;
@@ -1117,205 +1462,23 @@
 .landing-footer-linkbtn:hover { color: var(--deepscout); }
 .landing-footer-meta { font-size: 12.5px; color: var(--t4); }
 
-/* ---- Landing: content sections below the hero ------------------------- */
-
-.landing-section {
-  position: relative; z-index: 1;
-  padding: 64px 30px;
-  border-top: 1px solid var(--line-soft);
-}
-.landing-section-alt { background: var(--side); }
-.landing-section-inner {
-  width: 100%;
-  max-width: 1180px;
-  margin: 0 auto;
-}
-.landing-section-head { max-width: 720px; }
-.landing-section-eyebrow {
-  display: inline-block;
-  font-size: 10.5px; font-weight: 700;
-  letter-spacing: 0.14em; text-transform: uppercase;
-  color: var(--deepscout);
-}
-.landing-section-title {
-  margin: 12px 0 0;
-  font-size: clamp(23px, 3vw, 32px);
-  font-weight: 750;
-  letter-spacing: -0.025em;
-  line-height: 1.16;
-  color: var(--t1);
-}
-.landing-section-desc {
-  margin: 14px 0 0;
-  font-size: 14.5px;
-  line-height: 1.7;
-  color: var(--t2);
-  max-width: 62ch;
-}
-
-/* Capability grid */
-.landing-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: 36px;
-}
-.landing-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 20px 18px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  transition: border-color 0.16s ease, transform 0.16s ease;
-}
-.landing-card:hover { border-color: var(--line-hover); transform: translateY(-2px); }
-.landing-card-icon {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px;
-  color: var(--deepscout);
-  background: var(--deepscout-wash);
-  border: 1px solid color-mix(in srgb, var(--deepscout) 26%, transparent);
-  border-radius: var(--r-md);
-}
-.landing-card-title { font-size: 14px; font-weight: 650; color: var(--t1); margin: 2px 0 0; }
-.landing-card-desc { font-size: 12.5px; line-height: 1.62; color: var(--t3); margin: 0; }
-
-/* Trust split */
-.landing-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 0.92fr);
-  gap: 48px;
-  align-items: center;
-}
-.landing-split-copy { min-width: 0; }
-.landing-guarantees {
-  list-style: none;
-  margin: 26px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.landing-guarantee {
-  display: flex; align-items: flex-start; gap: 11px;
-  font-size: 13.5px; line-height: 1.55; color: var(--t2);
-}
-.landing-guarantee-icon {
-  display: inline-flex; flex: none;
-  margin-top: 2px;
-  color: var(--deepscout);
-}
-.landing-split-panel {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  padding: 20px;
-  box-shadow: var(--shadow-card);
-}
-.landing-split-panel-head {
-  display: flex; align-items: center; gap: 9px;
-  font-size: 11px; font-weight: 700;
-  letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--t4);
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--line-soft);
-}
-.landing-split-panel-head svg { color: var(--deepscout); }
-.landing-flow {
-  list-style: none; margin: 14px 0 0; padding: 0;
-  display: flex; flex-direction: column; gap: 2px;
-}
-.landing-flow li {
-  display: flex; align-items: center; gap: 12px;
-  padding: 9px 2px;
-  font-size: 13px;
-  color: var(--t2);
-  border-bottom: 1px solid var(--line-soft);
-}
-.landing-flow li:last-child { border-bottom: 0; }
-.landing-flow-n {
-  display: inline-flex; align-items: center; justify-content: center;
-  flex: none;
-  width: 22px; height: 22px;
-  font-size: 11px; font-weight: 700;
-  color: var(--deepscout);
-  background: var(--deepscout-wash);
-  border-radius: 999px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Modes */
-.landing-modes {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 34px;
-}
-.landing-mode {
-  padding: 18px 16px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  transition: border-color 0.16s ease, transform 0.16s ease;
-}
-.landing-mode:hover { border-color: var(--line-hover); transform: translateY(-2px); }
-.landing-mode-name { font-size: 14px; font-weight: 650; color: var(--t1); margin: 0; }
-.landing-mode-desc { font-size: 12.5px; line-height: 1.6; color: var(--t3); margin: 8px 0 0; }
-
-/* Closing band */
-.landing-cta-band {
-  position: relative; z-index: 1;
-  padding: 56px 30px;
-  border-top: 1px solid var(--line-soft);
-  background: var(--side);
-}
-.landing-cta-band-inner {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-  align-items: center;
-  justify-content: space-between;
-}
-.landing-cta-band-title {
-  margin: 0;
-  font-size: clamp(22px, 3vw, 30px);
-  font-weight: 750;
-  letter-spacing: -0.025em;
-  color: var(--t1);
-}
-.landing-cta-band-desc {
-  margin: 10px 0 0;
-  font-size: 14px;
-  line-height: 1.65;
-  color: var(--t2);
-  max-width: 52ch;
-}
-.landing-cta-band-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-.landing-cta-band .landing-cta { margin-top: 0; }
-.landing-cta-secondary {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 12px 20px;
-  font-size: 14px; font-weight: 600;
-  color: var(--t1);
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
-}
-.landing-cta-secondary:hover { color: var(--deepscout); border-color: var(--line-hover); background: var(--card-2); }
-
-@media (max-width: 980px) {
-  .landing-main { grid-template-columns: 1fr; gap: 30px; padding: 30px 22px 28px; }
-  .landing-copy { order: 1; }
-  .landing-panel { order: 2; }
+/* ---- Responsive ------------------------------------------------------------
+   The preview window is the first thing to go on small screens: at phone
+   widths its sidebar and report both fall below legibility, and a legible
+   promise is worth more than an unreadable screenshot of one. */
+@media (max-width: 1100px) {
+  .landing-main { grid-template-columns: 1fr; gap: 40px; padding: 44px 22px 34px; }
+  .landing-copy { max-width: 640px; }
+  .landing-title { font-size: clamp(34px, 7vw, 52px); }
+  .lp-window { max-width: 720px; }
   .landing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .landing-split { grid-template-columns: 1fr; gap: 32px; }
-  .landing-modes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .landing-section { padding: 48px 22px; }
+  .landing-section { padding: 52px 22px; }
   .landing-footer-inner { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+}
+@media (max-width: 720px) {
+  .landing-modes { grid-template-columns: 1fr; }
+  .landing-provider { padding: 6px 18px; }
 }
 @media (max-width: 560px) {
   /* The nav row is the tightest constraint on small screens: brand + two
@@ -1328,19 +1491,28 @@
   /* Icon-only for the least essential link keeps the row within bounds
      without hiding a destination from assistive tech (title + aria kept). */
   .landing-link .landing-link-label { display: none; }
-  .landing-main { padding: 24px 16px 22px; }
-  .landing-cta { width: 100%; justify-content: center; }
-  .landing-metrics { gap: 18px; }
-  .landing-section { padding: 40px 16px; }
+  .landing-main { padding: 28px 16px 26px; }
+  .landing-title { font-size: clamp(30px, 9vw, 40px); }
+  .landing-desc { font-size: 15px; }
+  .landing-actions { flex-direction: column; align-items: stretch; gap: 10px; }
+  .landing-cta, .landing-cta-ghost { justify-content: center; }
+  .lp-window { display: none; }
+  .landing-providers { padding: 28px 16px 24px; }
+  /* Four marks wrapping to 3+1 left one provider stranded under a rule; a
+     2x2 grid keeps the row balanced at phone widths. */
+  .landing-providers-row { display: grid; grid-template-columns: 1fr 1fr; max-width: 320px; }
+  .landing-provider { justify-content: center; padding: 6px 8px; font-size: 14px; }
+  .landing-provider + .landing-provider { border-left: 0; }
+  .landing-section { padding: 42px 16px; }
   .landing-grid { grid-template-columns: 1fr; gap: 12px; }
-  .landing-modes { grid-template-columns: 1fr; }
-  .landing-cta-band { padding: 40px 16px; }
+  .landing-cta-band { padding: 42px 16px; }
   .landing-cta-band-inner { flex-direction: column; align-items: stretch; }
   .landing-cta-band-actions { flex-direction: column; align-items: stretch; }
   .landing-cta-secondary { justify-content: center; }
-  .landing-footer { padding: 36px 16px 22px; }
+  .landing-footer { padding: 38px 16px 24px; }
   .landing-footer-inner { grid-template-columns: 1fr; gap: 24px; }
 }
+
 
 /* ---------- report export menu ---------- */
 

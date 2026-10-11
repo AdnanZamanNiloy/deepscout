@@ -1,25 +1,36 @@
 /* DeepScout landing — a working front door.
  *
- * Design direction: the landing does the same job as the console's welcome
- * screen, at full width. Instead of a stock AI-marketing composition (three
- * blurred orbs, eight twinkling stars, a giant letter-spaced wordmark), the
- * right column shows the product's ACTUAL shape: the 7-agent pipeline as a
- * numbered spine, and a real evidence ledger with verification outcomes.
- * That pipeline is the product; showing it beats describing it.
+ * Design direction: the hero shows the product's ACTUAL shape rather than
+ * describing it. The left column is the promise; the right column is a working
+ * preview of the console — sidebar, question, streamed report, evidence
+ * outcomes, follow-up box — built from the same components and vocabulary the
+ * real UI uses, so the first screen and the product cannot drift apart.
  *
- * Pure presentational — no data fetching, no fabricated run state. The
- * pipeline order and the claim ledger are the same facts the Agents view and
- * the intelligence rail render from code. */
+ * Everything below the hero (capabilities, trust model, modes) is real product
+ * detail mapped to real pipeline modules, not filler.
+ *
+ * The console preview is ILLUSTRATIVE and says so: it carries role="img" with
+ * one descriptive label, so a screen reader gets a sentence instead of a fake
+ * UI, and no inner element is focusable or announced as a live control. Its
+ * figures are sample values for shape only — no run state is fabricated or
+ * fetched. */
 
 import ThemeToggle from "./ThemeToggle";
-import BrandLockup from "./Brand";
+import BrandLockup, { BrandMark } from "./Brand";
+import { PROVIDER_MARKS } from "./ProviderMarks";
 import {
-  IconAgents, IconChart, IconCheckCircle, IconCompass, IconDoc,
-  IconFlask, IconGithub, IconLayers, IconRoute, IconSearch, IconShield,
-  IconShieldCheck, IconSpark, IconTarget,
+  IconAgents, IconArrowUp, IconArrowRight, IconChart, IconCheckCircle,
+  IconCompass, IconDoc, IconFlask, IconGithub, IconLayers, IconMissions,
+  IconPlay, IconPlus, IconRoute, IconSearch, IconShield, IconShieldCheck,
+  IconSpark, IconTarget,
 } from "./icons";
 
 const GITHUB_URL = "https://github.com/AdnanZamanNiloy/deepscout-ai";
+
+/* The sample "Watch demo" runs. Exported so App can launch the exact question
+ * the hero advertises — a demo that ran something else than the button
+ * promised would be the kind of quiet mismatch this repo keeps fixing. */
+export const DEMO_QUERY = "what can be the most demanding skill in 2027";
 
 const PIPELINE = [
   { name: "Orchestrator", desc: "Scores complexity, sets agent count and iteration caps" },
@@ -31,10 +42,13 @@ const PIPELINE = [
   { name: "Synthesizer", desc: "Writes the cited report with a numbered source legend" },
 ];
 
-const LEDGER = [
-  { claim: "Claim checked against its cited source", tone: "good", label: "verified" },
-  { claim: "Two sources disagree on the figure", tone: "warn", label: "contradiction" },
-  { claim: "Claim has no retrievable source", tone: "bad", label: "unsupported" },
+/* Console preview content. Sample questions only — nothing here is read from a
+ * run, and no statistic is presented as a measured result. */
+const PREVIEW_RECENT = [
+  { label: DEMO_QUERY, tone: "live", active: true },
+  { label: "What are the latest advances in AI agents", tone: "done" },
+  { label: "current trend of ai research", tone: "done" },
+  { label: "How does graph RAG differ from vector search", tone: "done" },
 ];
 
 /* Capabilities — what the system does that a single-prompt assistant does not.
@@ -83,12 +97,15 @@ const CAPABILITIES = [
   },
 ];
 
-/* Research modes — mirrors the orchestrator's real mode presets. */
+/* Research modes — the orchestrator's real MODE_PRESETS, three of them.
+ * The "Executive" mode this list used to advertise was removed from the
+ * backend (its decision/contested handling folded into `deep`), so listing it
+ * here described a mode that cannot be selected. The agent and pass counts are
+ * the preset values themselves, not marketing round numbers. */
 const MODES = [
-  { name: "Quick", desc: "A fast, tight answer with a single research pass. For lookups and simple questions.", tone: "fast" },
-  { name: "Standard", desc: "Balanced breadth and verification for everyday research questions.", tone: "std" },
-  { name: "Deep", desc: "Wider decomposition, more iterations and stricter evidence requirements.", tone: "deep" },
-  { name: "Executive", desc: "Decision-grade briefs: prioritised findings, trade-offs and a clear bottom line.", tone: "exec" },
+  { name: "Quick", desc: "A fast, tight answer with a single research pass. Two agents, no expansion loops — for lookups and simple questions." },
+  { name: "Standard", desc: "Balanced breadth and verification for everyday research questions. Three agents, up to three passes." },
+  { name: "Deep", desc: "Wider decomposition, deeper evidence requirements and a pass budget that scales with the research map." },
 ];
 
 /* Guarantees — the non-negotiable behaviours the pipeline enforces. */
@@ -99,43 +116,134 @@ const GUARANTEES = [
   { icon: IconSpark, text: "The direct answer leads; analysis, mechanisms and caveats support it." },
 ];
 
-export default function Landing({ onStart, onDocs }) {
+/* A preview of the console, drawn from the real UI's parts: the sidebar's
+ * nav and recent list, the thread's question bubble, and the answer's report
+ * head. Spans only — no buttons or links — because role="img" promises the
+ * whole block is one picture, and a focusable control inside it would be a
+ * promise the page cannot keep. */
+function ConsolePreview() {
+  const today = new Date().toLocaleDateString("en-GB");
+  return (
+    <div
+      className="lp-window"
+      role="img"
+      aria-label="A DeepScout research run in the console: the question at the top, a streamed cited report in the middle, and a follow-up box below."
+    >
+      <div className="lp-window-bar">
+        <span className="lp-traffic" aria-hidden="true">
+          <i className="lp-stop" /><i className="lp-min" /><i className="lp-max" />
+        </span>
+      </div>
+
+      <div className="lp-window-body">
+        <div className="lp-rail">
+          <div className="lp-rail-brand">
+            <BrandMark size={17} />
+            <span>DeepScout</span>
+          </div>
+          <div className="lp-rail-new">
+            <IconPlus size={11} /> New research
+          </div>
+          <div className="lp-rail-nav">
+            <span className="lp-rail-item">
+              <IconMissions size={12} /> Research<span className="lp-rail-count">30</span>
+            </span>
+            <span className="lp-rail-item"><IconCompass size={12} /> Model Controls</span>
+            <span className="lp-rail-item"><IconAgents size={12} /> Agents</span>
+          </div>
+          <div className="lp-rail-head">Recent</div>
+          <div className="lp-recent">
+            {PREVIEW_RECENT.map((item) => (
+              <span className={`lp-recent-row${item.active ? " active" : ""}`} key={item.label}>
+                <span className={`dot ${item.tone}`} />
+                <span className="lp-recent-label">{item.label}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="lp-stage">
+          <div className="lp-stage-top">
+            <span className="lp-stage-query">{DEMO_QUERY}</span>
+            <span className="lp-chev" aria-hidden="true">⌄</span>
+          </div>
+
+          <div className="lp-stage-body">
+            <div className="lp-bubble">{DEMO_QUERY}</div>
+            {/* The run's own summary bar: what it spent, and how long it took. */}
+            <div className="lp-run-meta">
+              <span className="lp-run-steps">
+                <span className="lp-chev" aria-hidden="true">⌄</span> Less steps
+              </span>
+              <span className="lp-run-count">Worked for 2m 26s</span>
+            </div>
+            <h3 className="lp-report-title">
+              The Most Demanding Skill of 2027: Rewriting Learned Procedures When the
+              Foundations Shift
+            </h3>
+            <div className="lp-report-date">Date: {today}</div>
+            <h4 className="lp-report-sub">Introduction</h4>
+            <p className="lp-report-text">
+              When a procedure that has been reliably executed for years suddenly rests on
+              assumptions that no longer hold, the demand placed on the operator is not simply
+              to learn a new procedure but to recognize that the old one has become invalid,
+              suppress the habit that automates it, and construct a workable substitute under
+              time pressure and incomplete information…
+            </p>
+          </div>
+
+          <div className="lp-composer">
+            <span className="lp-composer-field">Ask a follow-up question…</span>
+            <span className="lp-composer-row">
+              <span className="lp-composer-mode">
+                Standard <span className="lp-chev" aria-hidden="true">⌄</span>
+              </span>
+              <span className="lp-composer-send"><IconArrowUp size={13} /></span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function Landing({ onStart, onDocs, onDemo }) {
   return (
     <div className="landing">
       <header className="landing-nav">
-       <div className="landing-nav-inner">
-        <a
-          className="landing-brand"
-          href="#/"
-          onClick={(e) => e.preventDefault()}
-          aria-label="DeepScout — Multi-Agent Research System"
-        >
-          <BrandLockup size="lg" />
-        </a>
-        <nav className="landing-links" aria-label="Primary">
-          <a className="landing-link" href="#landing-about">
-            <span className="landing-link-label">About</span>
+        <div className="landing-nav-inner">
+          <a
+            className="landing-brand"
+            href="#/"
+            onClick={(e) => e.preventDefault()}
+            aria-label="DeepScout — Multi-Agent Research System"
+          >
+            <BrandLockup size="lg" />
           </a>
-          <a className="landing-link" href="#landing-capabilities">
-            <span className="landing-link-label">Capabilities</span>
-          </a>
-          <a className="landing-link" href="#landing-trust">
-            <span className="landing-link-label">Trust</span>
-          </a>
-          <a className="landing-link" href="#landing-modes">
-            <span className="landing-link-label">Modes</span>
-          </a>
-          <a className="landing-link" href="#/docs" onClick={(e) => { e.preventDefault(); onDocs?.(); }}>
-            <IconDoc size={15} />
-            <span className="landing-link-label">Docs</span>
-          </a>
-          <a className="landing-link" href={GITHUB_URL} target="_blank" rel="noreferrer" aria-label="GitHub repository">
-            <IconGithub size={15} />
-            <span className="landing-link-label">GitHub</span>
-          </a>
-          <ThemeToggle />
-        </nav>
-       </div>
+          <nav className="landing-links" aria-label="Primary">
+            <a className="landing-link" href="#landing-about">
+              <span className="landing-link-label">About</span>
+            </a>
+            <a className="landing-link" href="#landing-capabilities">
+              <span className="landing-link-label">Capabilities</span>
+            </a>
+            <a className="landing-link" href="#landing-trust">
+              <span className="landing-link-label">Trust</span>
+            </a>
+            <a className="landing-link" href="#landing-modes">
+              <span className="landing-link-label">Modes</span>
+            </a>
+            <a className="landing-link" href="#/docs" onClick={(e) => { e.preventDefault(); onDocs?.(); }}>
+              <IconDoc size={15} />
+              <span className="landing-link-label">Docs</span>
+            </a>
+            <a className="landing-link" href={GITHUB_URL} target="_blank" rel="noreferrer" aria-label="GitHub repository">
+              <IconGithub size={15} />
+              <span className="landing-link-label">GitHub</span>
+            </a>
+            <ThemeToggle />
+          </nav>
+        </div>
       </header>
 
       <main className="landing-main" id="landing-about">
@@ -145,71 +253,46 @@ export default function Landing({ onStart, onDocs }) {
             7 coordinated agents
           </span>
           <h1 className="landing-title">
-            Answers you can <em>audit</em>, not just answers you can read.
+            Turn complex questions into{" "}
+            <span className="landing-title-accent">verified answers.</span>
           </h1>
           <p className="landing-desc">
-            DeepScout decomposes a hard question, dispatches it across a coordinated team of
-            specialist agents, verifies every claim against the source that produced it, and
-            challenges its own conclusions before writing a cited report — live, to your console.
+            DeepScout uses a team of specialized agents to research, analyze, and verify
+            claims — so you get clear, well-sourced answers you can trust.
           </p>
 
-          <button type="button" className="landing-cta" onClick={onStart}>
-            Start research
-          </button>
+          <div className="landing-actions">
+            <button type="button" className="landing-cta" onClick={onStart}>
+              <IconSpark size={15} /> Start research <IconArrowRight size={16} />
+            </button>
+            <button type="button" className="landing-cta-ghost" onClick={() => onDemo?.(DEMO_QUERY)}>
+              <IconPlay size={16} /> Watch demo
+            </button>
+          </div>
           <span className="landing-cta-note">
             No signup. Bring your own OpenAI-compatible key, or use the default chain.
           </span>
-
-          <div className="landing-metrics">
-            <div className="landing-metric">
-              <div className="m-val">7</div>
-              <div className="m-lab">pipeline agents</div>
-            </div>
-            <div className="landing-metric">
-              <div className="m-val">6</div>
-              <div className="m-lab">research modes</div>
-            </div>
-            <div className="landing-metric">
-              <div className="m-val">1</div>
-              <div className="m-lab">claim, 1 cited source</div>
-            </div>
-          </div>
         </div>
 
-        {/* The evidence panel: the real pipeline, then what verification
-            actually outputs. This is the product, shown. */}
-        <div className="landing-panel" aria-label="How a DeepScout run is structured">
-          <div className="landing-panel-head">
-            <div>
-              <div className="t">Run structure</div>
-              <p className="q">Every question follows this order, and the console streams each step as it happens.</p>
-            </div>
-          </div>
-
-          <ol className="spine" aria-label="Pipeline execution order">
-            {PIPELINE.map((node, i) => (
-              <li key={node.name} className="spine-node">
-                <span className="spine-idx">{i + 1}</span>
-                <span className="spine-body">
-                  <span className="spine-title">{node.name}</span>
-                  <span className="spine-desc">{node.desc}</span>
-                </span>
-              </li>
-            ))}
-          </ol>
-
-          <div className="landing-ledger">
-            <div className="eyebrow" style={{ marginBottom: 9 }}>What verification produces</div>
-            {LEDGER.map((row) => (
-              <div className="landing-ledger-row" key={row.label}>
-                <span className={`dot ${row.tone === "good" ? "done" : row.tone === "warn" ? "warn" : "bad"}`} />
-                <span>{row.claim}</span>
-                <span className={`tag tone-${row.tone}`}>{row.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <ConsolePreview />
       </main>
+
+      {/* Which models the run can be pointed at. The heading states what the
+          marks mean — DeepScout routes to these providers — rather than a
+          "trusted by" claim the vendor never made. */}
+      <section className="landing-providers" aria-labelledby="landing-providers-head">
+        <h2 className="landing-providers-head" id="landing-providers-head">
+          Runs on the models you already use
+        </h2>
+        <ul className="landing-providers-row">
+          {PROVIDER_MARKS.map(({ name, Mark }) => (
+            <li className="landing-provider" key={name}>
+              <Mark size={18} />
+              <span>{name}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
 
       {/* Capabilities — the product, section by section. */}
       <section className="landing-section" id="landing-capabilities" aria-labelledby="landing-cap-head">
@@ -239,7 +322,7 @@ export default function Landing({ onStart, onDocs }) {
         </div>
       </section>
 
-      {/* How a run works + trust guarantees. */}
+      {/* The team, and the trust model. */}
       <section className="landing-section landing-section-alt" id="landing-trust" aria-labelledby="landing-trust-head">
         <div className="landing-section-inner">
           <div className="landing-split">
@@ -265,18 +348,21 @@ export default function Landing({ onStart, onDocs }) {
                 })}
               </ul>
             </div>
-            <div className="landing-split-panel" aria-label="Evidence pipeline">
+            <div className="landing-split-panel" aria-label="The seven-agent pipeline, in execution order">
               <div className="landing-split-panel-head">
                 <IconAgents size={16} aria-hidden="true" />
-                <span>From question to cited report</span>
+                <span>The team behind every answer</span>
               </div>
-              <ol className="landing-flow">
-                <li><span className="landing-flow-n">1</span> Decompose the question into research dimensions</li>
-                <li><span className="landing-flow-n">2</span> Retrieve and tier sources per dimension</li>
-                <li><span className="landing-flow-n">3</span> Extract standalone claims from each source</li>
-                <li><span className="landing-flow-n">4</span> Verify every claim against the source that produced it</li>
-                <li><span className="landing-flow-n">5</span> Grade evidence and resolve contradictions</li>
-                <li><span className="landing-flow-n">6</span> Synthesize a cited report and an audit trail</li>
+              <ol className="spine">
+                {PIPELINE.map((node, i) => (
+                  <li key={node.name} className="spine-node">
+                    <span className="spine-idx">{i + 1}</span>
+                    <span className="spine-body">
+                      <span className="spine-title">{node.name}</span>
+                      <span className="spine-desc">{node.desc}</span>
+                    </span>
+                  </li>
+                ))}
               </ol>
             </div>
           </div>
@@ -292,13 +378,13 @@ export default function Landing({ onStart, onDocs }) {
               Depth matched to the stakes
             </h2>
             <p className="landing-section-desc">
-              The same pipeline runs at six depths. Each sets its own research breadth,
+              The same pipeline runs at three depths. Each sets its own research breadth,
               evidence requirements and iteration budget.
             </p>
           </header>
           <div className="landing-modes">
             {MODES.map((m) => (
-              <article className={`landing-mode tone-${m.tone}`} key={m.name}>
+              <article className="landing-mode" key={m.name}>
                 <h3 className="landing-mode-name">{m.name}</h3>
                 <p className="landing-mode-desc">{m.desc}</p>
               </article>
@@ -362,7 +448,7 @@ export default function Landing({ onStart, onDocs }) {
               Start research
             </button>
             <span className="landing-footer-meta">7-agent pipeline</span>
-            <span className="landing-footer-meta">6 research modes</span>
+            <span className="landing-footer-meta">3 research modes</span>
             <span className="landing-footer-meta">Bring-your-own key or default chain</span>
           </nav>
         </div>

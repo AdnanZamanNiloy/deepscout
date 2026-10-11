@@ -811,7 +811,14 @@ export default function App() {
 
   return (
     view === "landing" ? (
-      <Landing onStart={() => go("workspace")} onDocs={() => go("docs")} />
+      /* "Watch demo" runs the sample question for real — same path as typing
+       * it into the composer, including the switch to the workspace — so the
+       * button shows the live pipeline instead of a recording of one. */
+      <Landing
+        onStart={() => go("workspace")}
+        onDocs={() => go("docs")}
+        onDemo={(q) => launch(q)}
+      />
     ) : view === "docs" ? (
       <DocsView />
     ) : (
