@@ -993,18 +993,22 @@
 .theme-toggle svg { width: 15px; height: 15px; }
 .theme-toggle:hover { color: var(--deepscout); background: var(--card-2); border-color: var(--line-hover); }
 
-/* ---- Hero: the promise on the left, the product on the right -------------- */
+/* ---- Hero: the promise on the left, the product on the right --------------
+ * Width matches landing-nav-inner / landing-section-inner / landing-footer-inner
+ * (1240px) so the copy column, the nav and every section below share one
+ * content edge. Widening the hero alone would push its text past the nav and
+ * the sections under it. */
 .landing-main {
   position: relative; z-index: var(--z-base);
   flex: 1;
   display: grid;
   grid-template-columns: minmax(0, 0.82fr) minmax(0, 1fr);
-  gap: 64px;
+  gap: 56px;
   align-items: center;
   width: 100%;
-  max-width: 1560px;
+  max-width: 1240px;
   margin: 0 auto;
-  padding: 72px 40px 56px;
+  padding: 72px 24px 48px;
   /* One full viewport minus the nav: the hero owns the first screen and the
      provider row starts below the fold, instead of both being squeezed into
      one short page.
