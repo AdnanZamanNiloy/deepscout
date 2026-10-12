@@ -216,9 +216,9 @@ class Settings(BaseSettings):
     # (0.1/0.0) for strictly deterministic structured callers.
     llm_temperature: float = 0.3
     search_timeout_sec: float = 20.0
-    # Full multi-agent runs take minutes (retrieval + 6 LLM stages), the
-    # same as upstream reference engine. Per-provider fail-fasts (auth/402/
-    # timeouts) keep doomed calls from eating this budget.
+    # A full research run takes minutes (retrieval + several LLM stages).
+    # Per-provider fail-fasts (auth/402/timeouts) keep doomed calls from eating
+    # this budget.
     research_timeout_sec: float = 1000.0
 
     # Cache (Phase 1.4)

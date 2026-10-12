@@ -73,7 +73,7 @@ handling, and calibrated confidence. Measured results are in
 
 ```
 Query
-  → Multi-agent engine team (LangGraph StateGraph, one graph per request)
+  → Multi-agent research pipeline (LangGraph StateGraph, one graph per request)
       Browser      initial research on the query
       Editor       plan the section outline
       Human        plan review gate (auto-accepted in the API)
@@ -100,8 +100,8 @@ feature rationale are in [`DeepScout-vision-v2.md`](DeepScout-vision-v2.md).
 
 ## The research pipeline
 
-1. **Scope.** The engine team's browser stage performs initial research on the
-   query.
+1. **Scope.** The pipeline's initial-research stage performs initial research on
+   the query.
 2. **Plan.** The editor plans an outline of report sections (max sections
    scales with the quick/standard/deep mode). In the API context the plan is
    auto-accepted at the human-review gate.

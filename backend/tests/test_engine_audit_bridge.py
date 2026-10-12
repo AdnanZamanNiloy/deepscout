@@ -1,11 +1,11 @@
-"""Audit bridge: reconstruct the retained-core fact pool from the engine run.
+"""Audit bridge: reconstruct the retained-core fact pool from a run's output.
 
-The vendored multi-agent engine emits a markdown report and a list of retrieved
-sources, but the retained audit core (confidence, contradictions, evidence
-grades, quality/citation-support) was built for the built-in pipeline's
-structured fact pool. These tests pin the bridge's contract:
+The research pipeline emits a markdown report and a list of retrieved sources,
+but the retained audit core (confidence, contradictions, evidence grades,
+quality/citation-support) was built for the built-in pipeline's structured fact
+pool. These tests pin the bridge's contract:
 
-* sources are parsed out of the engine's citation strings and merged with the
+* sources are parsed out of the report's citation strings and merged with the
   sources actually captured during retrieval;
 * claims are extracted deterministically from the report's prose and attributed
   to the URL each sentence cites;
@@ -20,7 +20,7 @@ from app.engine.audit_bridge import (
     build_facts,
     build_source_index,
     compute_audit,
-    parse_engine_sources,
+    parse_source_citations,
 )
 
 
@@ -54,8 +54,8 @@ technique improves factual accuracy over a pure parametric model
 """
 
 
-def test_parse_engine_sources_pulls_urls_from_citation_strings():
-    urls = parse_engine_sources([
+def test_parse_source_citations_pulls_urls_from_citation_strings():
+    urls = parse_source_citations([
         "-  WHO, 2023, WHO [source](https://www.who.int/topics/rag)",
         "https://arxiv.org/abs/2005.11401",
     ])
@@ -63,8 +63,8 @@ def test_parse_engine_sources_pulls_urls_from_citation_strings():
     assert "https://arxiv.org/abs/2005.11401" in urls
 
 
-def test_parse_engine_sources_dedupes():
-    urls = parse_engine_sources([
+def test_parse_source_citations_dedupes():
+    urls = parse_source_citations([
         "[a](https://x.test/p)",
         "[b](https://x.test/p)",
     ])

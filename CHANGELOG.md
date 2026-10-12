@@ -13,7 +13,8 @@ replaced by first-party code, and the code it had already displaced was removed.
   Control Center governs every call with no monkeypatched provider factory and
   no `sys.path` bootstrap. `app/engine/llm_bridge.py` and
   `app/engine/retriever_bridge.py` are gone.
-- **Engine tree deleted.** The vendored engine is removed entirely.
+- **External research dependency deleted.** The third-party research package
+  that previously drove runs is gone entirely.
 - **Dead first-party code removed.** `app/agents/orchestrator.py`,
   `app/agents/confidence.py`, `app/agents/planner.py`, `app/agents/planning/`,
   `app/core/schemas.py`, and the inert epistemic-adjustment branch in

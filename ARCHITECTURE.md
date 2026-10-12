@@ -24,7 +24,7 @@ flowchart TD
 ```
 
 The team is driven by `app/research/runner.py` (exposed to the route as
-`app/engine/orchestrator.py::MultiAgentRunner`), which streams node updates as
+`app/engine/orchestrator.py::PipelineRunner`), which streams node updates as
 the graph runs. The API route (`app/api/routes.py`) translates those updates
 into the frontend's NDJSON events and owns the run/session lifecycle,
 persistence and replay capture.
@@ -102,7 +102,7 @@ structure is the same, and the section outline is derived from the question.
 
 | Module | Responsibility |
 |---|---|
-| `app/engine/orchestrator.py` | `MultiAgentRunner`, the route's entry point; delegates to `app/research/runner.py`. Also owns `sanitize_report_markdown`. |
+| `app/engine/orchestrator.py` | `PipelineRunner`, the route's entry point; delegates to `app/research/runner.py`. Also owns `sanitize_report_markdown`. |
 | `app/engine/event_adapter.py` | Maps pipeline node events onto the frontend's NDJSON vocabulary and builds the terminal `final_report` frame. |
 | `app/engine/audit_bridge.py` | Reconstructs the fact pool from the report + captured sources and runs the audit core over it. |
 | `app/engine/__init__.py` | Publishes the runtime handles (`LLMClient`, `SearchClient`) the routes read per request. |
@@ -157,9 +157,9 @@ as optional, so a clean pipeline renders without inventing one.
 ## Design decisions worth knowing
 
 **Why the pipeline is first-party.** The research pipeline lives in
-`app/research/` as ordinary first-party code. There is no vendored engine, no
-`sys.path` bootstrap, and no monkeypatched provider factory: the code that runs a
-research request is code this project owns and can read end to end.
+`app/research/` as ordinary first-party code. There is no external research
+package, no `sys.path` bootstrap, and no monkeypatched provider factory: the code
+that runs a research request is code this project owns and can read end to end.
 
 **Why the provider stack is shared, not duplicated.** The product's contract is
 that the Model Control Center decides what runs. Every model call in the

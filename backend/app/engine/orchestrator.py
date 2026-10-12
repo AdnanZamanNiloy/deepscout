@@ -18,10 +18,10 @@ from app.core.llm import LLMClient
 from app.research.runner import ResearchRunner, build_final_state
 
 
-class MultiAgentRunner:
+class PipelineRunner:
     """Thin facade over :class:`ResearchRunner` for one research request.
 
-    ``run()`` streams ``{stage, engine_node, ...}`` events as the team makes
+    ``run()`` streams ``{stage, node, ...}`` events as the pipeline makes
     progress; ``final_state()`` returns the assembled report + audit state once
     the stream is exhausted.
     """
@@ -271,4 +271,4 @@ def sanitize_report_markdown(markdown: str) -> str:
     return text.strip()
 
 
-__all__ = ["MultiAgentRunner", "ResearchRunner", "build_final_state", "sanitize_report_markdown"]
+__all__ = ["PipelineRunner", "ResearchRunner", "build_final_state", "sanitize_report_markdown"]

@@ -39,23 +39,12 @@ frontend/.vite/
 backend/outputs/
 outputs/
 
-# Third-party reference clones (read-only adaptation sources, never commit)
-reference-engine/
-
-# Local engine source tree used to vendor backend/engine/ (never commit; the
-# vendored copy under backend/engine/ is the committed one).
-refsource/
-
 # Self-hosted SearXNG checkout (third-party; has its own .git and venv).
 # The backend only needs its HTTP endpoint (SEARXNG_URL). The instance is not
 # part of this repository - a deployment supplies its own instance and
 # settings.yml. Note SearXNG ships formats: [html] only, so a working
 # self-hosted instance must add 'json' to search.formats or every request 403s.
 searxng/
-
-# Vendor bundle for the v3 agent integration (kept local, not versioned)
-deepscout-deep-research-v3.zip
-gitstat_tmp.txt
 
 # Local verification screenshots (scratch)
 .verify/

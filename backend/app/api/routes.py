@@ -197,7 +197,7 @@ async def session_detail(session_id: str, request: Request) -> Dict[str, Any]:
 @router.post("/research/stream")
 @limiter.limit(get_settings().rate_limit)
 async def stream_research(request: Request, payload: ResearchRequest) -> StreamingResponse:
-    """Run a research request through the multi-agent engine team.
+    """Run a research request through the first-party research pipeline.
 
     The engine drives the run; this route owns everything the frontend contract
     depends on around it: the NDJSON framing, the run/session lifecycle records,
@@ -239,7 +239,7 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
         reset_fallbacks()
         start_run_usage(request_id, settings, mode=str(payload.mode or "standard"))
         try:
-            from app.engine.orchestrator import MultiAgentRunner
+            from app.engine.orchestrator import PipelineRunner
             from app.engine.event_adapter import EngineEventAdapter, final_report_frame
 
             async def _persist(coro):
@@ -291,7 +291,7 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                     )
                     return
 
-            runner = MultiAgentRunner(
+            runner = PipelineRunner(
                 llm=llm_client,
                 search_client=getattr(getattr(request.app.state, "workflow", None), "search_client", None),
                 query=payload.query,
@@ -302,19 +302,19 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
 
             try:
                 async with asyncio.timeout(settings.research_timeout_sec):
-                    async for engine_event in runner.run():
-                        for stage_frame in (adapter.stage_frame(engine_event.get("stage")),):
+                    async for pipeline_event in runner.run():
+                        for stage_frame in (adapter.stage_frame(pipeline_event.get("stage")),):
                             if stage_frame is not None:
                                 yield frame_line(stage_frame)
-                        for wire_frame in adapter.to_frames(engine_event):
+                        for wire_frame in adapter.to_frames(pipeline_event):
                             yield frame_line(wire_frame)
                         # Node-level trail for the trace/audit (best effort).
                         await _persist(record_event(
                             settings.database_url, request_id,
-                            str(engine_event.get("engine_node") or "engine"), "end",
+                            str(pipeline_event.get("node") or "engine"), "end",
                             payload=json.dumps({
-                                "stage": engine_event.get("stage"),
-                                "sections": engine_event.get("sections"),
+                                "stage": pipeline_event.get("stage"),
+                                "sections": pipeline_event.get("sections"),
                             }),
                         ))
             except TimeoutError:
@@ -441,7 +441,7 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
 async def resume_research(run_id: str, request: Request) -> StreamingResponse:
     """Resume a failed/timeout run.
 
-    The multi-agent engine team does not checkpoint intermediate state between
+    The research pipeline does not checkpoint intermediate state between
     nodes, so a resume restarts the run from scratch rather than rebuilding
     evidence from persisted rows. The run identity is preserved and the same
     NDJSON contract is honored; only non-terminal runs are resumed.
@@ -512,10 +512,10 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
                     )
                     return
 
-            from app.engine.orchestrator import MultiAgentRunner
+            from app.engine.orchestrator import PipelineRunner
             from app.engine.event_adapter import EngineEventAdapter, final_report_frame
 
-            runner = MultiAgentRunner(
+            runner = PipelineRunner(
                 llm=llm_client,
                 search_client=getattr(getattr(request.app.state, "workflow", None), "search_client", None),
                 query=query,
@@ -525,11 +525,11 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
             adapter = EngineEventAdapter(query)
             try:
                 async with asyncio.timeout(settings.research_timeout_sec):
-                    async for engine_event in runner.run():
-                        stage_frame = adapter.stage_frame(engine_event.get("stage"))
+                    async for pipeline_event in runner.run():
+                        stage_frame = adapter.stage_frame(pipeline_event.get("stage"))
                         if stage_frame is not None:
                             yield frame_line(stage_frame)
-                        for wire_frame in adapter.to_frames(engine_event):
+                        for wire_frame in adapter.to_frames(pipeline_event):
                             yield frame_line(wire_frame)
             except TimeoutError:
                 await _finish("timeout", 0.0)

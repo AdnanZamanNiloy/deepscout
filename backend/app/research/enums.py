@@ -14,12 +14,8 @@ class ReportType(Enum):
     """The kind of report a run produces."""
 
     ResearchReport = "research_report"
-    ResourceReport = "resource_report"
-    OutlineReport = "outline_report"
-    CustomReport = "custom_report"
     DetailedReport = "detailed_report"
     SubtopicReport = "subtopic_report"
-    DeepResearch = "deep"
 
 
 class ReportSource(Enum):
@@ -27,10 +23,6 @@ class ReportSource(Enum):
 
     Web = "web"
     Local = "local"
-    Azure = "azure"
-    LangChainDocuments = "langchain_documents"
-    LangChainVectorStore = "langchain_vectorstore"
-    Static = "static"
     Hybrid = "hybrid"
 
 

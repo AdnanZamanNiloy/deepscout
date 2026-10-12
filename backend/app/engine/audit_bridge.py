@@ -31,7 +31,7 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# A markdown link/citation the engine's writer emits, e.g.
+# A markdown link/citation the pipeline's writer emits, e.g.
 # "[Title](https://...)" or "([text](url))".
 _MD_LINK_RE = re.compile(r"\[([^\]]*)\]\((https?://[^\s)]+)\)")
 # A bare URL, for sources that were not hyperlinked.
@@ -56,16 +56,16 @@ def _extract_urls(text: str) -> List[str]:
     return found
 
 
-def parse_engine_sources(engine_sources: Sequence[Any]) -> List[str]:
-    """Pull the URLs out of the engine's ``sources`` citation strings.
+def parse_source_citations(source_citations: Sequence[Any]) -> List[str]:
+    """Pull the URLs out of the run's ``sources`` citation strings.
 
-    The engine's writer emits ``sources`` as a list of markdown/APA strings
+    The pipeline's writer emits ``sources`` as a list of markdown/APA strings
     (``"-  Title, year, Author [source url](url)"``). Raw dicts (our own
     captured sources) are also accepted for robustness.
     """
     urls: List[str] = []
     seen: set = set()
-    for entry in engine_sources or []:
+    for entry in source_citations or []:
         if isinstance(entry, dict):
             url = str(entry.get("url") or "").strip()
             if url.startswith("http") and url not in seen:
@@ -81,15 +81,15 @@ def parse_engine_sources(engine_sources: Sequence[Any]) -> List[str]:
 
 def build_source_index(
     captured: Sequence[Dict[str, Any]],
-    engine_sources: Sequence[Any],
+    source_citations: Sequence[Any],
     report: str,
 ) -> List[Dict[str, Any]]:
     """Merge every source signal into one deduped, metadata-rich index.
 
     Priority for metadata (title/content/published_at) is the captured search
-    result (it has the real page body and dates), falling back to the engine's
+    result (it has the real page body and dates), falling back to the run's
     citation text and finally to the URL alone. Order: captured sources first
-    (retrieval order), then engine-cited URLs not already present, then any URL
+    (retrieval order), then cited URLs not already present, then any URL
     that appears only inside the report body.
     """
     index: Dict[str, Dict[str, Any]] = {}
@@ -111,7 +111,7 @@ def build_source_index(
         if isinstance(item, dict):
             _add(str(item.get("url") or ""), item)
 
-    for entry in engine_sources or []:
+    for entry in source_citations or []:
         if isinstance(entry, dict):
             _add(str(entry.get("url") or ""), entry)
         else:
@@ -147,7 +147,7 @@ def _sentence_source_map(
 ) -> List[Tuple[str, str]]:
     """Pair each claim-bearing sentence with the nearest cited URL.
 
-    The engine writes prose with inline markdown links. A sentence that carries
+    The pipeline writes prose with inline markdown links. A sentence that carries
     a link is attributed to that link; a sentence with no link inherits the most
     recently seen link (the writer tends to link once and keep discussing the
     source). Returns ``(claim, url)`` pairs, claim already cleaned.
@@ -199,7 +199,7 @@ def build_facts(
     *,
     max_facts: int = 120,
 ) -> List[Dict[str, Any]]:
-    """Reconstruct a backend-shaped fact pool from the engine's report.
+    """Reconstruct a backend-shaped fact pool from the run's report.
 
     Each fact mirrors what the summarizer emits (``claim``, ``source``,
     ``confidence``, ``published_at``, ``search_type``, ``is_primary``,
@@ -237,13 +237,13 @@ def build_facts(
                 "claim": claim,
                 "source": url,
                 "confidence": confidence,
-                "agent": "engine",
+                "agent": "pipeline",
                 "sub_question": "",
                 "sense": "",
                 "direct_quote": claim[:240],
                 "quote_verified": True,
-                # A cited sentence from a page the engine actually retrieved is
-                # treated as verified evidence — the engine's fact-checker ran on
+                # A cited sentence from a page the run actually retrieved is
+                # treated as verified evidence — the pipeline's fact checker ran on
                 # the same sources. This is the honest default for a completed
                 # report; it is not an LLM opinion.
                 "verified": True,
@@ -251,7 +251,7 @@ def build_facts(
                 "search_type": str(meta.get("search_type", "") or "general"),
                 "is_primary": bool(meta.get("is_primary") or profile.is_primary),
                 "source_tier": profile.tier,
-                "extraction": "engine",
+                "extraction": "pipeline",
             })
             if len(facts) >= max_facts:
                 break
@@ -284,7 +284,7 @@ def compute_audit(
     except Exception as exc:
         logger.warning("[AuditBridge] contradiction detection failed: %s", exc, exc_info=exc)
 
-    # Support is measured against the engine's emitted report + legend, when a
+    # Support is measured against the run's emitted report + legend, when a
     # legend exists; otherwise it is left None so the confidence engine keeps
     # its historical weights (no signal is invented).
     support = answer_support

@@ -1,7 +1,7 @@
 """Fetch one page and extract its text, images and title.
 
-A single httpx-backed fetcher replaces the pipeline's former multi-backend
-scraper. The retrieval layer already pre-fetches the pages the client reads, so
+A single httpx-backed fetcher serves the pipeline. The retrieval layer already
+pre-fetches the pages the client reads, so
 this only runs for URLs that still need fetching; one robust HTML path (with a
 PDF route) covers those. Anti-bot pages, word-list dumps and unextracted PDF
 binaries are detected and returned as empty content rather than being ingested

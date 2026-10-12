@@ -6,9 +6,9 @@ downloaded to a temp file and loaded the same way. Both return the pipeline's
 ``{raw_content, url}`` page shape.
 
 Supported formats are the text-bearing ones the app's dependencies can read:
-PDF (PyMuPDF), plain text, markdown and HTML. Office/archive formats were part
-of the former multi-format loader set but are not reachable from a web run and
-are intentionally not carried here.
+PDF (PyMuPDF), plain text, markdown and HTML. Office and archive formats are
+intentionally not supported: they are not reachable from a web run and nothing
+in the pipeline consumes them.
 """
 from __future__ import annotations
 

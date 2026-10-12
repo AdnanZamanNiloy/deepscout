@@ -314,8 +314,8 @@ These are real bugs found by reading the code, not hypotheticals. Each one below
   The research pipeline was fully re-authored as first-party code under
   `app/research/` and the external engine dependency was deleted. Why this
   matters for future sessions: (a) there is now ONE orchestration path — the
-  LangGraph team in `app/research/agents/` — and no `sys.path` bootstrap, no
-  monkeypatched provider factory, and no vendored tree; (b) the pipeline calls
+  LangGraph team in `app/research/agents/` — with no `sys.path` bootstrap, no
+  monkeypatched provider factory, and no third-party research package; (b) the pipeline calls
   `app.core.llm.LLMClient` and `app.agents.search.SearchClient` DIRECTLY, so
   the Model Control Center governs every call with no bridge seam to keep in
   sync; (c) the dead first-party modules the engine had already replaced

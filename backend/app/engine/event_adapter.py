@@ -8,12 +8,12 @@ module maps them onto that vocabulary.
 
 Design notes
 ------------
-* Only the events the engine can genuinely support are emitted. ``intent`` /
-  ``route`` / ``direct_answer`` describe the *built-in* router's decisions; the
-  engine team has no equivalent, so it does not fabricate them. The frontend
+* Only the events the pipeline can genuinely support are emitted. ``intent`` /
+  ``route`` / ``direct_answer`` describe a router the current pipeline does not
+  have, so it does not fabricate them. The frontend
   treats every event type as optional (its switch has a ``default``), so
   omitting them renders a clean pipeline rather than a wrong one.
-* ``search_query`` reuse: the engine's node stages cannot report per-query
+* ``search_query`` reuse: the pipeline's node stages cannot report per-query
   results, so ``search_progress`` carries the snippet count and ``search_query``
   frames are emitted only when a stage genuinely has query text.
 * Frame shape matches ``routes.event_line``: ``{"type", "ts", ...data}``.
@@ -54,15 +54,15 @@ class EngineEventAdapter:
         self._emitted_plan = False
         self._emitted_stages: set = set()
 
-    def to_frames(self, engine_event: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def to_frames(self, pipeline_event: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Map one orchestrator event dict to zero or more wire frames."""
-        node = str(engine_event.get("engine_node") or "")
-        stage = str(engine_event.get("stage") or node)
+        node = str(pipeline_event.get("node") or "")
+        stage = str(pipeline_event.get("stage") or node)
         frames: List[Dict[str, Any]] = []
 
-        if stage == "planner" and engine_event.get("sections") and not self._emitted_plan:
+        if stage == "planner" and pipeline_event.get("sections") and not self._emitted_plan:
             self._emitted_plan = True
-            frames.append(frame("plan", items=list(engine_event["sections"]), orchestration={}, waves=[]))
+            frames.append(frame("plan", items=list(pipeline_event["sections"]), orchestration={}, waves=[]))
 
         elif stage == "search":
             # The engine does not report a per-query result list, so there is no
@@ -73,7 +73,7 @@ class EngineEventAdapter:
             # (the browser stage's character count) with no relation to the real
             # source total. Surface them as honest progress messages instead.
             if node == "browser":
-                chars = int(engine_event.get("initial_research_chars") or 0)
+                chars = int(pipeline_event.get("initial_research_chars") or 0)
                 if chars and "browser" not in self._emitted_stages:
                     self._emitted_stages.add("browser")
                     frames.append(frame(
@@ -81,7 +81,7 @@ class EngineEventAdapter:
                         message=f"Gathered ~{chars:,} characters of initial research",
                     ))
             elif node == "researcher":
-                sections = int(engine_event.get("research_sections") or 0)
+                sections = int(pipeline_event.get("research_sections") or 0)
                 if sections and "researcher" not in self._emitted_stages:
                     self._emitted_stages.add("researcher")
                     frames.append(frame(
@@ -90,7 +90,7 @@ class EngineEventAdapter:
                     ))
 
         elif stage == "verifier":
-            notes = engine_event.get("fact_check_notes")
+            notes = pipeline_event.get("fact_check_notes")
             if notes:
                 # A non-empty fact-check note is the engine's revision signal.
                 frames.append(frame(

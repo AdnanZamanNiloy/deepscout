@@ -156,7 +156,7 @@ class ResearchRunner:
         return make
 
     async def run(self) -> AsyncGenerator[Dict[str, Any], None]:
-        """Yield ``{stage, engine_node, ...}`` events as nodes complete."""
+        """Yield ``{stage, node, ...}`` events as nodes complete."""
         cfg = load_config()
         loop = asyncio.get_running_loop()
         if self.search_client is None:
@@ -228,7 +228,7 @@ class ResearchRunner:
     def _node_event(self, node: str, output: Any) -> Dict[str, Any]:
         """Map a completed graph node to a pipeline-shaped event."""
         stage = _NODE_STAGE.get(node, node)
-        event: Dict[str, Any] = {"engine_node": node, "stage": stage}
+        event: Dict[str, Any] = {"node": node, "stage": stage}
         if isinstance(output, dict):
             if node == "planner" and output.get("sections"):
                 event["sections"] = list(output.get("sections") or [])
@@ -344,7 +344,7 @@ def build_final_state(
         "title": state.get("title"),
         "sections": state.get("sections") or [],
         "fact_check_notes": state.get("fact_check_notes"),
-        "engine_state": state,
+        "pipeline_state": state,
         **{
             k: audit[k]
             for k in (

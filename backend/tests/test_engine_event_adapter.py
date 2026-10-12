@@ -15,7 +15,7 @@ from app.engine.event_adapter import EngineEventAdapter, final_report_frame
 def test_browser_stage_emits_progress_not_a_source_count():
     adapter = EngineEventAdapter("q")
     frames = adapter.to_frames({
-        "engine_node": "browser",
+        "node": "browser",
         "stage": "search",
         "initial_research_chars": 24229,
     })
@@ -30,7 +30,7 @@ def test_browser_stage_emits_progress_not_a_source_count():
 def test_researcher_stage_reports_sections_not_sources():
     adapter = EngineEventAdapter("q")
     frames = adapter.to_frames({
-        "engine_node": "researcher",
+        "node": "researcher",
         "stage": "search",
         "research_sections": 5,
     })
