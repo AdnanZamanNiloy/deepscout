@@ -48,40 +48,38 @@ findings.
 
 ---
 
-## Synthesis: structured internally, adaptive externally
+## Answer and audit: separated by construction
 
-The pipeline determines **what is known**; the synthesis layer determines
-**what matters for this question**; the presentation layer determines **how to
-communicate it**. These three responsibilities are deliberately separate.
+The pipeline determines **what is known**; the audit layer determines **how far
+it can be trusted**. The two are deliberately separate so a reader's answer can
+never be contaminated by process metadata.
 
 ```text
-evidence state ──> ADAPTIVE ANSWER BLUEPRINT ──> synthesis ──> primary answer
-                        (question + evidence)                 (clean, cited)
-                                                                     +
-                                                              audit / trace
+retrieved evidence ──> pipeline ──> report markdown (the answer)
+                                        +
+                       audit bridge ──> fact pool ──> confidence,
+                                       (deterministic)   evidence grades,
+                                                        contradictions, quality
 ```
 
-* **Evidence state** is the verified fact pool, contradictions, independence and
-  temporal profile — produced by the research pipeline and unchanged by
-  synthesis.
-* **Adaptive answer blueprint** (`app/agents/outline.py`, `AnswerBlueprint`) is
-  a deterministic, LLM-free plan for HOW to communicate: the presentation
-  strategy for the question family (comparison by criterion, mechanism chain,
-  ordered steps, options + trade-offs, thematic synthesis, concise definition),
-  the dominant themes the evidence supports, and the depth. It names no
-  headings.
-* **Primary answer** is the synthesizer's prose. For every profile except
-  `audit` it is returned verbatim, with no injected report skeleton. The only
-  machine-appended tail is the numbered source legend (citations stay visible).
-* **Audit / trace** (`build_answer_audit`, the `final_audit` field) holds
-  research provenance: confidence and its caveats, the measured five-axis
-  quality score, the supporting-evidence ledger, source conflicts, the decision
-  layer, and measured evidence accounting. None of it is mixed into the answer.
+* **The answer** is the report the pipeline assembles: an introduction, the
+  researched sections, a conclusion, an optional diagram, and references. It is
+  assembled by `PublisherAgent` from the researched sections
+  (`app/research/agents/report_agents.py`) and never carries a confidence
+  number, a score, or a limitation list inside the body.
+* **The fact pool** is reconstructed deterministically — no LLM — by
+  `app/engine/audit_bridge.py`, which pairs each claim-bearing sentence with the
+  URL it cites and runs the retained audit core over it. Because it is cheap and
+  model-free, it runs on every request.
+* **The audit fields** travel beside the answer in the `final_report` frame:
+  `confidence` and its `confidence_breakdown`, `quality`, `contradictions`,
+  `evidence_distribution`, and `source_count`. None of them is mixed into the
+  report text.
 
-**Modes scale effort, not format.** Quick/standard/deep differ in research
-breadth, triangulation and synthesis depth. They do not switch between unrelated
-fixed report templates: every profile is adaptive, and report structure emerges
-from the question and the evidence.
+**Modes scale effort, not format.** Quick/standard/deep differ in how much
+research is done — how many sections, and how many revision rounds each stage
+gets. They do not switch between unrelated fixed templates: the report
+structure is the same, and the section outline is derived from the question.
 
 ---
 
@@ -115,7 +113,7 @@ from the question and the evidence.
 |---|---|
 | `app/agents/search.py` | `SearchClient`: multi-provider retrieval (SearXNG / Wikipedia / arXiv / Crossref), circuit breakers, canonical-URL dedup, domain diversity, disk cache, page fetch. |
 | `app/agents/sources/`, `app/agents/evidence_utils.py` | Source classification, reliability, freshness, corroboration-query building, claim/number extraction, answer-support scoring — the shared evidence vocabulary. |
-| `app/agents/budget.py` | Four ceilings (USD/tokens/calls/seconds), mode multipliers, can-afford-pass protocol. |
+| `app/agents/budget.py` | Per-run ceilings (model calls, wall-clock seconds) and mode multipliers. |
 | `app/core/confidence.py` | Confidence engine: base signals + citation support + axis coverage + pool-size-scaled contradiction penalty; degraded-run cap 0.55. |
 | `app/core/contradictions.py` | Three detectors (polarity, temporal, unit-aware numeric), severity ordering, cap 5. |
 | `app/core/semantic.py` | TF-IDF hybrid engine: stemming, synonym canonicalization, negation weighting, vectorized batch scoring. |
@@ -125,10 +123,10 @@ from the question and the evidence.
 
 | Module | Responsibility |
 |---|---|
-| `app/core/usage.py` | Per-run ledger (ContextVar): LLM tokens/cost, searches, cache hits. |
-| `app/core/llm.py` | Provider chain with breakers, fail-fast auth/quota errors, Retry-After honoring (capped 3s), JSON mode, usage parsing, probe caching; the single generation funnel for both the engine and the retained helpers. |
+| `app/core/usage.py` | Per-run ledger (ContextVar): LLM calls, searches, cache hits. |
+| `app/core/llm.py` + `app/core/llmkit/` | Provider resolution with circuit breakers, fail-fast auth/quota errors, Retry-After honoring (capped), JSON repair, usage parsing and provider probing; the single generation funnel for the pipeline and the retained helpers. |
 | `app/core/llm_cache.py` | Exact-prompt disk cache (TTL 6h, size-capped). |
-| `app/core/semantic.py`, `app/core/isolation.py` | Shared similarity engine and per-sub-question AgentContext isolation. |
+| `app/core/semantic.py` | Shared similarity engine (TF-IDF hybrid). |
 
 ### Surfaces
 
@@ -144,16 +142,15 @@ from the question and the evidence.
 
 | Event | Payload highlights |
 |---|---|
-| `progress` | `request_id`, `session_id`, `message` (includes per-stage progress labels) |
-| `plan` | `items` (report sections), `orchestration`, `waves` |
-| `search_progress` | `snippets` (progress count as research proceeds) |
-| `critic` | `iteration`, `reason` (fact-checker revision notes), `breakdown` |
-| `final_report` | `report` (the primary answer), `confidence`, `degraded`, `audit`, `degraded_reasons`, `citation_health`, `quality`, `outline` |
-| `error` | `message` (actionable: key/quota/timeout causes) |
+| `progress` | `request_id`, `session_id`, `message` (per-stage progress labels) |
+| `plan` | `items` (the planned section outline) |
+| `critic` | `iteration`, `reason` (fact-checker revision notes) |
+| `final_report` | `report` (the primary answer), `confidence`, `confidence_breakdown`, `quality`, `contradictions`, `answer_support`, `degraded`, `degraded_reasons`, `source_count` |
+| `error` | `message` (actionable: key / quota / timeout causes) |
 
-Event types the engine team has no genuine signal for (`intent`, `route`,
-`direct_answer`, `findings`, `search_query`, `decisions`) are deliberately not
-fabricated; the frontend treats every event type as optional.
+These five are the only types emitted. Anything the pipeline has no genuine
+signal for is deliberately not fabricated; the frontend treats every event type
+as optional, so a clean pipeline renders without inventing one.
 
 ---
 
@@ -213,7 +210,7 @@ not the answer.
   corroboration.
 - **Caches**: search results 1h, LLM responses 6h, both size-capped and
   LRU-evicted.
-- **SQLite**: every run persists agent events, sources, claims, verification
-  results, contradictions, citations, critic reviews and the final report —
-  the trace endpoint reconstructs the full timeline, and the verbatim NDJSON
-  frames are stored for replay.
+- **SQLite**: every run persists agent events, sources, claims, evidence,
+  contradictions, citations and the final report — the trace endpoint
+  reconstructs the full timeline, and the verbatim NDJSON frames are stored for
+  replay.

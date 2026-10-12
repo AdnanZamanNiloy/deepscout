@@ -9,26 +9,25 @@
 
 # DeepScout — Multi-Agent Research System
 
-**Deep research with verifiable evidence, honest confidence, and a hard cost ceiling.**
+**Deep research with verifiable evidence, honest confidence, and bounded work.**
 
 </div>
 
-DeepScout decomposes a question, runs parallel investigations across multiple search
+DeepScout decomposes a question, runs investigations across multiple search
 providers, verifies every claim against the source it cites, detects
-contradictions, re-checks cited URLs, and produces an auditable, cited report —
-while tracking exactly what the run cost in tokens, calls, dollars, and time.
+contradictions, and produces an auditable, cited report — while bounding what a
+single run may spend in model calls and wall-clock time.
 
 It is designed to run on **modest hardware** (8 GB RAM, no GPU) against
 **free-tier remote LLM APIs**, and to be more trustworthy than a general chatbot
 on the things that matter for research: evidence, verification, contradiction
 handling, and calibrated confidence. Measured results are in
-[`BENCHMARK_RESULTS.md`](BENCHMARK_RESULTS.md); measured design rationale is in
+[`BENCHMARK_RESULTS.md`](backend/bench/results/BENCHMARK_RESULTS.md); measured design rationale is in
 [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 > **Design principle:** an ungrounded answer must never be mistakable for a
-> researched one. Direct answers are confidence-capped below the research
-> sufficiency threshold, degraded runs are capped and labeled, and every claim
-> carries a source.
+> researched one. Confident claims must be traceable to a source, a run that
+> could not reach any provider fails fast, and every claim carries a source.
 
 ---
 
@@ -62,11 +61,10 @@ handling, and calibrated confidence. Measured results are in
 | **Provider control** | The Model Control Center selects a single OpenAI-compatible provider or an ordered fallback chain; pipeline generation is routed through it, with breakers, response cache and usage ledger. | `app/core/providers.py`, `app/research/llm.py` |
 | **Contradiction detection** | Numeric (unit-aware divergence), polarity (affirms vs. negates), and temporal (same measure, different periods) detectors with severity ranking. | `app/core/contradictions.py` |
 | **Confidence engine** | Multi-signal score (citation support, axis coverage, source quality, contradiction penalty, …). Degraded runs are capped below the sufficiency threshold with an explanatory breakdown. | `app/core/confidence.py` |
-| **Evidence grading** | Claim→source→verification→independence→corroboration→contradiction records; per-claim investigation memory tracks corroboration attempts. | `app/core/evidence_grade.py`, `app/core/investigation_state.py` |
-| **Replay, trace & export** | Every run persists its events, sources, final report and verbatim NDJSON frames; replay reconstructs the timeline and reports export to MD/DOCX/PDF. | `app/api/routes.py`, `app/db/sqlite.py` |
-| **Intelligent stopping** | Marginal-gain analysis, a no-re-novel-query memory, mode-aware targets, and hard walls (iterations, expansions, money, tokens, time). | `app/core/depth_controller.py` |
-| **Cost-aware reasoning** | Every LLM call records tokens/USD from provider usage fields; the budget governor refuses passes that cannot be paid for; the ledger streams live to the UI. | `app/core/usage.py`, `app/agents/budget.py` |
-| **LLM response cache** | Exact-prompt disk cache — repeated critic re-evals and re-runs are served from disk with zero provider spend. Bounded size and TTL. | `app/core/llm_cache.py` |
+| **Evidence grading** | Claim→source→verification→independence→corroboration→contradiction records, graded per claim and aggregated into a distribution. | `app/core/evidence_grade.py` |
+| **Replay, trace & export** | Every run persists its events, sources, claims, final report and verbatim NDJSON frames; replay reconstructs the timeline and reports export to MD/DOCX/PDF. | `app/api/routes.py`, `app/db/sqlite.py` |
+| **Bounded work** | Every run is capped on model calls, wall-clock time and per-stage timeouts; a run that cannot finish inside `RESEARCH_TIMEOUT_SEC` is reported as such rather than hanging. | `app/agents/budget.py`, `app/core/usage.py` |
+| **LLM response cache** | Exact-prompt disk cache — an identical re-run or a repeated plan is served from disk with zero provider spend. Bounded size and TTL. | `app/core/llm_cache.py` |
 | **Semantic engine** | CPU-light TF-IDF hybrid (stemming, synonym canonicalization, negation weighting) powering dedup, contradiction banding, and citation support. | `app/core/semantic.py` |
 
 ---
@@ -139,8 +137,8 @@ DeepScout assumes remote, rate-limited, occasionally-unavailable providers.
   visibly marked in the UI.
 - **Preflight provider probe.** A run with zero reachable providers fails in
   seconds with per-provider reasons instead of producing minutes of garbage.
-- **Budget walls.** Iterations, expansion passes, searches, LLM calls, tokens,
-  dollars, and wall-clock time are all bounded independently.
+- **Budget walls.** Model calls, wall-clock time, searches, page fetches and
+  per-stage timeouts are all bounded independently.
 - **Memory discipline.** Fetched content is released after verification; caches
   and per-run memories are size-bounded and LRU-evicted (8 GB target host).
 
@@ -152,18 +150,18 @@ are documented in [`AGENTS.md`](AGENTS.md).
 ## Research memory and replay
 
 Each run persists an auditable trace in SQLite, joinable by `run_id`:
+`research_runs`, `sources`, `claims`, `agent_events`, `evidence`,
+`final_reports`, `contradictions`, `citations`.
 
-`research_runs`, `agent_tasks`, `sources`, `claims`, `agent_events`, `evidence`,
-`critic_reviews`, `decisions`, `final_reports`, `contradictions`,
-`verification_results`, `citations`.
-
-- **Trace** — `GET /api/research/{run_id}/trace` reconstructs the whole run:
-  plan, sources, claims with verification flags, node events, critic reviews,
-  decisions, contradictions, citations, and the final report.
-- **Resume** — `POST /api/research/{run_id}/resume` re-enters the graph at the
-  critic node with state rebuilt from durable rows, so failed/timeout runs
-  continue without re-running retrieval. A user-cancelled run is recorded as
-  `cancelled` and is deliberately **not** resumable.
+- **Trace** — `GET /api/research/{run_id}/trace` reconstructs the run: plan,
+  sources, claims with verification flags, node events, contradictions,
+  citations, and the final report.
+- **Resume** — `POST /api/research/{run_id}/resume` restarts a failed or
+  timed-out run. The pipeline does not checkpoint state between stages, so a
+  resume re-runs the research from the beginning rather than continuing from
+  where it stopped; the run identity and the NDJSON contract are preserved. A
+  user-cancelled run is recorded as `cancelled` and is deliberately **not**
+  resumable.
 - **Replay in the UI** — selecting a chat restores its full persisted history
   and per-run pipeline steps; no re-fetch of the research is required.
 
@@ -200,21 +198,32 @@ Base path `/api`. The research stream is rate-limited (`RATE_LIMIT`, default
 |---|---|---|
 | `GET` | `/health` | Liveness probe |
 | `POST` | `/research/stream` | Run research; streams NDJSON events |
-| `POST` | `/research/{run_id}/resume` | Resume a failed/timeout run from checkpoint |
+| `POST` | `/research/{run_id}/resume` | Re-run a failed/timeout run |
 | `GET` | `/research/{run_id}/trace` | Full persisted run reconstruction |
+| `GET` | `/research/{run_id}/export/{fmt}` | Export a run's report as `md`, `docx` or `pdf` |
 | `GET` | `/sessions` | List chat sessions (one row per chat) |
 | `GET` | `/sessions/{session_id}` | Full ordered chat history |
 | `GET` | `/providers` | List configured LLM providers (keys masked) |
 | `POST` | `/providers` | Add a provider |
-| `PUT` | `/providers/{id}` | Update a provider |
-| `DELETE` | `/providers/{id}` | Delete a provider |
-| `POST` | `/providers/{id}/active` | Activate a provider |
+| `PUT` | `/providers/{provider_id}` | Update a provider |
+| `DELETE` | `/providers/{provider_id}` | Delete a provider |
+| `POST` | `/providers/{provider_id}/active` | Activate a provider |
 | `POST` | `/providers/active/clear` | Clear the active provider |
-| `POST` | `/providers/{id}/test` | Probe a provider's reachability |
+| `POST` | `/providers/{provider_id}/test` | Probe a provider's reachability |
+| `GET` | `/provider-chains` | List configured fallback chains |
+| `POST` | `/provider-chains` | Create a chain |
+| `PUT` | `/provider-chains/{chain_id}` | Rename or update a chain |
+| `DELETE` | `/provider-chains/{chain_id}` | Delete a chain |
+| `PUT` | `/provider-chains/{chain_id}/members` | Set the chain's ordered members |
+| `POST` | `/provider-chains/{chain_id}/reorder` | Reorder the chain's members |
+| `POST` | `/provider-chains/{chain_id}/enabled` | Enable or disable a chain |
+| `POST` | `/provider-chains/clear` | Disable all chains |
 
-**Stream event types:** `progress`, `intent`, `route`, `direct_answer`, `plan`,
-`search_progress`, `critic`, `findings`, `decisions`, `final_report`, `error`.
-Budget telemetry rides on `critic` and `final_report`.
+**Stream event types:** `progress`, `plan`, `critic`, `final_report`, `error`.
+`progress` carries stage transitions, `plan` the section outline, `critic` the
+fact-check outcome, and `final_report` the report plus its audit fields
+(`confidence`, `confidence_breakdown`, `quality`, `contradictions`,
+`source_count`).
 
 Example:
 
@@ -323,17 +332,21 @@ documented in `backend/.env.example` and [`CONFIG.md`](CONFIG.md). Highlights:
 |---|---|---|
 | `RESEARCH_TIMEOUT_SEC` | `1000` | Wall-clock ceiling per run |
 | `MAX_ITERATIONS` | `3` | Expansion iterations ceiling |
-| `MAX_PARALLEL_SEARCH` | `2` | Concurrent search workers |
-| `MAX_PARALLEL_AGENTS` | `3` | Concurrent agents (hardware cap) |
-| `MAX_PARALLEL_LLM` | `2` | Concurrent LLM calls (quota protection) |
-| `MAX_BUDGET_USD` | `0.50` | Per-run cost ceiling |
-| `MAX_BUDGET_TOKENS` | `400000` | Per-run token ceiling |
-| `SUFFICIENCY_THRESHOLD` | `0.75` | Confidence required to stop expanding |
+| `MAX_PARALLEL_SEARCH` | `3` | Concurrent search workers |
+| `MAX_PARALLEL_AGENTS` | `3` | Wave size for section research |
+| `MAX_PARALLEL_LLM` | `4` | Concurrent LLM calls (quota protection) |
+| `MAX_LLM_CALLS` | `60` | Per-run model-call ceiling |
+| `MAX_RESEARCH_SECONDS` | `300` | Per-run wall-clock ceiling used by the budget |
+| `LLM_TIMEOUT_SEC` | `60` | Per-call timeout (Groq / Hugging Face) |
+| `CUSTOM_LLM_TIMEOUT_SEC` | `60` | Per-call timeout for the custom provider |
+| `LLM_BREAKER_THRESHOLD` | `3` | Failures that open the circuit breaker |
+| `LLM_BREAKER_COOLDOWN_SEC` | `15` | How long the breaker stays open |
+| `PROVIDER_CHAINS_ENABLED` | `true` | Kill switch for fallback chains |
 | `RATE_LIMIT` | `5/minute` | Research stream rate limit |
 | `DATABASE_URL` | `./research.db` | SQLite path |
-| `ROUTER_ENABLED` | `true` | Direct-answer vs. research routing |
-| `QUALITY_GATE_ENABLED` | `true` | Pre-delivery answer scoring |
-| `CITATION_CHECK_ENABLED` | `true` | Live cited-URL re-validation |
+| `RESEARCH_MAX_RESULTS_PER_QUERY` | `5` | Results per search query |
+| `RESEARCH_CONTEXT_FILTER` | `auto` | Context filter (`auto`/`keyword`/`none`) |
+| `ALLOW_PRIVATE_URLS` | `false` | Disables the SSRF/local-file guard |
 
 `.env` overrides `.env.example`; real environment variables override both.
 
@@ -349,7 +362,7 @@ specific bug shipped once (see [`AGENTS.md`](AGENTS.md) §2).
 cd backend && pytest tests/ -v
 
 # Lint (ruff)
-cd backend && ruff check app tests bench scripts
+cd backend && ruff check app tests bench
 
 # Type check (informational baseline)
 cd backend && mypy app
@@ -368,8 +381,8 @@ cd frontend && npm run build
   providers; labeled fixtures live in `bench/datasets.py`.
 - **Frontend regression tests** cover session persistence, interrupt/edit, and
   auto-scroll helpers.
-- Measured results: [`BENCHMARK_RESULTS.md`](BENCHMARK_RESULTS.md) and
-  `benchmark_results.json`.
+- Measured results: [`BENCHMARK_RESULTS.md`](backend/bench/results/BENCHMARK_RESULTS.md) and
+  [`benchmark_results.json`](backend/bench/results/benchmark_results.json).
 - Per-change changelog and bug-fix history: [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
@@ -429,7 +442,7 @@ frontend/
 | [`CONFIG.md`](CONFIG.md) | Every setting, with rationale |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Components, data flow, design decisions |
 | [`DeepScout-vision-v2.md`](DeepScout-vision-v2.md) | Product vision and feature rationale |
-| [`BENCHMARK_RESULTS.md`](BENCHMARK_RESULTS.md) | Measured benchmark results |
+| [`BENCHMARK_RESULTS.md`](backend/bench/results/BENCHMARK_RESULTS.md) | Measured benchmark results |
 | [`CHANGELOG.md`](CHANGELOG.md) | Per-phase changes and bug-fix history |
 | [`AGENTS.md`](AGENTS.md) | Operating rules for contributors (incl. AI agents) |
 
