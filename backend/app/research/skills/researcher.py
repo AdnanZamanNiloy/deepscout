@@ -337,7 +337,7 @@ class ResearchConductor:
                     else:
                         new_search_urls.append(url)
             except Exception as e:
-                self.logger.error("Error searching with %s: %s", retriever_class.__name__, e)
+                self.logger.error("Error searching with %s", retriever_class.__name__, exc_info=e)
 
         new_search_urls = await self._get_new_urls(new_search_urls)
         random.shuffle(new_search_urls)
@@ -455,7 +455,7 @@ class ResearchConductor:
                 retriever.search, self.researcher.cfg.max_search_results_per_query
             )
         except Exception as e:
-            self.logger.error("Error searching with %s: %s", retriever_class.__name__, e)
+            self.logger.error("Error searching with %s", retriever_class.__name__, exc_info=e)
             return []
 
     async def _plan_research_outline(self, query, search_results):
