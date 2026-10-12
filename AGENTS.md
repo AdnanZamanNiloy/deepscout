@@ -291,7 +291,10 @@ These are real bugs found by reading the code, not hypotheticals. Each one below
   prompt gained recommendation dimensions; the fallback plan is option-shaped;
   `_query_concept` strips the guidance verb. Rule: a modifier adjective inside
   a request for suggestions is not a request-level ambiguity — only homonym
-  SENSES of a noun the user typed may split a guidance request.
+  SENSES of a noun the user typed may split a guidance request. (Note: the
+  ambiguity policy this fixed was removed in the first-party-pipeline
+  consolidation; `is_guidance_query` is listed here as the historical fix, not
+  as a current export.)
 
 [FIXED — recommendation query falsely stopped by the definition gate]
   app/agents/orchestrator.py, app/agents/critic.py

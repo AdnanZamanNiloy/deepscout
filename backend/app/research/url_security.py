@@ -85,12 +85,3 @@ def validate_url(url: str, *, allow_private: bool | None = None) -> str:
             )
 
     return url
-
-
-def is_safe_url(url: str, *, allow_private: bool | None = None) -> bool:
-    """Return ``True`` if ``url`` passes :func:`validate_url`, else ``False``."""
-    try:
-        validate_url(url, allow_private=allow_private)
-        return True
-    except UnsafeURLError:
-        return False
