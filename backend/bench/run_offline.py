@@ -294,7 +294,6 @@ async def _bench_cache(settings: Settings) -> Dict[str, Any]:
     from app.core import llm_cache
     from app.core.llm import LLMClient
 
-    cache_dir = settings.database_url.rsplit("/", 1)[0] + "/.cache/llm"
     llm_cache.set_enabled(True)
     llm_cache._force_disabled = False
     llm_cache.configure(settings)
@@ -318,7 +317,6 @@ async def _bench_cache(settings: Settings) -> Dict[str, Any]:
             await client.generate_json("bench system", prompt)
         uncached_ms = (time.perf_counter() - t0) * 1000
 
-        hits_before = 0
         t1 = time.perf_counter()
         for prompt in prompts:
             await client.generate_json("bench system", prompt)
@@ -328,7 +326,6 @@ async def _bench_cache(settings: Settings) -> Dict[str, Any]:
 
     llm_cache.clear()
     unique = 8
-    expected_provider_calls = unique  # first pass: 8 real calls + 16 hits
     return {
         "prompts": len(prompts),
         "unique": unique,

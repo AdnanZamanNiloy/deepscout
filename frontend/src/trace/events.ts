@@ -198,7 +198,13 @@ export type StepKind =
   | "tool"      // a search or a page view
   | "evidence"  // extracted claims
   | "gate"      // critic / verification
-  | "final";    // the answer
+  | "final"     // the answer
+  | "search"    // a search/progress stage
+  | "plan"      // planning the outline
+  | "review"    // reviewing the plan / evidence
+  | "write"     // writing the report
+  | "visualize" // generating visuals
+  | "publish";  // assembling/publishing the report
 
 /** A rendered chip: a search result or a fetched page. */
 export type TraceChip = {
@@ -259,9 +265,12 @@ export function buildTrace(
       case "progress": {
         const msg = str(ev.message);
         if (msg) {
+          // The pipeline reports stage progress as plain messages ("Search the
+          // web", "Planning the outline", …). Each gets the icon of the stage it
+          // names so the rail reads at a glance instead of as a wall of bullets.
           steps.push({
-            id: id("progress"), kind: "thinking", title: "Run started",
-            content: msg, status: "completed", timestamp: ts, minor: true,
+            id: id("progress"), kind: progressKind(msg), title: msg,
+            content: "", status: "completed", timestamp: ts, minor: true,
           });
         }
         break;
@@ -502,6 +511,40 @@ export function buildTrace(
 }
 
 // --- helpers ---------------------------------------------------------------
+
+/**
+ * Pick the icon kind for a pipeline progress message.
+ *
+ * The pipeline sends its stage names as plain sentences. Matching on a few
+ * structural words (not the whole message, which carries counts and topics)
+ * maps each to the agent it belongs to, so the trace rail shows a search
+ * magnifier for searching, a checklist for planning, a pen for writing, and so
+ * on — the same visual language the coordination board uses.
+ *
+ * Order matters: "checking the facts" contains "check", but so does "check the
+ * evidence"; both are reviews, so a review/verify match precedes the write and
+ * search matches.
+ */
+export function progressKind(message: string): StepKind {
+  const m = (message || "").toLowerCase();
+  if (!m) return "thinking";
+  // Review / verification / critique — tested before plan so "reviewing the
+  // plan" reads as a review, not as planning.
+  if (m.includes("review") || m.includes("check") || m.includes("verif")
+    || m.includes("critic") || m.includes("fact")) return "review";
+  // Planning
+  if (m.includes("plan")) return "plan";
+  // Search / retrieval
+  if (m.includes("search") || m.includes("gather") || m.includes("researching")
+    || m.includes("browsing") || m.includes("source")) return "search";
+  // Writing
+  if (m.includes("writing") || m.includes("report written") || m.includes("wrote")) return "write";
+  // Visuals
+  if (m.includes("visual") || m.includes("diagram") || m.includes("chart")) return "visualize";
+  // Assembly / publishing
+  if (m.includes("publish") || m.includes("assembl") || m.includes("finaliz")) return "publish";
+  return "thinking";
+}
 
 function str(v: unknown): string {
   if (typeof v === "string") return v.trim();

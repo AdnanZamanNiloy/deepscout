@@ -32,13 +32,14 @@ const GITHUB_URL = "https://github.com/AdnanZamanNiloy/deepscout-ai";
 export const DEMO_QUERY = "What will be the most in demand skill in 2027?";
 
 const PIPELINE = [
-  { name: "Orchestrator", desc: "Scores complexity, sets agent count and iteration caps" },
-  { name: "Planner", desc: "Decomposes the question into delegation contracts" },
-  { name: "Search", desc: "Retrieves, ranks and fetches sources per sub-question" },
-  { name: "Summarizer", desc: "Extracts standalone factual claims with domain overlays" },
-  { name: "Verifier", desc: "Checks each claim against its own cited source" },
-  { name: "Critic", desc: "Challenges assumptions and forces expansion on gaps" },
-  { name: "Synthesizer", desc: "Writes the cited report with a numbered source legend" },
+  { name: "Pathfinder", desc: "Discovers sources and maps the research landscape" },
+  { name: "Research Architect", desc: "Designs the strategy and the report outline" },
+  { name: "Review Gate", desc: "Approves the plan before investigation begins" },
+  { name: "Scout Swarm", desc: "Investigates every section in parallel" },
+  { name: "Narrative Writer", desc: "Crafts the introduction and conclusion" },
+  { name: "Evidence Auditor", desc: "Checks claims, support and inconsistencies" },
+  { name: "Diagram Designer", desc: "Creates a Mermaid diagram for the research" },
+  { name: "Report Assembler", desc: "Combines the content into the final report" },
 ];
 
 /* Console preview content. Sample questions only — nothing here is read from a
@@ -336,7 +337,7 @@ export default function Landing({ onStart, onDocs, onDemo }) {
                 })}
               </ul>
             </div>
-            <div className="landing-split-panel" aria-label="The seven-agent pipeline, in execution order">
+            <div className="landing-split-panel" aria-label="The eight-stage pipeline, in execution order">
               <div className="landing-split-panel-head">
                 <IconAgents size={16} aria-hidden="true" />
                 <span>The team behind every answer</span>

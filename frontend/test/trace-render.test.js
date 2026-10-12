@@ -624,3 +624,25 @@ test("a malformed frame does not crash the trace", async () => {
   });
   assert.match(html, /<section class="apt\s*"/);
 });
+test("the final report can be collapsed again once shown", async () => {
+  // Regression: the report row offered "Show report" but, once expanded, no way
+  // to close it — the reader had to collapse the whole trace. Both controls must
+  // exist on the final row.
+  const src = await readFile(new URL("../src/trace/AgentPipelineTrace.tsx", import.meta.url), "utf8");
+  assert.match(src, /Show report/, "the collapsed affordance must exist");
+  assert.match(src, /"Hide report"/, "the expanded affordance must exist");
+  // Both are wired to the same per-step toggle, so opening and closing act on
+  // the same row state.
+  assert.match(src, /isFinal\s*\?\s*"Hide report"/);
+});
+
+test("a final report renders with a collapse control when the trace is open", async () => {
+  const html = await render({
+    events: [
+      { type: "plan", items: ["a"], __ts: 1 },
+      { type: "final_report", report: "# Answer\n\nBody text.", __ts: 2 },
+    ],
+    status: "done",
+  });
+  assert.match(html, /Show report/, "the final row starts collapsed with a Show control");
+});

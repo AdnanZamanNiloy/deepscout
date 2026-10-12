@@ -21,7 +21,6 @@ surface is UNCHANGED.
 from __future__ import annotations
 
 from app.agents.evidence.domain import (  # noqa: F401
-    LOW_QUALITY_DOMAINS,
     extract_domain,
     is_high_quality_domain,
     source_reliability_score,

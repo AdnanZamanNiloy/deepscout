@@ -18,16 +18,24 @@ import {
 
 const STATE_LABEL = { done: "Complete", active: "Working", waiting: "Queued" };
 
-/* Canonical pipeline — same seven agents, same order, as AgentsView, so
- * "agent 3" means the same thing everywhere. */
+/* Canonical pipeline — the real eight stages from the shipped research graph
+ * (`app/research/agents/orchestrator.py`), in execution order. Same roster as
+ * AgentsView, so "stage 3" means the same thing everywhere.
+ *
+ *   browser → planner → human → researcher → writer → fact_checker →
+ *   visualizer → publisher
+ *
+ * (`node` is the graph node name the wire reports, used to match live stages;
+ * `desc` is filled from real counts in deriveAgents.) */
 const PIPELINE = [
-  { key: "orchestrator", icon: IconTarget, name: "Orchestrator" },
-  { key: "planner", icon: IconTarget, name: "Planner" },
-  { key: "search", icon: IconSearch, name: "Search" },
-  { key: "summarizer", icon: IconDoc, name: "Summarizer" },
-  { key: "verifier", icon: IconShieldCheck, name: "Verifier" },
-  { key: "critic", icon: IconShield, name: "Critic" },
-  { key: "synthesizer", icon: IconChart, name: "Synthesizer" },
+  { key: "browser", node: "browser", icon: IconSearch, name: "Pathfinder" },
+  { key: "planner", node: "planner", icon: IconTarget, name: "Research Architect" },
+  { key: "human", node: "human", icon: IconShieldCheck, name: "Review Gate" },
+  { key: "researcher", node: "researcher", icon: IconSearch, name: "Scout Swarm" },
+  { key: "writer", node: "writer", icon: IconDoc, name: "Narrative Writer" },
+  { key: "fact_checker", node: "fact_checker", icon: IconShieldCheck, name: "Evidence Auditor" },
+  { key: "visualizer", node: "visualizer", icon: IconChart, name: "Diagram Designer" },
+  { key: "publisher", node: "publisher", icon: IconChart, name: "Report Assembler" },
 ];
 
 function AgentRow({ icon: Ic, name, desc, status, index }) {
@@ -57,10 +65,10 @@ export default function IntelligencePanel({
   const working = agents.filter((a) => a.status === "active").length;
 
   return (
-    <aside className="intel" aria-label="Research intelligence">
+    <aside className="intel" aria-label="Run insights">
       <div className="intel-head">
         <div>
-          <h2>Intelligence</h2>
+          <h2>Run Insights</h2>
           <p aria-live="polite" aria-atomic="true">
             {run ? (
               run.replay ? (
@@ -85,7 +93,7 @@ export default function IntelligencePanel({
       ) : (
         <>
           <section className="intel-section">
-            <h3>Pipeline</h3>
+            <h3>Research Workflow</h3>
             <ol className="spine">
               {agents.map((a, i) => <AgentRow key={a.name} index={i + 1} {...a} />)}
             </ol>
@@ -127,7 +135,7 @@ function IdleState() {
         Ask a question and this rail becomes the run's instrument panel:
       </p>
       <ul className="intel-idle-list">
-        <li><IconTarget size={14} /> The seven-agent pipeline as it advances</li>
+        <li><IconTarget size={14} /> The eight-stage pipeline as it advances</li>
         <li><IconChart size={14} /> A confidence breakdown from measured signals</li>
         <li><IconShieldCheck size={14} /> Claim verification and citation health</li>
         <li><IconAlert size={14} /> Adversarial review and dispute tracking</li>
@@ -219,37 +227,46 @@ function CitationHealthRow({ health }) {
 
 /* ---------- agent state ----------
  * Status is decided by which artifacts exist — the same monotonic ladder the
- * live pipeline strip uses — and each agent gets ONE honest descriptor drawn
- * from real counts. No estimated per-agent percentages. */
-function deriveAgents(run) {
+ * live pipeline strip uses — and each stage gets ONE honest descriptor drawn
+ * from real counts. No estimated per-agent percentages.
+ *
+ * The ladder is remapped to the REAL eight-stage pipeline:
+ *   browser(1) → planner(2) → human(3) → researcher(4) → writer(5) →
+ *   fact_checker(6) → visualizer(7) → publisher(8)
+ * `reached` is how far the run has actually got, so stage i is done when
+ * reached > i and active when reached === i. */
+export function deriveAgents(run) {
   const planned = run.plan.length;
   const sources = run.snippets || 0;
   const claims = run.findings.length;
   const verified = run.verifiedCount || 0;
-  const passes = run.critiques.length;
+  const reviews = run.critiques.length;
   const done = !!run.done;
   const live = !done && !run.error;
 
-  // How far along the pipeline the run has actually reached (0..8).
-  // A stage i (1-based) is done when reached > i, so a fully delivered run
-  // must reach 8 to mark the 7th stage (Synthesizer) done — reaching 7 left
-  // Synthesizer stuck on "Queued" after the report shipped.
+  // How far along the pipeline the run has actually reached (0..9).
+  // Stage i (1-based) is done when reached > i, so a FULLY delivered run must
+  // reach 9 to mark the eighth stage (publisher) done — reaching 8 left the
+  // last stage stuck on "Queued" after the report shipped.
   let reached = 0;
+  if (sources) reached = 1;
   if (planned) reached = 2;
-  if (sources) reached = 3;
+  if (planned) reached = 3; // the plan-review gate auto-accepts in API mode
   if (claims) reached = 4;
-  if (verified) reached = 5;
-  if (passes) reached = 6;
-  if (done) reached = 8;
+  // A critic/review pass means the fact checker ran; a finished run has
+  // published, which also implies the writer and visualizer completed.
+  if (reviews) reached = 6;
+  if (done) reached = 9;
 
   const desc = {
-    orchestrator: run.modeLabel ? `${run.modeLabel} strategy` : "complexity scored",
-    planner: planned ? `${planned} sub-question${planned === 1 ? "" : "s"}` : "decomposing the question",
-    search: sources ? `${sources} source${sources === 1 ? "" : "s"}` : "retrieving and ranking sources",
-    summarizer: claims ? `${claims} claim${claims === 1 ? "" : "s"} extracted` : "extracting claims",
-    verifier: verified ? `${verified} verified` : "checking claims against sources",
-    critic: passes ? `${passes} review pass${passes === 1 ? "" : "es"}` : "judging sufficiency",
-    synthesizer: done ? "report delivered" : "writing the cited answer",
+    browser: sources ? `${sources} source${sources === 1 ? "" : "s"} scoped` : "running the first research pass",
+    planner: planned ? `${planned} section${planned === 1 ? "" : "s"} planned` : "deriving the outline",
+    human: reached >= 3 ? "outline accepted" : "awaiting plan review",
+    researcher: claims ? `${claims} claim${claims === 1 ? "" : "s"} extracted` : "researching each section",
+    writer: verified ? "intro and conclusion written" : "writing the report body",
+    fact_checker: reviews ? `${reviews} review pass${reviews === 1 ? "" : "es"}` : "checking the draft",
+    visualizer: done ? "diagram generated" : "generating visuals",
+    publisher: done ? "report delivered" : "assembling the report",
   };
 
   return PIPELINE.map((stage, i) => {

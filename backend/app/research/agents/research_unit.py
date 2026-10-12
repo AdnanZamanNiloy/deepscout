@@ -149,7 +149,6 @@ class ReviserAgent:
 
     async def revise_draft(self, draft_state: Dict[str, Any]) -> Dict[str, Any]:
         review = draft_state.get("review")
-        task = draft_state.get("task") or {}
         draft_report = draft_state.get("draft")
         prompt = [
             {

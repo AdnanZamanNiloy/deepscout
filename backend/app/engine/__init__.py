@@ -27,9 +27,6 @@ class EngineRuntime:
     def __init__(self, llm: LLMClient, search_client: SearchClient):
         self.llm = llm
         self.search_client = search_client
-        #: Retained for callers that referenced a retriever class on the old
-        #: runtime; the pipeline builds its retriever per run instead.
-        self.retriever_cls = None
 
 
 def configure(llm: LLMClient, search_client: SearchClient) -> EngineRuntime:

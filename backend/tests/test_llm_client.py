@@ -435,7 +435,7 @@ async def test_open_breakers_skip_all_providers():
     try:
         with respx.mock(assert_all_called=False) as mock:
             custom_route = mock.post(CUSTOM_URL).mock(return_value=_groq_response({"x": 1}))
-            groq_route = mock.post(GROQ_URL).mock(return_value=_groq_response({"x": 1}))
+            mock.post(GROQ_URL).mock(return_value=_groq_response({"x": 1}))
             # Recovered rather than degraded: the cooldown wait is paid once.
             assert await client.generate_json("sp", "up") == {"x": 1}
             assert custom_route.call_count == 1

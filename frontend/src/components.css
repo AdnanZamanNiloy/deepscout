@@ -332,8 +332,6 @@
 .src-link { color: var(--t3); font-size: 12px; text-decoration: none; border-bottom: 1px dotted var(--dash); }
 .src-link:hover { color: var(--deepscout); border-bottom-color: var(--deepscout); }
 
-.evidence-block { margin-top: 26px; border-top: 1px solid var(--line-soft); padding-top: 18px; }
-.evidence-block .sub { font-size: 12.5px; color: var(--t3); margin: 6px 0 0; }
 
 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
 .stat {
@@ -363,7 +361,6 @@
   font-variant-numeric: tabular-nums;
   color: var(--t1);
 }
-.stat .lbl { font-size: 11.5px; color: var(--t2); margin-top: 3px; }
 .stat .sub2 { font-size: 10.5px; color: var(--t3); margin-top: 2px; }
 
 .tone-good { color: var(--mint); }
@@ -388,28 +385,6 @@
 .contradiction strong { display: block; color: var(--amber); margin-bottom: 6px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
 
 /* Decision layer: azure, because it is "evaluated options", not an error. */
-.decisions-block {
-  margin-top: 20px;
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--blue);
-  background: var(--card);
-  border-radius: var(--r-md);
-  padding: 15px 17px;
-}
-.decisions-block h3 {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--blue);
-  margin: 0 0 10px;
-}
-.decision-option { padding: 10px 0; font-size: 13.5px; line-height: 1.7; color: var(--t2); }
-.decision-option + .decision-option { border-top: 1px dashed var(--line); }
-.decision-option p { margin: 4px 0 0; }
-.decision-head b { color: var(--t1); font-weight: 650; }
-.decision-option.recommended .decision-head b { color: var(--mint); }
-.decision-option .sub2 { color: var(--t3); font-size: 12.5px; }
 
 .degraded-banner {
   display: flex; gap: 10px; align-items: flex-start;
@@ -431,32 +406,7 @@
    INTELLIGENCE WIDGETS
    ============================================================ */
 
-.agent-row { display: flex; gap: 10px; margin-bottom: 14px; }
-.agent-row:last-child { margin-bottom: 2px; }
-.agent-ic {
-  width: 30px; height: 30px; flex: none;
-  border-radius: var(--r-sm);
-  background: var(--inset-2);
-  border: 1px solid var(--inset-line);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--t3);
-  transition: color 0.2s, border-color 0.2s, background 0.2s;
-}
 /* The icon carries the state colour too — status is not dot-only. */
-.agent-row.s-done .agent-ic { color: var(--mint); border-color: color-mix(in srgb, var(--mint) 32%, transparent); background: var(--green-wash); }
-.agent-row.s-active .agent-ic { color: var(--deepscout); border-color: color-mix(in srgb, var(--deepscout) 38%, transparent); background: var(--deepscout-wash); }
-.agent-main { flex: 1; min-width: 0; }
-.agent-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
-.agent-name { font-size: 12.5px; font-weight: 650; color: var(--t1); }
-.agent-status { font-size: 10.5px; font-weight: 650; flex: none; letter-spacing: 0.02em; }
-.agent-desc {
-  font-size: 11.5px;
-  color: var(--t3);
-  margin: 2px 0 7px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .bar { height: 4px; border-radius: 999px; background: var(--track); overflow: hidden; }
 .bar > div {
   height: 100%;
@@ -468,12 +418,10 @@
 }
 .bar > div.green { background: var(--bar-green); }
 .bar > div.blue { background: var(--bar-blue); }
-.bar > div.amber { background: var(--amber); }
 /* Confidence breakdown bars use the DeepScout orange accent; other .bar users
    (e.g. the budget meter) keep the neutral --bar fill. */
 .confidence-breakdown .bar > div { background: var(--deepscout); }
 /* Budget utilization bar also uses the DeepScout orange accent for consistency. */
-.budget-util-bar > div { background: var(--deepscout); }
 
 .health-row { display: flex; align-items: center; gap: 10px; padding: 5.5px 2px; }
 .health-row svg { flex: none; }
@@ -648,7 +596,6 @@
 .mode-menu button small { display: block; font-size: 11px; color: var(--t3); font-weight: 400; margin-top: 1px; }
 .mode-menu button.picked { color: var(--deepscout); background: var(--deepscout-wash); }
 .mode-menu button.picked small { color: var(--t3); }
-.chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ============================================================
    CLAIM DRAWER
@@ -719,13 +666,6 @@
 .mission-card .meta .sep { color: var(--line-hover); }
 
 /* Filter/stat strip above list views. */
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-}
 
 /* ============================================================
    PROVIDERS
@@ -736,89 +676,9 @@
    FALLBACK CHAINS
    ============================================================ */
 
-.chain-section { margin-top: 30px; padding-top: 22px; border-top: 1px solid var(--line-soft); }
-.chain-head h3 { font-size: 13px; font-weight: 650; margin: 0; }
-.chain-head p { color: var(--t3); font-size: 12.5px; margin: 5px 0 0; max-width: 68ch; line-height: 1.6; }
-.chain-add { display: flex; gap: 9px; margin: 14px 0; }
-.chain-add input {
-  flex: 1; padding: 8px 10px;
-  background: var(--bg-soft);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  color: var(--t1); font-size: 13px; outline: none;
-}
-.chain-add input::placeholder { color: var(--t4); }
-.chain-add input:focus { border-color: var(--deepscout); }
 
-.chain-card {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: 14px 16px; margin-bottom: 12px;
-  color: var(--t1);
-}
-.chain-card.enabled { border-color: color-mix(in srgb, var(--mint) 42%, transparent); }
-.chain-card-head {
-  display: flex; align-items: center; gap: 10px;
-  justify-content: space-between; margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-.chain-title { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 650; }
-.chain-actions { display: flex; gap: 7px; flex-wrap: wrap; }
-.chain-rename { display: flex; gap: 8px; flex: 1; }
-.chain-rename input {
-  flex: 1; padding: 6px 10px;
-  background: var(--bg-soft);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  color: var(--t1); font-size: 13px; outline: none;
-}
-.chain-members { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 7px; }
-.chain-member {
-  display: flex; align-items: center; gap: 11px;
-  background: var(--bg-soft);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  padding: 9px 11px;
-}
-.chain-member.role-primary { border-color: color-mix(in srgb, var(--deepscout) 45%, transparent); }
-.chain-order {
-  flex: none; width: 22px; height: 22px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--card);
-  border: 1px solid var(--line);
-  font: 700 11px/1 var(--mono);
-  color: var(--t2);
-}
-.chain-member-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.chain-member-name { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; flex-wrap: wrap; }
-.chain-member-meta { font-size: 11px; color: var(--t3); word-break: break-word; font-family: var(--mono); }
-.chain-member-actions { display: flex; gap: 5px; flex: none; }
 /* Member picker: a button list, not a <select>. The previous
    `.chain-add-member select` rules styled a control the DOM never contained. */
-.chain-add-member { padding-top: 2px; }
-.chain-picker-list { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
-.chain-picker-btn {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 7px 11px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--card);
-  color: var(--t2);
-  font-size: 12.5px;
-  cursor: pointer;
-  transition: border-color 0.14s, background 0.14s, color 0.14s;
-}
-.chain-picker-btn:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--deepscout) 45%, transparent);
-  background: var(--card-2);
-  color: var(--t1);
-}
-.chain-picker-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.chain-picker-name { font-weight: 600; }
-.chain-picker-model { font-size: 11px; color: var(--t4); font-family: var(--mono); }
 
 /* Inline destructive confirm (replaces window.confirm). */
 .confirm-btn { display: inline-flex; }
@@ -862,17 +722,6 @@
    REPLAY BANNER
    ============================================================ */
 
-.replay-banner {
-  display: flex; align-items: center; gap: 10px;
-  border: 1px solid color-mix(in srgb, var(--blue) 30%, transparent);
-  border-left: 3px solid var(--blue);
-  background: var(--blue-wash);
-  border-radius: var(--r-md);
-  padding: 10px 14px; margin-bottom: 18px;
-  font-size: 12.5px; color: var(--t2);
-}
-.replay-banner .spacer { flex: 1; }
-.replay-banner strong { color: var(--blue); }
 
 /* ============================================================
    RESPONSIVE
@@ -1552,19 +1401,7 @@
 }
 
 
-.chain-add { display: flex; gap: 10px; margin-bottom: 14px; }
-.chain-add input {
-  flex: 1; padding: 9px 11px;
-  background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px;
-  color: var(--t1); font-size: 13.5px; outline: none;
-}
-.chain-add input:focus { border-color: var(--deepscout); }
 
-.chain-grip {
-  flex: none; cursor: grab; color: var(--t4); font-size: 14px; line-height: 1;
-  padding: 0 2px; user-select: none;
-}
-.chain-member.dragging { opacity: 0.55; border-style: dashed; }
 
 .serving-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .serving-card {

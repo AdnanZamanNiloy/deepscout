@@ -7,7 +7,6 @@ than fabricating a confident, sourced-looking report.
 """
 from __future__ import annotations
 
-from typing import List
 
 from app.research.prompts import get_prompt_by_report_type
 from app.research.streaming import stream_output
@@ -18,14 +17,6 @@ class ReportGenerator:
 
     def __init__(self, researcher):
         self.researcher = researcher
-        self.research_params = {
-            "query": self.researcher.query,
-            "agent_role_prompt": self.researcher.cfg.agent_role or self.researcher.role,
-            "report_type": self.researcher.report_type,
-            "report_source": self.researcher.report_source,
-            "tone": self.researcher.tone,
-            "cfg": self.researcher.cfg,
-        }
 
     async def write_report(
         self,
@@ -126,24 +117,6 @@ class ReportGenerator:
             max_tokens=self.researcher.cfg.smart_token_limit,
             cost_callback=self.researcher.add_costs,
         )
-
-    async def get_draft_section_titles(self, current_subtopic: str) -> List[str]:
-        """Generate draft section titles for a subtopic (newline-split list)."""
-        prompt = self.researcher.prompt_family.generate_draft_titles_prompt(
-            current_subtopic,
-            self.researcher.query,
-            str(self.researcher.context),
-        )
-        text = await self.researcher.llm.create_chat_completion(
-            messages=[
-                {"role": "system", "content": f"{self.researcher.cfg.agent_role or self.researcher.role}"},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.25,
-            max_tokens=self.researcher.cfg.smart_token_limit,
-            cost_callback=self.researcher.add_costs,
-        )
-        return text.split("\n") if text else []
 
     async def _generate(self, content: str) -> str:
         """Single report-generation call with a role-free fallback attempt."""

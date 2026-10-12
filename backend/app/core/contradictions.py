@@ -54,9 +54,6 @@ TEMPORAL_DIVERGENCE = 0.20
 
 MAX_CONTRADICTIONS = 5
 
-# Severity bands (0-1): numeric > polarity > temporal, divergence-scaled.
-SEVERE_SEVERITY = 0.60
-
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 
 # Scope markers: a numeric difference between a "global" figure and a "US"

@@ -105,6 +105,52 @@ function Icon({ kind }: { kind: StepKind }) {
           <path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z" />
         </svg>
       );
+    case "search":
+      return (
+        <svg {...common}>
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+      );
+    case "plan":
+      return (
+        <svg {...common}>
+          <path d="M9 6h11" />
+          <path d="M9 12h11" />
+          <path d="M9 18h11" />
+          <path d="M4 6h.01M4 12h.01M4 18h.01" />
+        </svg>
+      );
+    case "review":
+      return (
+        <svg {...common}>
+          <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+          <path d="m9 12 2 2 4-4" />
+        </svg>
+      );
+    case "write":
+      return (
+        <svg {...common}>
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+        </svg>
+      );
+    case "visualize":
+      return (
+        <svg {...common}>
+          <path d="M3 3v18h18" />
+          <path d="M7 15l3-4 3 3 4-6" />
+        </svg>
+      );
+    case "publish":
+      return (
+        <svg {...common}>
+          <path d="m7.5 4.27 9 5.15" />
+          <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+          <path d="M3.3 7 12 12l8.7-5" />
+          <path d="M12 22V12" />
+        </svg>
+      );
     case "thinking":
     default:
       return null;
@@ -339,7 +385,7 @@ function Row({
                 <Prose text={p} />
               </p>
             ))}
-            {collapsible ? (
+            {collapsible || isFinal ? (
               <button
                 type="button"
                 className="apt-row-toggle"
@@ -347,10 +393,12 @@ function Row({
                 aria-expanded={open}
               >
                 <span className="apt-muted">
-                  {open
-                    ? "Show less"
-                    : bulk
-                      ? `Show all ${paragraphs.length} claims`
+                  {isFinal
+                    ? "Hide report"
+                    : open
+                      ? "Show less"
+                      : bulk
+                        ? `Show all ${paragraphs.length} claims`
                       : "Show more"}
                 </span>
               </button>

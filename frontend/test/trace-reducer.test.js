@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { buildTrace, summarize, hostOf, isKnownFrame } = await import(
+const { buildTrace, summarize, hostOf, isKnownFrame, progressKind } = await import(
   "../src/trace/events.ts"
 );
 
@@ -34,7 +34,7 @@ test("unknown event types are ignored rather than rendered as noise", () => {
     { type: "another_new_thing", detail: "x" },
   ]);
   assert.equal(steps.length, 1, "only the known event becomes a step");
-  assert.equal(steps[0].title, "Run started");
+  assert.equal(steps[0].title, "Query received");
 });
 
 test("isKnownFrame accepts known types and rejects unknown ones", () => {
@@ -285,4 +285,30 @@ test("intent prose reads as a sentence, with a correct article", () => {
   assert.match(deep.content, /a factual question/);
   assert.doesNotMatch(deep.content, /detailed depth/);
   assert.match(deep.content, /answered at a detailed level/);
+});
+
+test("progress messages carry the icon kind of the stage they name", () => {
+  // The pipeline sends its stage names as plain progress messages. Each must
+  // map to an icon kind so the trace rail shows a search/plan/review/write
+  // glyph instead of a blank bullet — the upgrade that fixed the missing icons.
+  assert.equal(progressKind("Search the web"), "search");
+  assert.equal(progressKind("Gathered ~23,290 characters of initial research"), "search");
+  assert.equal(progressKind("Researched 5 sections"), "search");
+  assert.equal(progressKind("Planning the outline"), "plan");
+  // "Reviewing the plan" is a review action, not planning: the review match
+  // must win over the plan substring.
+  assert.equal(progressKind("Reviewing the plan"), "review");
+  assert.equal(progressKind("Checking the facts"), "review");
+  assert.equal(progressKind("Writing the report"), "write");
+  assert.equal(progressKind("Generating visuals"), "visualize");
+  assert.equal(progressKind("Assembling the report"), "publish");
+  // A message naming no stage stays neutral prose, never a fabricated icon.
+  assert.equal(progressKind("Query received"), "thinking");
+  assert.equal(progressKind(""), "thinking");
+});
+
+test("a progress step's title is the real message, not a generic label", () => {
+  const [step] = buildTrace([{ type: "progress", message: "Search the web", __ts: 1 }]);
+  assert.equal(step.title, "Search the web");
+  assert.equal(step.kind, "search");
 });

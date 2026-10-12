@@ -242,7 +242,6 @@ class Settings(BaseSettings):
     research_report_format: str = "APA"
     research_language: str = "english"
     research_report_source: str = "web"
-    research_fast_token_limit: int = 6000
     research_smart_token_limit: int = 12000
     research_strategic_token_limit: int = 8000
     research_max_results_per_query: int = 5

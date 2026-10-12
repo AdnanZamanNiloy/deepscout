@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
 
@@ -55,7 +54,6 @@ class WorkerPool:
     def __init__(self, max_workers: int, rate_limit_delay: float = 0.0):
         self.max_workers = max(1, int(max_workers or 1))
         self.rate_limit_delay = rate_limit_delay
-        self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
         self.semaphore = asyncio.Semaphore(self.max_workers)
         get_global_rate_limiter().configure(rate_limit_delay)
 

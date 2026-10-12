@@ -480,7 +480,7 @@ async def test_provider_chains_enabled_flag_is_a_kill_switch(db_path):
     assert await provider_store.get_enabled_chain(db_path) is None
     client = LLMClient(_settings(db_path, provider_chains_enabled=False))
     with respx.mock(assert_all_called=False) as mock:
-        ra = mock.post(A_URL).mock(return_value=_ok({"via": "a"}))
+        mock.post(A_URL).mock(return_value=_ok({"via": "a"}))
         rb = mock.post(B_URL).mock(return_value=_ok({"via": "b"}))
         result = await client.generate_json("sp", "up")
     assert result == {"via": "a"}

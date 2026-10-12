@@ -131,41 +131,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.apt-keytoggle {
-  background: transparent;
-  border: 1px solid var(--apt-line);
-  border-radius: 999px;
-  padding: 1px 8px;
-  font: inherit;
-  font-size: 11px;
-  color: var(--apt-faint);
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-.apt-keytoggle:hover { color: var(--apt-dim); }
-.apt-keytoggle[aria-pressed="true"] { color: var(--apt-fg); border-color: color-mix(in srgb, var(--apt-fg) 22%, transparent); }
-
-.apt-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--apt-run);
-}
-.apt-live::before {
-  content: "";
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: apt-pulse 1.7s ease-in-out infinite;
-}
-
 .apt-toggle:focus-visible,
-.apt-keytoggle:focus-visible,
 .apt-row-toggle:focus-visible,
 .apt-code:focus-visible {
   outline: 2px solid var(--apt-run);
@@ -261,6 +227,17 @@
   pointer-events: none;
 }
 .apt-row[data-kind="final"] .apt-icon { color: var(--apt-dim); }
+/* Stage-progress rows (search, plan, review, write, visualize, publish) carry
+   a real icon each, so the rail reads as the pipeline's shape at a glance.
+   Slightly brighter than a generic tool icon: these mark the run's stages. */
+.apt-row[data-kind="search"] .apt-icon,
+.apt-row[data-kind="plan"] .apt-icon,
+.apt-row[data-kind="review"] .apt-icon,
+.apt-row[data-kind="write"] .apt-icon,
+.apt-row[data-kind="visualize"] .apt-icon,
+.apt-row[data-kind="publish"] .apt-icon {
+  color: color-mix(in srgb, var(--apt-fg) 62%, transparent);
+}
 
 .apt-row-body { min-width: 0; }
 
@@ -441,10 +418,6 @@ a.apt-inline:hover { background: color-mix(in srgb, var(--apt-fg) 12%, transpare
      override made mobile chips LARGER than desktop, undoing the compaction. */
   .apt { font-size: 12.5px; }
   .apt-code { font-size: 9.5px; }
-}
-
-@media (max-width: 420px) {
-  .apt-keytoggle { display: none; }
 }
 
 /* --- light theme --------------------------------------------------------- */

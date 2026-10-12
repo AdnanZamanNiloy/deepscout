@@ -13,7 +13,7 @@ configuration.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 _DEFAULT_USER_AGENT = (
@@ -40,7 +40,6 @@ class ResearchConfig:
     # Token budgets handed to the model per call site. The client clamps these
     # against the selected provider's limits, so they are upper bounds, not
     # hard requirements.
-    fast_token_limit: int = 6000
     smart_token_limit: int = 12000
     strategic_token_limit: int = 8000
 
@@ -80,8 +79,6 @@ class ResearchConfig:
     # Optional explicit agent role; None lets the pipeline pick one.
     agent_role: Optional[str] = None
 
-    # Additional kwargs reserved for call sites that forward them to the LLM.
-    llm_kwargs: dict = field(default_factory=dict)
     verbose: bool = False
 
 
@@ -100,7 +97,6 @@ def load_config(**overrides) -> ResearchConfig:
         "report_format": s.research_report_format,
         "language": s.research_language,
         "report_source": s.research_report_source,
-        "fast_token_limit": s.research_fast_token_limit,
         "smart_token_limit": s.research_smart_token_limit,
         "strategic_token_limit": s.research_strategic_token_limit,
         "max_search_results_per_query": s.research_max_results_per_query,

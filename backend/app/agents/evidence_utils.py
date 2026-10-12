@@ -27,7 +27,6 @@ from app.agents.sources import (  # noqa: F401
 )
 
 from app.agents.evidence.domain import (  # noqa: F401
-    LOW_QUALITY_DOMAINS,
     extract_domain,
     is_high_quality_domain,
     source_reliability_score,

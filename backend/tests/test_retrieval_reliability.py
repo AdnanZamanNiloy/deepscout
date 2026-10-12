@@ -145,7 +145,6 @@ async def test_forbidden_no_retry_and_cools_host(monkeypatch):
     then attempts an authoritative-source fallback for equivalent evidence."""
     settings = _fetch_only_settings(search_domain_cooldown_sec=120.0)
     client = SearchClient(settings)
-    calls = {"n": 0}
     fallbacks = {"n": 0}
 
     async def fake_fallback(self, ranked, unavailable, *, client=None, max_attempts=2):
@@ -184,10 +183,6 @@ async def test_forbidden_no_retry_and_cools_host(monkeypatch):
 # ---------------------------------------------------------------------------
 
 async def test_rate_limited_retries_then_succeeds(monkeypatch):
-    settings = _settings()
-    client = SearchClient(settings)
-    calls = {"n": 0}
-
     async def _no_sleep(_):
         return None
 

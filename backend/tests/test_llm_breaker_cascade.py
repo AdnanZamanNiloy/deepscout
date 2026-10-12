@@ -84,7 +84,6 @@ async def test_an_open_breaker_is_waited_out_and_the_call_succeeds():
     assert client.custom_breaker.is_open()
     assert _breaker_seconds_left(client.custom_breaker) > 0
 
-    route = respx.get(ENDPOINT)  # unused; keeps respx from complaining
     with respx.mock:
         respx.post(ENDPOINT).mock(return_value=_ok())
         # Patch sleep to observe the wait without actually spending it.

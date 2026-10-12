@@ -381,15 +381,6 @@
   transform: rotate(180deg);
 }
 /* The title bar's own status cluster (dot + state word). */
-.page-title-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  flex: none;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--t3);
-}
 
 .thread-center { display: flex; align-items: center; justify-content: center; }
 /* Nudges the vertically-centred empty state above true centre so it sits in
@@ -465,8 +456,6 @@
   color: var(--t4);
   margin: 0 2px 11px;
 }
-.intel-section-head { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 10px; }
-.intel-section-head h3 { font-size: 10.5px; font-weight: 700; letter-spacing: 0.11em; text-transform: uppercase; color: var(--t4); margin: 0; }
 
 /* Idle rail: orientation instead of a column of empty placeholders. */
 .intel-idle { margin-top: 18px; }
@@ -481,19 +470,6 @@
   color: var(--t3);
 }
 .intel-idle-list li svg { flex: none; margin-top: 2px; color: var(--deepscout); }
-
-.scroll-top-btn {
-  position: absolute;
-  right: 18px;
-  bottom: 96px;
-  z-index: 28;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-card);
-}
 
 /* ============================================================
    RESPONSIVE
@@ -556,7 +532,6 @@
   .thread { padding: 64px 14px 12px; }
   .composer-zone { padding: 8px 12px 12px; }
   .page-title-bar { padding-left: 54px; padding-right: 14px; }
-  .scroll-top-btn { right: 12px; bottom: 88px; }
 }
 
 .menu-btn { display: none; }

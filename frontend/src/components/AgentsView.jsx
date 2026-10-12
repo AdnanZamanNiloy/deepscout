@@ -1,51 +1,60 @@
 /* Agent Library — the DeepScout workforce as it actually exists. Objectives and
  * tools are stated from the code, not marketing copy. Live per-agent latency
- * and cost are not instrumented yet — said plainly rather than faked. */
+ * and cost are not instrumented yet — said plainly rather than faked.
+ *
+ * The roster mirrors the shipped research graph
+ * (`app/research/agents/orchestrator.py`): eight stages in execution order. */
 
-import { IconChart, IconCheckCircle, IconDoc, IconSearch, IconShield, IconTarget } from "./icons";
+import { IconChart, IconDoc, IconSearch, IconShieldCheck, IconTarget } from "./icons";
 
 const AGENTS = [
   {
-    name: "Orchestrator", icon: IconTarget,
-    objective: "Scores query complexity and sets strategy, agent count and iteration caps.",
-    tools: ["complexity scorer", "mode presets"],
-    outputs: ["strategy selection", "hardware-cap clamping"],
-  },
-  {
-    name: "Planner", icon: IconTarget,
-    objective: "Decomposes the question into delegation contracts with search types and priorities.",
-    tools: ["LLM planning", "methodology prompt"],
-    outputs: ["sub-questions", "diversity contracts", "query variants"],
-  },
-  {
-    name: "Search", icon: IconSearch,
-    objective: "Retrieves and ranks sources per sub-question, then fetches full content for the top hits.",
+    name: "Pathfinder", icon: IconSearch,
+    objective: "Discovers relevant sources and maps the research landscape.",
     tools: ["web_search", "fetch_content"],
-    outputs: ["dedup + ranking", "variant fan-out", "already-searched skip"],
+    outputs: ["initial research report", "source pool"],
   },
   {
-    name: "Summarizer", icon: IconDoc,
-    objective: "Extracts standalone factual claims in isolated per-question contexts.",
-    tools: ["LLM extraction", "heuristic fallback"],
-    outputs: ["7 domain overlays", "snippet cleaning"],
+    name: "Research Architect", icon: IconTarget,
+    objective: "Designs the research strategy and creates the report outline.",
+    tools: ["LLM planning", "methodology prompt"],
+    outputs: ["section outline", "report title"],
   },
   {
-    name: "Verifier", icon: IconCheckCircle,
-    objective: "Checks every claim against its cited source; flags contradictions and truncations.",
-    tools: ["lexical overlap", "contradiction engine"],
-    outputs: ["verified flags", "answer-support scoring"],
+    name: "Review Gate", icon: IconShieldCheck,
+    objective: "Approves the research plan before the investigation begins.",
+    tools: ["plan gate"],
+    outputs: ["accept / revise decision"],
   },
   {
-    name: "Critic", icon: IconShield,
-    objective: "Judges sufficiency, challenges assumptions, and forces expansion within the depth ceiling.",
-    tools: ["LLM critique", "synthesis gate"],
-    outputs: ["confidence breakdown", "gap queries"],
+    name: "Scout Swarm", icon: IconSearch,
+    objective: "Investigates individual sections in parallel and gathers evidence.",
+    tools: ["web_search", "fetch_content", "section reviewer/reviser"],
+    outputs: ["section drafts", "per-section sources"],
   },
   {
-    name: "Synthesizer", icon: IconChart,
-    objective: "Writes the cited final answer with a numbered source legend.",
-    tools: ["LLM synthesis", "deterministic fallback"],
-    outputs: ["inline [n] citations", "section-wise structure"],
+    name: "Narrative Writer", icon: IconDoc,
+    objective: "Crafts the introduction and conclusion into a coherent narrative.",
+    tools: ["LLM writing", "deterministic fallback"],
+    outputs: ["introduction", "conclusion"],
+  },
+  {
+    name: "Evidence Auditor", icon: IconShieldCheck,
+    objective: "Checks factual claims, source support, and potential inconsistencies.",
+    tools: ["LLM fact-check"],
+    outputs: ["fact-check notes", "revision decision"],
+  },
+  {
+    name: "Diagram Designer", icon: IconChart,
+    objective: "Creates a Mermaid diagram to illustrate the research.",
+    tools: ["LLM diagram generation"],
+    outputs: ["mermaid diagram"],
+  },
+  {
+    name: "Report Assembler", icon: IconChart,
+    objective: "Combines the researched content into the final Markdown report.",
+    tools: ["report assembly"],
+    outputs: ["final report"],
   },
 ];
 
@@ -55,12 +64,12 @@ export default function AgentsView() {
       <div className="view-head">
         <h2>Agents</h2>
         <p>
-          {AGENTS.length} pipeline agents in execution order · specialist overlays ride the
-          summarizer
+          {AGENTS.length} pipeline stages in execution order · section research runs a
+          reviewer/reviser loop per section
         </p>
       </div>
 
-      {/* The same numbered spine used in the intelligence rail: agent order
+      {/* The same numbered spine used in the intelligence rail: stage order
           is a real, stable sequence, not decoration. */}
       <ol className="spine" aria-label="Pipeline execution order">
         {AGENTS.map((a, i) => (

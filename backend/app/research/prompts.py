@@ -226,40 +226,6 @@ Do NOT add a conclusion section.
 """
 
     @staticmethod
-    def generate_draft_titles_prompt(
-        current_subtopic: str,
-        main_topic: str,
-        context: str,
-        max_subsections: int = 5,
-    ) -> str:
-        return f"""
-"Context":
-"{context}"
-
-"Main Topic and Subtopic":
-Using the latest information available, construct a draft section title headers for a detailed report on the subtopic: {current_subtopic} under the main topic: {main_topic}.
-
-"Task":
-1. Create a list of draft section title headers for the subtopic report.
-2. Each header should be concise and relevant to the subtopic.
-3. The header shouldn't be too high level, but detailed enough to cover the main aspects of the subtopic.
-4. Use markdown syntax for the headers, using H3 (###) as H1 and H2 will be used for the larger report's heading.
-5. Ensure the headers cover main aspects of the subtopic.
-
-"Structure and Formatting":
-Provide the draft headers in a list format using markdown syntax, for example:
-
-### Header 1
-### Header 2
-### Header 3
-
-"IMPORTANT!":
-- The focus MUST be on the main topic! You MUST Leave out any information un-related to it!
-- Must NOT have any introduction, conclusion, summary or reference section.
-- Focus solely on creating headers, not content.
-"""
-
-    @staticmethod
     def generate_report_introduction(
         question: str,
         research_summary: str = "",

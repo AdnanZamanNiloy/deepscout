@@ -1,19 +1,11 @@
 from __future__ import annotations
 
-from typing import Iterable, Set
+from typing import Iterable
 
 from app.agents.sources import LOW_TRUST_DOMAINS
 from app.agents.sources import authority_score
 from app.agents.sources import documentary_authority
 from app.agents.sources import extract_domain as _extract_domain
-
-
-LOW_QUALITY_DOMAINS: Set[str] = {
-    "reddit.com", "quora.com", "zhihu.com", "baidu.com", "sohu.com",
-    "csdn.net", "medium.com", "blogspot.com", "substack.com",
-    "wordpress.com", "youtube.com", "youtu.be", "tiktok.com",
-    "pinterest.com", "whatfix.com",
-}
 
 
 def extract_domain(url: str) -> str:

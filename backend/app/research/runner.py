@@ -86,7 +86,6 @@ class ResearchRunner:
         self.llm = llm
         self.search_client = search_client
         self._queue: "asyncio.Queue[RunnerEvent]" = asyncio.Queue()
-        self._external_sink = sink
         self._queue_sink = _QueueSink(self._queue)
         self.sink = sink or self._queue_sink
 

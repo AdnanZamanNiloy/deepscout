@@ -87,7 +87,6 @@ class Researcher:
         self.context: Any = []
         self.research_sources: List[dict] = []
         self.research_images: List[dict] = []
-        self.research_costs = 0.0
 
         # Skills.
         self.context_manager = ContextManager(self)
@@ -168,16 +167,10 @@ class Researcher:
     async def write_introduction(self) -> str:
         return await self.report_generator.write_introduction()
 
-    async def get_draft_section_titles(self, current_subtopic: str) -> List[str]:
-        return await self.report_generator.get_draft_section_titles(current_subtopic)
-
     # --- accumulators -------------------------------------------------------
 
     def add_research_sources(self, sources: List[dict]) -> None:
         self.research_sources.extend(sources)
-
-    def get_research_sources(self) -> List[dict]:
-        return self.research_sources
 
     def add_research_images(self, images: List) -> None:
         self.research_images.extend(images)
@@ -185,16 +178,11 @@ class Researcher:
     def get_research_images(self, top_k: int = 10) -> List:
         return self.research_images[:top_k]
 
-    def get_research_context(self) -> Any:
-        return self.context
-
-    def get_source_urls(self) -> list:
-        return list(self.visited_urls)
-
     def add_costs(self, cost: float) -> None:
-        """Record spend attributed to this run (the ledger owns real cost)."""
-        if isinstance(cost, (int, float)):
-            self.research_costs += float(cost)
+        """Cost-callback no-op.
 
-    def get_costs(self) -> float:
-        return self.research_costs
+        The LLM client accepts a ``cost_callback`` on every call; real spend is
+        tracked by the usage ledger, not here, so this only satisfies the
+        callback contract.
+        """
+        return None
