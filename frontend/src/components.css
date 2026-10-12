@@ -918,6 +918,8 @@
   --lp-nav-h: calc(var(--lp-nav-pad) * 2 + var(--lp-brand-pad) * 2 + var(--lp-mark-h) + 1px);
   --lp-window: #121214;
   --lp-window-2: #191a1d;
+  --lp-edge: color-mix(in srgb, var(--deepscout) 30%, transparent);
+  --lp-glow: 0 30px 90px -30px color-mix(in srgb, var(--deepscout) 42%, transparent);
 
   position: relative;
   min-height: 100vh;
@@ -933,6 +935,8 @@
   --lp-band: #efebe4;
   --lp-window: #ffffff;
   --lp-window-2: #f4f2ed;
+  --lp-edge: color-mix(in srgb, var(--deepscout) 34%, transparent);
+  --lp-glow: 0 26px 70px -34px color-mix(in srgb, var(--deepscout) 34%, transparent);
 }
 
 .landing-nav {
@@ -994,13 +998,13 @@
   position: relative; z-index: var(--z-base);
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 0.88fr) minmax(0, 1fr);
-  gap: 48px;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1fr);
+  gap: 64px;
   align-items: center;
   width: 100%;
-  max-width: 1240px;
+  max-width: 1560px;
   margin: 0 auto;
-  padding: 64px 24px 40px;
+  padding: 72px 40px 56px;
   /* One full viewport minus the nav: the hero owns the first screen and the
      provider row starts below the fold, instead of both being squeezed into
      one short page.
@@ -1082,12 +1086,11 @@
 .lp-window {
   min-width: 0;
   background: var(--lp-window);
-  border: 1px solid var(--line);
+  border: 1px solid var(--lp-edge);
   border-radius: var(--r-lg);
-  /* Plane separation only. The window used to carry a brand-orange halo; on a
-     near-black ground it read as a glow effect rather than as an edge, and it
-     competed with the accent the headline and CTAs already spend. */
-  box-shadow: var(--elev-3);
+  /* Brand-orange edge + halo: the hero's one piece of colour behind the copy,
+     so the preview reads as the product rather than an illustration of it. */
+  box-shadow: var(--lp-glow);
   overflow: hidden;
 }
 .lp-window-bar {
@@ -1106,7 +1109,7 @@
 .lp-window-body {
   display: grid;
   grid-template-columns: minmax(0, 27%) minmax(0, 1fr);
-  min-height: 336px;
+  min-height: 430px;
 }
 
 /* The console rail, built from the same nav the real sidebar renders. */
@@ -1131,7 +1134,7 @@
   padding: 7px 9px;
   font-size: 12px; font-weight: 600; color: var(--t1);
   background: var(--lp-window);
-  border: 1px solid var(--line);
+  border: 1px solid var(--lp-edge);
   border-radius: var(--r-sm);
 }
 .lp-rail-new svg { color: var(--deepscout); }
