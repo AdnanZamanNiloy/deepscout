@@ -13,26 +13,26 @@ from typing import Any, Dict
 
 from langgraph.graph import END, StateGraph
 
-from app.agents.editor import EditorAgent
-from app.agents.report_agents import (
-    FactCheckerAgent,
-    HumanAgent,
-    PublisherAgent,
-    VisualizerAgent,
-    WriterAgent,
+from app.agents.architect import ResearchArchitect
+from app.agents.report import (
+    EvidenceAuditor,
+    ReviewGate,
+    ReportAssembler,
+    DiagramDesigner,
+    NarrativeWriter,
 )
 from app.agents.routing import (
     DEFAULT_MAX_FACT_CHECK_REVISIONS,
     DEFAULT_MAX_PLAN_REVISIONS,
     MaxFactCheckRevisionsExceededError,
     MaxPlanRevisionsExceededError,
-    route_fact_check,
-    route_human_feedback,
+    route_evidence_audit,
+    route_review_gate,
 )
 from app.common.models import ResearchState
 
 
-class ChiefCoordinatorAgent:
+class ResearchTeam:
     """Coordinates the agent team for one research request."""
 
     def __init__(
@@ -56,17 +56,17 @@ class ChiefCoordinatorAgent:
 
     def _initialize_agents(self) -> Dict[str, Any]:
         return {
-            "editor": EditorAgent(
+            "architect": ResearchArchitect(
                 self.llm, self.cfg, self.researcher_factory, sink=self.sink, tone=self.tone
             ),
-            "writer": WriterAgent(self.llm, self.cfg, sink=self.sink),
-            "fact_checker": FactCheckerAgent(self.llm, self.cfg, sink=self.sink),
-            "visualizer": VisualizerAgent(self.llm, self.cfg, sink=self.sink),
-            "publisher": PublisherAgent(self.llm, self.cfg, self.output_dir, sink=self.sink),
-            "human": HumanAgent(self.llm, self.cfg, sink=self.sink),
-            "researcher": _InitialResearcher(
+            "pathfinder": Pathfinder(
                 self.llm, self.cfg, self.researcher_factory, sink=self.sink, tone=self.tone
             ),
+            "narrative_writer": NarrativeWriter(self.llm, self.cfg, sink=self.sink),
+            "evidence_auditor": EvidenceAuditor(self.llm, self.cfg, sink=self.sink),
+            "diagram_designer": DiagramDesigner(self.llm, self.cfg, sink=self.sink),
+            "report_assembler": ReportAssembler(self.llm, self.cfg, self.output_dir, sink=self.sink),
+            "review_gate": ReviewGate(self.llm, self.cfg, sink=self.sink),
         }
 
     def build_graph(self) -> StateGraph:
@@ -74,53 +74,53 @@ class ChiefCoordinatorAgent:
         agents = self._initialize_agents()
         workflow = StateGraph(ResearchState)
 
-        workflow.add_node("browser", agents["researcher"].run_initial_research)
-        workflow.add_node("planner", agents["editor"].plan_research)
-        workflow.add_node("researcher", agents["editor"].run_parallel_research)
-        workflow.add_node("writer", agents["writer"].run)
-        workflow.add_node("fact_checker", agents["fact_checker"].run)
-        workflow.add_node("visualizer", agents["visualizer"].run)
-        workflow.add_node("publisher", agents["publisher"].run)
-        workflow.add_node("human", agents["human"].review_plan)
+        workflow.add_node("pathfinder", agents["pathfinder"].run_initial_research)
+        workflow.add_node("architect", agents["architect"].plan_research)
+        workflow.add_node("scout_swarm", agents["architect"].run_parallel_research)
+        workflow.add_node("narrative_writer", agents["narrative_writer"].run)
+        workflow.add_node("evidence_auditor", agents["evidence_auditor"].run)
+        workflow.add_node("diagram_designer", agents["diagram_designer"].run)
+        workflow.add_node("report_assembler", agents["report_assembler"].run)
+        workflow.add_node("review_gate", agents["review_gate"].review_plan)
 
-        workflow.add_edge("browser", "planner")
-        workflow.add_edge("planner", "human")
-        workflow.add_edge("researcher", "writer")
-        workflow.add_edge("writer", "fact_checker")
-        workflow.add_edge("visualizer", "publisher")
-        workflow.set_entry_point("browser")
-        workflow.add_edge("publisher", END)
+        workflow.add_edge("pathfinder", "architect")
+        workflow.add_edge("architect", "review_gate")
+        workflow.add_edge("scout_swarm", "narrative_writer")
+        workflow.add_edge("narrative_writer", "evidence_auditor")
+        workflow.add_edge("diagram_designer", "report_assembler")
+        workflow.set_entry_point("pathfinder")
+        workflow.add_edge("report_assembler", END)
 
         workflow.add_conditional_edges(
-            "human",
-            self._route_human_feedback,
-            {"accept": "researcher", "revise": "planner"},
+            "review_gate",
+            self._route_review_gate,
+            {"accept": "scout_swarm", "revise": "architect"},
         )
         workflow.add_conditional_edges(
-            "fact_checker",
-            self._route_fact_check,
-            {"accept": "visualizer", "revise": "writer"},
+            "evidence_auditor",
+            self._route_evidence_audit,
+            {"accept": "diagram_designer", "revise": "narrative_writer"},
         )
         return workflow
 
-    def _route_human_feedback(self, review: Dict[str, Any]) -> str:
+    def _route_review_gate(self, review: Dict[str, Any]) -> str:
         max_revisions = self.task.get("max_plan_revisions", DEFAULT_MAX_PLAN_REVISIONS)
         try:
-            return route_human_feedback(review, max_revisions)
+            return route_review_gate(review, max_revisions)
         except MaxPlanRevisionsExceededError:
             return "accept"
 
-    def _route_fact_check(self, state: Dict[str, Any]) -> str:
+    def _route_evidence_audit(self, state: Dict[str, Any]) -> str:
         max_revisions = self.task.get(
             "max_fact_check_revisions", DEFAULT_MAX_FACT_CHECK_REVISIONS
         )
         try:
-            return route_fact_check(state, max_revisions)
+            return route_evidence_audit(state, max_revisions)
         except MaxFactCheckRevisionsExceededError:
             return "accept"
 
 
-class _InitialResearcher:
+class Pathfinder:
     """Runs the first research pass that seeds the outline plan."""
 
     def __init__(self, llm, cfg, researcher_factory, sink=None, tone=None):
@@ -142,7 +142,7 @@ class _InitialResearcher:
         return {"task": task, "initial_research": report}
 
 
-def build_chief_editor(
+def build_research_team(
     *,
     task: Dict[str, Any],
     llm,
@@ -151,9 +151,9 @@ def build_chief_editor(
     output_dir: str = "./outputs",
     sink=None,
     tone=None,
-) -> ChiefCoordinatorAgent:
+) -> ResearchTeam:
     """Convenience constructor."""
-    return ChiefCoordinatorAgent(
+    return ResearchTeam(
         task=task,
         llm=llm,
         cfg=cfg,

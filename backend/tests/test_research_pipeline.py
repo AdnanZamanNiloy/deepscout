@@ -19,10 +19,10 @@ from app.research.enums import ReportType
 from app.research.prompts import PromptFamily, get_prompt_by_report_type
 from app.research.retrieval.base import SearchClientRetriever
 from app.agents.routing import (
-    is_human_plan_approval,
+    is_plan_approval,
     is_none_accept_response,
-    route_fact_check,
-    route_human_feedback,
+    route_evidence_audit,
+    route_review_gate,
 )
 
 
@@ -177,18 +177,18 @@ def test_none_accept_response_is_exact():
 
 
 def test_human_plan_approval_is_exact():
-    assert is_human_plan_approval("no")
-    assert not is_human_plan_approval("not enough cost data")
+    assert is_plan_approval("no")
+    assert not is_plan_approval("not enough cost data")
 
 
-def test_route_human_feedback_accepts_none_feedback():
-    assert route_human_feedback({"human_feedback": None}) == "accept"
-    assert route_human_feedback({"human_feedback": "change this", "plan_revision_count": 0}) == "revise"
+def test_route_review_gate_accepts_none_feedback():
+    assert route_review_gate({"human_feedback": None}) == "accept"
+    assert route_review_gate({"human_feedback": "change this", "plan_revision_count": 0}) == "revise"
 
 
-def test_route_fact_check_accepts_clean_draft():
-    assert route_fact_check({"fact_check_notes": None}) == "accept"
-    assert route_fact_check({"fact_check_notes": "bad", "fact_check_revision_count": 0}) == "revise"
+def test_route_evidence_audit_accepts_clean_draft():
+    assert route_evidence_audit({"fact_check_notes": None}) == "accept"
+    assert route_evidence_audit({"fact_check_notes": "bad", "fact_check_revision_count": 0}) == "revise"
 
 
 # --- end-to-end graph smoke --------------------------------------------------
@@ -221,11 +221,11 @@ class _FakeResearcher:
 
 
 def test_graph_runs_end_to_end_with_fakes():
-    from app.agents.orchestrator import build_chief_editor
+    from app.agents.team import build_research_team
     from app.research.llm import LLMFunnel
 
     cfg = load_config()
-    chief = build_chief_editor(
+    chief = build_research_team(
         task={"query": "q", "max_sections": 2, "include_human_feedback": False},
         llm=LLMFunnel(_FakeLLM()),
         cfg=cfg,
@@ -296,32 +296,32 @@ def test_report_prose_cleanup_never_empties_a_report():
 
 def test_section_prior_context_feeds_titles_and_content():
     """Later waves see the titles and drafts of already-written sections."""
-    from app.agents.editor import EditorAgent
+    from app.agents.architect import ResearchArchitect
 
     written = [
         {"section_title": "Section A", "draft": {"Section A": "A's written body."}},
     ]
-    ctx = EditorAgent._prior_context(written, ["Section A", "Section B"])
+    ctx = ResearchArchitect._prior_context(written, ["Section A", "Section B"])
     assert ctx["existing_headers"][0]["subtopic task"] == "Section A"
     assert ctx["relevant_written_contents"][0]["written_content"] == "A's written body."
 
 
 def test_section_prior_context_empty_for_first_wave():
-    from app.agents.editor import EditorAgent
+    from app.agents.architect import ResearchArchitect
 
-    ctx = EditorAgent._prior_context([], ["Section A", "Section B"])
+    ctx = ResearchArchitect._prior_context([], ["Section A", "Section B"])
     assert ctx["existing_headers"] == []
     assert ctx["relevant_written_contents"] == []
 
 
 def test_section_input_carries_prior_content():
-    from app.agents.editor import EditorAgent
+    from app.agents.architect import ResearchArchitect
 
     prior = {
         "existing_headers": [{"subtopic task": "A", "note": "x"}],
         "relevant_written_contents": [{"section_title": "A", "written_content": "body"}],
     }
-    inp = EditorAgent._section_input({"task": {}}, "B", "Title", ["A", "B"], prior)
+    inp = ResearchArchitect._section_input({"task": {}}, "B", "Title", ["A", "B"], prior)
     assert inp["existing_headers"] == prior["existing_headers"]
     assert inp["relevant_written_contents"] == prior["relevant_written_contents"]
     assert inp["sibling_sections"] == ["A"]

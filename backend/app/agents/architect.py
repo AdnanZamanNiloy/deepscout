@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from langgraph.graph import END, StateGraph
 
-from app.agents.research_unit import SectionResearchAgent, ReviewerAgent, ReviserAgent
+from app.agents.scout import Scout, DraftReviewer, DraftReviser
 from app.agents.routing import (
     DEFAULT_MAX_DRAFT_REVISIONS,
     MaxDraftRevisionsExceededError,
@@ -24,7 +24,7 @@ from app.common.models import DraftState
 from app.common.streaming import stream_output
 
 
-class EditorAgent:
+class ResearchArchitect:
     """Plan the outline and run the per-section research sub-graph."""
 
     def __init__(self, llm, config, researcher_factory, sink=None, tone=None):
@@ -179,11 +179,11 @@ class EditorAgent:
         ]
 
     def _create_workflow(self) -> StateGraph:
-        research = SectionResearchAgent(
+        research = Scout(
             self.llm, self.cfg, self.researcher_factory, sink=self.sink, tone=self.tone
         )
-        reviewer = ReviewerAgent(self.llm, self.cfg, sink=self.sink)
-        reviser = ReviserAgent(self.llm, self.cfg, sink=self.sink)
+        reviewer = DraftReviewer(self.llm, self.cfg, sink=self.sink)
+        reviser = DraftReviser(self.llm, self.cfg, sink=self.sink)
 
         workflow = StateGraph(DraftState)
         workflow.add_node("researcher", research.run_depth_research)

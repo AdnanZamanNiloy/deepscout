@@ -19,7 +19,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from app.core.llm import LLMClient
 from app.common.logging import get_logger
-from app.agents.orchestrator import build_chief_editor
+from app.agents.team import build_research_team
 from app.research.config import ResearchConfig, load_config
 from app.research.enums import ReportType, Tone
 from app.research.llm import LLMFunnel
@@ -31,14 +31,14 @@ logger = get_logger(__name__)
 
 # Node name -> the pipeline stage it corresponds to, for readable stage events.
 _NODE_STAGE = {
-    "browser": "search",
-    "planner": "planner",
-    "human": "plan_review",
-    "researcher": "search",
-    "writer": "synthesizer",
-    "fact_checker": "verifier",
-    "visualizer": "visualizer",
-    "publisher": "finalize",
+    "pathfinder": "retrieval",
+    "architect": "architect",
+    "review_gate": "review_gate",
+    "scout_swarm": "retrieval",
+    "narrative_writer": "narrative_writer",
+    "evidence_auditor": "evidence_auditor",
+    "diagram_designer": "diagram_designer",
+    "report_assembler": "report_assembler",
 }
 
 # Mode presets: report sections and revision strictness.
@@ -174,7 +174,7 @@ class ResearchRunner:
 
         task = self._build_task()
         output_dir = f"./outputs/run_{uuid.uuid4().hex[:12]}"
-        chief = build_chief_editor(
+        chief = build_research_team(
             task=task,
             llm=LLMFunnel(self.llm),
             cfg=cfg,
@@ -229,17 +229,19 @@ class ResearchRunner:
         stage = _NODE_STAGE.get(node, node)
         event: Dict[str, Any] = {"node": node, "stage": stage}
         if isinstance(output, dict):
-            if node == "planner" and output.get("sections"):
+            if node == "architect" and output.get("sections"):
                 event["sections"] = list(output.get("sections") or [])
-            if node == "browser" and output.get("initial_research"):
+            if node == "pathfinder" and output.get("initial_research"):
                 event["initial_research_chars"] = len(str(output.get("initial_research") or ""))
-            if node == "researcher" and output.get("research_data") is not None:
+            if node == "scout_swarm" and output.get("research_data") is not None:
                 event["research_sections"] = len(output.get("research_data") or [])
-            if node == "writer":
+            if node == "narrative_writer":
                 event["has_introduction"] = bool(output.get("introduction"))
-            if node == "fact_checker":
+            if node == "evidence_auditor":
                 event["fact_check_notes"] = output.get("fact_check_notes")
-            if node == "publisher" and output.get("report"):
+            if node == "diagram_designer":
+                event["diagram_count"] = len(output.get("diagrams") or [])
+            if node == "report_assembler" and output.get("report"):
                 event["report_chars"] = len(str(output.get("report") or ""))
         return event
 

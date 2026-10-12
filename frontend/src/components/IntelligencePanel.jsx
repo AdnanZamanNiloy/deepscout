@@ -28,14 +28,14 @@ const STATE_LABEL = { done: "Complete", active: "Working", waiting: "Queued" };
  * (`node` is the graph node name the wire reports, used to match live stages;
  * `desc` is filled from real counts in deriveAgents.) */
 const PIPELINE = [
-  { key: "browser", node: "browser", icon: IconSearch, name: "Pathfinder" },
-  { key: "planner", node: "planner", icon: IconTarget, name: "Research Architect" },
-  { key: "human", node: "human", icon: IconShieldCheck, name: "Review Gate" },
-  { key: "researcher", node: "researcher", icon: IconSearch, name: "Scout Swarm" },
-  { key: "writer", node: "writer", icon: IconDoc, name: "Narrative Writer" },
-  { key: "fact_checker", node: "fact_checker", icon: IconShieldCheck, name: "Evidence Auditor" },
-  { key: "visualizer", node: "visualizer", icon: IconChart, name: "Diagram Designer" },
-  { key: "publisher", node: "publisher", icon: IconChart, name: "Report Assembler" },
+  { key: "pathfinder", node: "pathfinder", icon: IconSearch, name: "Pathfinder" },
+  { key: "architect", node: "architect", icon: IconTarget, name: "Research Architect" },
+  { key: "review_gate", node: "review_gate", icon: IconShieldCheck, name: "Review Gate" },
+  { key: "scout_swarm", node: "scout_swarm", icon: IconSearch, name: "Scout Swarm" },
+  { key: "narrative_writer", node: "narrative_writer", icon: IconDoc, name: "Narrative Writer" },
+  { key: "evidence_auditor", node: "evidence_auditor", icon: IconShieldCheck, name: "Evidence Auditor" },
+  { key: "diagram_designer", node: "diagram_designer", icon: IconChart, name: "Diagram Designer" },
+  { key: "report_assembler", node: "report_assembler", icon: IconChart, name: "Report Assembler" },
 ];
 
 function AgentRow({ icon: Ic, name, desc, status, index }) {
@@ -259,14 +259,14 @@ export function deriveAgents(run) {
   if (done) reached = 9;
 
   const desc = {
-    browser: sources ? `${sources} source${sources === 1 ? "" : "s"} scoped` : "running the first research pass",
-    planner: planned ? `${planned} section${planned === 1 ? "" : "s"} planned` : "deriving the outline",
-    human: reached >= 3 ? "outline accepted" : "awaiting plan review",
-    researcher: claims ? `${claims} claim${claims === 1 ? "" : "s"} extracted` : "researching each section",
-    writer: verified ? "intro and conclusion written" : "writing the report body",
-    fact_checker: reviews ? `${reviews} review pass${reviews === 1 ? "" : "es"}` : "checking the draft",
-    visualizer: done ? "diagram generated" : "generating visuals",
-    publisher: done ? "report delivered" : "assembling the report",
+    pathfinder: sources ? `${sources} source${sources === 1 ? "" : "s"} scoped` : "running the first research pass",
+    architect: planned ? `${planned} section${planned === 1 ? "" : "s"} planned` : "deriving the outline",
+    review_gate: reached >= 3 ? "outline accepted" : "awaiting plan review",
+    scout_swarm: claims ? `${claims} claim${claims === 1 ? "" : "s"} extracted` : "researching each section",
+    narrative_writer: verified ? "intro and conclusion written" : "writing the report body",
+    evidence_auditor: reviews ? `${reviews} review pass${reviews === 1 ? "" : "es"}` : "checking the draft",
+    diagram_designer: done ? "diagram generated" : "generating visuals",
+    report_assembler: done ? "report delivered" : "assembling the report",
   };
 
   return PIPELINE.map((stage, i) => {

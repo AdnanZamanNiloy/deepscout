@@ -47,7 +47,7 @@ def is_none_accept_response(response) -> bool:
     return text.lower() == "none"
 
 
-def is_human_plan_approval(feedback) -> bool:
+def is_plan_approval(feedback) -> bool:
     """True only when ``feedback`` is exactly ``no`` (approve/no-change)."""
     if feedback is None:
         return False
@@ -56,7 +56,7 @@ def is_human_plan_approval(feedback) -> bool:
     return feedback.strip().lower() == "no"
 
 
-def route_human_feedback(review, max_plan_revisions=DEFAULT_MAX_PLAN_REVISIONS):
+def route_review_gate(review, max_plan_revisions=DEFAULT_MAX_PLAN_REVISIONS):
     """Route after the plan-review node: ``accept`` or ``revise``."""
     if review.get("human_feedback") is None:
         return "accept"
@@ -70,7 +70,7 @@ def route_human_feedback(review, max_plan_revisions=DEFAULT_MAX_PLAN_REVISIONS):
     return "revise"
 
 
-def route_fact_check(state, max_fact_check_revisions=DEFAULT_MAX_FACT_CHECK_REVISIONS):
+def route_evidence_audit(state, max_fact_check_revisions=DEFAULT_MAX_FACT_CHECK_REVISIONS):
     """Route after the fact-check node: ``accept`` or ``revise``."""
     if state.get("fact_check_notes") is None:
         return "accept"

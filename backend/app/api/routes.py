@@ -240,7 +240,7 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
         start_run_usage(request_id, settings, mode=str(payload.mode or "standard"))
         try:
             from app.runtime.orchestrator import PipelineRunner
-            from app.runtime.event_adapter import EngineEventAdapter, final_report_frame
+            from app.runtime.event_adapter import PipelineEventAdapter, final_report_frame
 
             async def _persist(coro):
                 """Persistence must never kill a research run — log and continue."""
@@ -298,7 +298,7 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                 mode=str(payload.mode or "standard"),
                 headers={},
             )
-            adapter = EngineEventAdapter(payload.query)
+            adapter = PipelineEventAdapter(payload.query)
 
             try:
                 async with asyncio.timeout(settings.research_timeout_sec):
@@ -513,7 +513,7 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
                     return
 
             from app.runtime.orchestrator import PipelineRunner
-            from app.runtime.event_adapter import EngineEventAdapter, final_report_frame
+            from app.runtime.event_adapter import PipelineEventAdapter, final_report_frame
 
             runner = PipelineRunner(
                 llm=llm_client,
@@ -522,7 +522,7 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
                 mode="standard",
                 headers={},
             )
-            adapter = EngineEventAdapter(query)
+            adapter = PipelineEventAdapter(query)
             try:
                 async with asyncio.timeout(settings.research_timeout_sec):
                     async for pipeline_event in runner.run():

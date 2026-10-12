@@ -1,6 +1,6 @@
 """One section's research unit and its review/revision loop.
 
-A :class:`SectionResearchAgent` runs a full research pass for a single report
+A :class:`Scout` runs a full research pass for a single report
 section (a subtopic of the main query) using the shared researcher factory, so
 each section gets its own evidence and its own draft. The reviewer and reviser
 polish that draft against the task's guidelines before it joins the report.
@@ -28,7 +28,7 @@ _SAMPLE_REVISION_NOTES = """
 """
 
 
-class SectionResearchAgent:
+class Scout:
     """Research a single report section into a draft."""
 
     def __init__(self, llm, cfg, researcher_factory, sink=None, tone=None):
@@ -80,12 +80,12 @@ class SectionResearchAgent:
                 relevant_written_contents=relevant_written_contents,
             )
         except Exception as e:
-            log_agent("RESEARCHER", f"Error researching topic {topic}: {e}")
+            log_agent("SCOUT", f"Error researching topic {topic}: {e}")
             report = None
         return {"draft": {topic: report}}
 
 
-class ReviewerAgent:
+class DraftReviewer:
     """Review a section draft against the task guidelines."""
 
     def __init__(self, llm, cfg, sink=None):
@@ -139,7 +139,7 @@ Guidelines: {guidelines}\nDraft: {draft_state.get("draft")}\n
         return out
 
 
-class ReviserAgent:
+class DraftReviser:
     """Revise a section draft based on the reviewer's notes."""
 
     def __init__(self, llm, cfg, sink=None):
@@ -169,7 +169,7 @@ You MUST return nothing but a JSON in the following format:
         return await self.llm.call_model_json(prompt)
 
     async def run(self, draft_state: Dict[str, Any]) -> Dict[str, Any]:
-        log_agent("REVISOR", "Rewriting draft based on feedback...")
+        log_agent("DRAFT_REVISER", "Rewriting draft based on feedback...")
         revision = await self.revise_draft(draft_state)
         return {
             "draft": revision.get("draft"),

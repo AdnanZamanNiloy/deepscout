@@ -1,9 +1,9 @@
-"""Translate engine events into the frontend's NDJSON wire contract.
+"""Translate pipeline events into the frontend's NDJSON wire contract.
 
 The API route and the React client share a fixed event vocabulary
 (``progress``/``intent``/``route``/``direct_answer``/``plan``/
 ``search_progress``/``search_query``/``findings``/``critic``/``final_report``/
-``error``). The engine produces a coarser set of node-stage signals, so this
+``error``). The pipeline produces a coarser set of node-stage signals, so this
 module maps them onto that vocabulary.
 
 Design notes
@@ -23,15 +23,15 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, Iterable, List, Optional
 
-# Engine stage -> the display name the trace shows for that node.
+# Pipeline stage -> the display name the trace shows for that node.
 _STAGE_LABELS = {
-    "search": "Search the web",
-    "planner": "Planning the outline",
-    "plan_review": "Reviewing the plan",
-    "synthesizer": "Writing the report",
-    "verifier": "Checking the facts",
-    "visualizer": "Generating visuals",
-    "finalize": "Assembling the report",
+    "retrieval": "Searching the web",
+    "architect": "Planning the outline",
+    "review_gate": "Reviewing the plan",
+    "narrative_writer": "Writing the report",
+    "evidence_auditor": "Checking the facts",
+    "diagram_designer": "Generating visuals",
+    "report_assembler": "Assembling the report",
 }
 
 
@@ -40,8 +40,8 @@ def frame(event_type: str, **data: Any) -> Dict[str, Any]:
     return {"type": event_type, "ts": int(time.time() * 1000), **data}
 
 
-class EngineEventAdapter:
-    """Stateful mapper: engine node events -> frontend frames.
+class PipelineEventAdapter:
+    """Stateful mapper: pipeline node events -> frontend frames.
 
     Stateful because the wire contract is edge-triggered: ``plan`` is emitted
     once, ``search_progress`` only when the snippet count grows, ``critic`` only
@@ -60,39 +60,39 @@ class EngineEventAdapter:
         stage = str(pipeline_event.get("stage") or node)
         frames: List[Dict[str, Any]] = []
 
-        if stage == "planner" and pipeline_event.get("sections") and not self._emitted_plan:
+        if stage == "architect" and pipeline_event.get("sections") and not self._emitted_plan:
             self._emitted_plan = True
             frames.append(frame("plan", items=list(pipeline_event["sections"]), orchestration={}, waves=[]))
 
-        elif stage == "search":
-            # The engine does not report a per-query result list, so there is no
+        elif stage == "retrieval":
+            # The pipeline does not report a per-query result list, so there is no
             # honest "N sources" number at this point. The values available are a
             # CHARACTER count (initial research text) and a SECTION count — both
             # meaningless as a source count. Emitting either as
             # `search_progress.snippets` made the panel read "24229 sources"
-            # (the browser stage's character count) with no relation to the real
+            # (the Pathfinder stage's character count) with no relation to the real
             # source total. Surface them as honest progress messages instead.
-            if node == "browser":
+            if node == "pathfinder":
                 chars = int(pipeline_event.get("initial_research_chars") or 0)
-                if chars and "browser" not in self._emitted_stages:
-                    self._emitted_stages.add("browser")
+                if chars and "pathfinder" not in self._emitted_stages:
+                    self._emitted_stages.add("pathfinder")
                     frames.append(frame(
                         "progress",
                         message=f"Gathered ~{chars:,} characters of initial research",
                     ))
-            elif node == "researcher":
+            elif node == "scout_swarm":
                 sections = int(pipeline_event.get("research_sections") or 0)
-                if sections and "researcher" not in self._emitted_stages:
-                    self._emitted_stages.add("researcher")
+                if sections and "scout_swarm" not in self._emitted_stages:
+                    self._emitted_stages.add("scout_swarm")
                     frames.append(frame(
                         "progress",
                         message=f"Researched {sections} section{'s' if sections != 1 else ''}",
                     ))
 
-        elif stage == "verifier":
+        elif stage == "evidence_auditor":
             notes = pipeline_event.get("fact_check_notes")
             if notes:
-                # A non-empty fact-check note is the engine's revision signal.
+                # A non-empty fact-check note is the pipeline's revision signal.
                 frames.append(frame(
                     "critic",
                     iteration=1,
@@ -129,7 +129,7 @@ def final_report_frame(
 
     Fields mirror what the frontend's ``final_report`` case reads. The audit
     fields (confidence breakdown, answer support, citation health, quality) are
-    populated by the engine's audit bridge from the reconstructed fact pool;
+    populated by the audit bridge from the reconstructed fact pool;
     when a run produced no usable evidence they are passed through as
     empty/defaults rather than invented — the panel renders them as "not
     available" rather than as authoritative zeros with meaning.

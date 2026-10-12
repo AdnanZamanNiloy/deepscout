@@ -1,7 +1,7 @@
-"""Engine event adapter: no misleading "sources" counts.
+"""Pipeline event adapter: no misleading "sources" counts.
 
-Regression: the adapter mapped the browser stage's initial-research CHARACTER
-count (and the researcher stage's SECTION count) onto `search_progress.snippets`,
+Regression: the adapter mapped the Pathfinder stage's initial-research CHARACTER
+count (and the Scout Swarm stage's SECTION count) onto `search_progress.snippets`,
 which the UI renders as "N sources". A run showed "24229 sources" — actually a
 24 KB character count — while the real source total was in the tens. The adapter
 now surfaces those as honest progress messages and reports the real source
@@ -9,14 +9,14 @@ count only in the terminal final_report frame.
 """
 from __future__ import annotations
 
-from app.runtime.event_adapter import EngineEventAdapter, final_report_frame
+from app.runtime.event_adapter import PipelineEventAdapter, final_report_frame
 
 
-def test_browser_stage_emits_progress_not_a_source_count():
-    adapter = EngineEventAdapter("q")
+def test_pathfinder_stage_emits_progress_not_a_source_count():
+    adapter = PipelineEventAdapter("q")
     frames = adapter.to_frames({
-        "node": "browser",
-        "stage": "search",
+        "node": "pathfinder",
+        "stage": "retrieval",
         "initial_research_chars": 24229,
     })
     # No search_progress frame claiming 24229 sources.
@@ -27,11 +27,11 @@ def test_browser_stage_emits_progress_not_a_source_count():
     assert "24229" in progress[0]["message"].replace(",", "")
 
 
-def test_researcher_stage_reports_sections_not_sources():
-    adapter = EngineEventAdapter("q")
+def test_scout_swarm_stage_reports_sections_not_sources():
+    adapter = PipelineEventAdapter("q")
     frames = adapter.to_frames({
-        "node": "researcher",
-        "stage": "search",
+        "node": "scout_swarm",
+        "stage": "retrieval",
         "research_sections": 5,
     })
     assert not any(f["type"] == "search_progress" for f in frames)

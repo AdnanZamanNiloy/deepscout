@@ -24,7 +24,7 @@ _SAMPLE_LAYOUT = """
 """
 
 
-class WriterAgent:
+class NarrativeWriter:
     """Write the report introduction and conclusion."""
 
     def __init__(self, llm, cfg, sink=None):
@@ -102,7 +102,7 @@ class WriterAgent:
         return {**layout, "headers": headers}
 
 
-class FactCheckerAgent:
+class EvidenceAuditor:
     """Review the assembled draft for factual issues; can request one revision."""
 
     def __init__(self, llm, cfg, sink=None):
@@ -149,7 +149,7 @@ class FactCheckerAgent:
         return out
 
 
-class VisualizerAgent:
+class DiagramDesigner:
     """Propose a single Mermaid diagram from the research data."""
 
     def __init__(self, llm, cfg, sink=None):
@@ -189,7 +189,7 @@ class VisualizerAgent:
         return {"diagrams": diagrams}
 
 
-class HumanAgent:
+class ReviewGate:
     """Plan-review gate. In an API context this auto-accepts (no human input)."""
 
     def __init__(self, llm, cfg, sink=None):
@@ -218,7 +218,7 @@ class HumanAgent:
         }
 
 
-class PublisherAgent:
+class ReportAssembler:
     """Assemble the final markdown report from the researched state."""
 
     def __init__(self, llm, cfg, output_dir: str, sink=None):
