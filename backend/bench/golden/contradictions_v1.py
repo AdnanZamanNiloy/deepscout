@@ -3,9 +3,9 @@
 The contradiction engine (`app.core.contradictions.find_contradictions`) and its
 resolution pass (`app.core.contradictions.resolve_contradictions`) are
 deterministic, LLM-free scorers with no offline regression gate of their own.
-The full-graph golden evaluator exercises them only incidentally (the scripted
-mocks rarely produce a genuine cross-source conflict), so a resolution
-regression can ship green.
+The offline component suite (`bench/run_offline.py`) exercises them only
+incidentally (its scripted mocks rarely produce a genuine cross-source
+conflict), so a resolution regression can ship green.
 
 This module loads the LABELED fixture set
 (`bench/golden/contradictions_v1.json`) and exposes it to the offline evaluator
@@ -20,8 +20,7 @@ Labels (closed set, validated at load time):
     resolved_explained  flagged as a spread, but resolution sets resolved=true
                         with an explanation (period/scope/metric difference)
 
-Pure and offline. A malformed fixture file fails loudly at load time, mirroring
-`bench.golden.loader`.
+Pure and offline. A malformed fixture file fails loudly at load time.
 """
 
 from __future__ import annotations

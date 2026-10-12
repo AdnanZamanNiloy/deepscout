@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic OFFLINE evaluator for contradiction DETECTION + RESOLUTION.
 
-The full-graph golden evaluator (`bench/eval_offline.py`) exercises the
+The offline component suite (`bench/run_offline.py`) exercises the
 contradiction engine only incidentally; this evaluator scores it directly
 against the LABELED fixture set (`bench/golden/contradictions_v1.json`) so a
 precision or resolution regression trips the gate.
@@ -32,8 +32,8 @@ production engine, which scans every pair); extra claims are context.
 
 No LLM, no network, no clock. Exit 0 only when every case's label matches AND
 the aggregate metrics clear their thresholds; the thresholds live in
-`bench/golden/thresholds_contradictions_v1.json` and are checked by
-`bench/eval_offline.py --with-contradictions` (and by this module's own main()).
+`bench/golden/thresholds_contradictions_v1.json` and are checked by this
+module's own main().
 
 Usage (from backend/):
 
