@@ -231,41 +231,6 @@ async def save_evidence(database_path: str, run_id: str, search_results: list) -
         await db.commit()
 
 
-async def save_critic_review(database_path: str, run_id: str, iteration: int, critique: dict,
-                           breakdown: dict | None = None) -> None:
-    """Persist EVERY critic iteration (not just the final verdict) — Replay
-    needs the actual back-and-forth, not only the outcome. improved_queries
-    persists too: resume reads the last review's follow-ups, and without them
-    the depth controller can never expand a resumed run."""
-    if not isinstance(critique, dict):
-        return
-
-    def _dump(value, default: str) -> str:
-        try:
-            return json.dumps(value if value is not None else default)
-        except (TypeError, ValueError):
-            return default
-
-    breakdown_json = _dump(breakdown or {}, "{}")
-    queries_json = _dump(critique.get("improved_queries") or [], "[]")
-    async with _connect(database_path) as db:
-        await db.execute(
-            "INSERT INTO critic_reviews (run_id, iteration, is_sufficient, reason, confidence, breakdown, improved_queries, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                run_id,
-                int(iteration),
-                1 if critique.get("is_sufficient") else 0,
-                str(critique.get("reason", "")),
-                float(critique.get("confidence", 0.0) or 0.0),
-                breakdown_json,
-                queries_json,
-                _now(),
-            ),
-        )
-        await db.commit()
-
-
 async def save_contradictions(database_path: str, run_id: str, contradictions: list) -> int:
     """Persist detected contradiction pairs for replay and diagnosis."""
     rows = [

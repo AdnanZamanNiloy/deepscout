@@ -39,7 +39,6 @@ from app.db.store.records import (  # noqa: F401
     save_trace_frames,
     load_trace_frames,
     save_evidence,
-    save_critic_review,
     save_contradictions,
     save_verification_results,
     save_citations,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 
 
@@ -124,43 +124,6 @@ def _significant_quantities(text: str) -> List[Quantity]:
         q for q in extract_numbers(text)
         if not q.is_year and (abs(q.value) >= 2 or q.unit)
     ]
-
-
-_ANCHOR_STOPWORDS: frozenset = frozenset("""
-a about above after again against all also am an and any are as at be because
-been before being below between both but by can could did do does doing during
-each few for from further had has have having he her here hers herself him
-himself his how i if in into is it its itself just me more most my myself now
-of off on once only or other our ours ourselves out over own same she should
-so some such than that the their theirs them themselves then there these they
-this those through to too under until very was we were what when where which
-while who whom why will with you your yours yourself yourselves shall may
-might must upon among within without across per via etc said says say
-according based new one two three four five six seven eight nine ten first
-second third last next many much several various including included include
-still also become became becoming make made making use used using
-""".split())
-
-
-def rare_content_tokens(text: str, min_length: int = 4) -> Set[str]:
-    """Distinctive content tokens of a text (numeric or long, non-stopword).
-
-    These are the "rare anchors" of a claim: the tokens that carry its
-    specificity (numbers, named entities, domain nouns). Used by the
-    corroboration anchor matcher, which needs a signal that survives the
-    paraphrase gap where full-claim similarity collapses. Numeric tokens
-    matter most for quantitative claims ("200", "billion"), so they are kept
-    regardless of length; ordinary words must be at least `min_length` chars
-    to count, which filters the function vocabulary that leaked through the
-    stopword list.
-    """
-    out: Set[str] = set()
-    for token in re.findall(r"[a-z0-9]+", (text or "").lower()):
-        if token in _ANCHOR_STOPWORDS:
-            continue
-        if token.isdigit() or len(token) >= min_length:
-            out.add(token)
-    return out
 
 
 def numbers_grounded(claim: str, source_text: str, tolerance: float = 0.02) -> bool:

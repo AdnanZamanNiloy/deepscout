@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import html
 import re
-from typing import Any, Dict, List, Sequence, Set
+from typing import List
 
 from app.agents.evidence.text import (
     _tokenize,
@@ -98,16 +98,6 @@ def split_into_sentences(text: str, max_sentences: int = 12) -> List[str]:
     return [chunk for chunk in chunks if chunk][:max_sentences]
 
 
-def looks_truncated(text: str) -> bool:
-    """True when a claim ends in a probable mid-word cut ("...a large dat")."""
-    stripped = re.sub(r"\s+", " ", (text or "")).strip()
-    if not stripped:
-        return True
-    if re.search(r"[.!?](?=\s|$)", stripped):
-        return False
-    return len(stripped.rsplit(None, 1)[-1]) <= 3
-
-
 def clean_snippet_text(
     snippet: str, max_chars: int = 300, min_chars: int = MIN_CLEAN_CLAIM_CHARS
 ) -> str:
@@ -187,99 +177,3 @@ def claim_query_overlap(query: str, claim: str) -> float:
         ):
             hits += 1
     return hits / len(q_words)
-
-
-MIN_QUERY_OVERLAP = 0.15
-
-
-# Function words excluded when counting how much of a query a claim shares.
-# Deliberately NOT including negation ("not", "without") — negation is never a
-# stopword in a similarity component (AGENTS.md bug history). This set is only
-# used to decide whether a claim's link to the query is a single generic head
-# noun, so it must not remove words that carry meaning.
-_CONTENT_STOPWORDS: frozenset = frozenset({
-    "a", "an", "and", "are", "as", "at", "be", "been", "by", "did", "do",
-    "does", "for", "from", "has", "have", "in", "into", "is", "it", "its",
-    "of", "on", "or", "per", "than", "that", "the", "their", "them", "there",
-    "these", "this", "those", "to", "was", "were", "which", "with", "within",
-})
-
-
-def claim_matches_only_a_generic_head(
-    query: str,
-    claim: str,
-    entity_tokens: Sequence[str] = (),
-) -> bool:
-    """A claim whose ONLY link to the query is one broad head noun.
-
-    `claim_query_overlap` measures the FRACTION of query words a claim matches,
-    so a query whose discriminating words are its qualifiers ("which skills are
-    most demanding in 2027") is satisfied by any claim sharing the generic head
-    noun alone. Measured on a live run, these crossed the 0.15 floor:
-
-        "The piano assessment rubric evaluates a student's skills"  -> 1/4
-        "Skills are compiled into a policy for the agent"           -> 1/4
-
-    ...on a question about workforce skill demand. Neither is about the
-    question; "skills" is a head noun a dozen fields share.
-
-    A claim is generically-related only when BOTH hold:
-
-      * it names NONE of the query's `entity_tokens` (the named subjects a
-        substitute claim most reliably drops) — only enforced when the query
-        actually names something; and
-      * it shares at most ONE of the query's CONTENT words. Function words are
-        excluded: `_tokenize` keeps "are"/"in"/"the", and counting them made
-        "Skills are compiled…" look like a 2-word match when its only real link
-        was the generic head noun.
-
-    A genuinely on-topic claim either names the subject or matches the query on
-    two or more content words, so both cases are preserved. Deterministic and
-    total.
-    """
-    tokens = [str(t).strip() for t in (entity_tokens or ()) if str(t).strip()]
-    if not tokens:
-        return False
-    q_words = [w for w in _tokenize(query or "") if w not in _CONTENT_STOPWORDS]
-    if len(q_words) < 2:
-        return False
-    low = (claim or "").lower()
-    if any(tok.lower() in low for tok in tokens):
-        return False
-    c_words = {w for w in _tokenize(claim or "") if w not in _CONTENT_STOPWORDS}
-    shared = sum(1 for qw in q_words if qw in c_words)
-    return shared <= 1
-
-
-def select_diverse(
-    claims: List[Dict[str, Any]], k: int = 3, max_similarity: float = 0.40
-) -> List[Dict[str, Any]]:
-    """Greedy maximal-marginal-relevance pick over the overlap coefficient."""
-    ranked = sorted(
-        claims or [], key=lambda f: float(f.get("confidence", 0.0) or 0.0), reverse=True
-    )
-    selected: List[Dict[str, Any]] = []
-    selected_tokens: List[Set[str]] = []
-    for candidate in ranked:
-        text = str(candidate.get("claim", "") or "")
-        if not text:
-            continue
-        candidate_tokens = _tokenize(text)
-        if not candidate_tokens:
-            continue
-        novel = True
-        for kept_tokens in selected_tokens:
-            if not kept_tokens:
-                continue
-            overlap = len(candidate_tokens & kept_tokens) / min(
-                len(candidate_tokens), len(kept_tokens)
-            )
-            if overlap >= max_similarity:
-                novel = False
-                break
-        if novel:
-            selected.append(candidate)
-            selected_tokens.append(candidate_tokens)
-        if len(selected) >= k:
-            break
-    return selected

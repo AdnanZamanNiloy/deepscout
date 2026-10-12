@@ -46,8 +46,6 @@ from app.agents.evidence.numbers import (  # noqa: F401
     Quantity,
     extract_numbers,
     _significant_quantities,
-    _ANCHOR_STOPWORDS,
-    rare_content_tokens,
     numbers_grounded,
     numeric_conflict,
 )
@@ -58,7 +56,6 @@ from app.agents.evidence.polarity import (  # noqa: F401
     claim_polarity,
 )
 from app.agents.evidence.filtering import (  # noqa: F401
-    filter_search_results_by_domain,
     filter_facts_by_domain,
 )
 from app.agents.evidence.dedupe import (  # noqa: F401
@@ -97,12 +94,8 @@ from app.agents.evidence.cleaning import (  # noqa: F401
     _SENTENCE_SPLIT_RE,
     _looks_like_title_prefix,
     split_into_sentences,
-    looks_truncated,
     clean_snippet_text,
     claim_query_overlap,
-    claim_matches_only_a_generic_head,
-    MIN_QUERY_OVERLAP,
-    select_diverse,
 )
 from app.agents.evidence.dates import (  # noqa: F401
     parse_published_date,
