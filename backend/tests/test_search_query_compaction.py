@@ -18,7 +18,7 @@ must receive a compact, keyword query derived from it.
 """
 from __future__ import annotations
 
-from app.agents.searchkit.queries import _compact_search_query, contract_queries
+from app.retrieval.searchkit.queries import _compact_search_query, contract_queries
 
 _ESSAY = (
     "What are the highest-strain open research problems in computer science as "

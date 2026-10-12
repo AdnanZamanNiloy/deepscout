@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.agents.sources import (
+from app.evidence.sources import (
     COUNTRY_OFFICIAL_SUFFIX,
     _KNOWN_COUNTRY_CODES,
     build_corroboration_query,

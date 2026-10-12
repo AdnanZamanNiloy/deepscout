@@ -64,7 +64,7 @@ def test_cross_source_agreement_needs_different_domains():
 
 
 def test_parse_published_date_formats():
-    from app.agents.evidence_utils import parse_published_date
+    from app.evidence.utils import parse_published_date
 
     assert parse_published_date("2026-09-10T12:00:00Z") == "2026-09-10"
     assert parse_published_date("2026-09-10") == "2026-09-10"
@@ -104,7 +104,7 @@ def test_degraded_summarizer_caps_confidence_below_sufficiency():
     actual quality (live: a fully-degraded run scored 0.772 'High')."""
     import importlib
 
-    from app.core.config import get_settings  # noqa: F401
+    from app.common.config import get_settings  # noqa: F401
 
     confidence = importlib.import_module("app.core.confidence")
 

@@ -9,7 +9,7 @@ count only in the terminal final_report frame.
 """
 from __future__ import annotations
 
-from app.engine.event_adapter import EngineEventAdapter, final_report_frame
+from app.runtime.event_adapter import EngineEventAdapter, final_report_frame
 
 
 def test_browser_stage_emits_progress_not_a_source_count():

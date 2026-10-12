@@ -9,7 +9,7 @@ from __future__ import annotations
 
 
 from app.research.prompts import get_prompt_by_report_type
-from app.research.streaming import stream_output
+from app.common.streaming import stream_output
 
 
 class ReportGenerator:

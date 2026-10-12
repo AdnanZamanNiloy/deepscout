@@ -8,7 +8,7 @@ report section, each with its own visited-URL set.
 It talks to the outside world through exactly two seams — the LLM funnel
 (:class:`app.research.llm.LLMFunnel`, backed by the Model Control Center's
 :class:`~app.core.llm.LLMClient`) and the retriever (:class:`SearchClientRetriever`,
-backed by :class:`~app.agents.search.SearchClient`). It holds no provider
+backed by :class:`~app.retrieval.client.SearchClient`). It holds no provider
 configuration of its own.
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ from typing import Any, List, Optional
 import json_repair
 
 from app.core.llm import LLMClient
-from app.core.logging import get_logger
+from app.common.logging import get_logger
 from app.research.config import ResearchConfig
 from app.research.enums import ReportSource, ReportType, Tone
 from app.research.llm import LLMFunnel
@@ -30,7 +30,7 @@ from app.research.skills.context import ContextManager
 from app.research.skills.curator import SourceCurator
 from app.research.skills.researcher import ResearchConductor
 from app.research.skills.writer import ReportGenerator
-from app.research.streaming import EventSink
+from app.common.streaming import EventSink
 
 logger = get_logger(__name__)
 

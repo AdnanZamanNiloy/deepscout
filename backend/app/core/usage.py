@@ -21,8 +21,8 @@ import time
 from contextvars import ContextVar
 from typing import Any, Dict, Optional
 
-from app.agents.budget import ResearchBudget
-from app.core.logging import get_logger
+from app.infra.budget import ResearchBudget
+from app.common.logging import get_logger
 
 logger = get_logger(__name__)
 

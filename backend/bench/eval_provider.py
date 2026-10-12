@@ -55,7 +55,7 @@ _TMP_DB = str(Path(tempfile.gettempdir()) / "deepscout-provider-eval.db")
 
 
 def _settings():
-    from app.core.config import Settings
+    from app.common.config import Settings
 
     return Settings(
         groq_api_key="golden-offline",
@@ -137,7 +137,7 @@ async def case_2() -> Dict[str, Any]:
     Exercises the real tenacity retry + breaker path: two 429s followed by a
     200 inside one call. Nothing must be recorded degraded and the breaker
     must stay closed (a throttle is not an outage)."""
-    from app.core.config import Settings
+    from app.common.config import Settings
     from app.core.degradation import clear_fallbacks, degradation_summary, reset_fallbacks
     from app.core.llm import LLMClient
 
@@ -191,7 +191,7 @@ async def case_3() -> Dict[str, Any]:
 async def case_4() -> Dict[str, Any]:
     """Every provider 429s: the chain fails explicitly, classified
     provider-transient — and NOTHING is mislabeled weak evidence."""
-    from app.core.config import Settings
+    from app.common.config import Settings
     from app.core.llm import LLMClient
 
     # Only one provider configured: its repeated 429 exhausts the chain, which

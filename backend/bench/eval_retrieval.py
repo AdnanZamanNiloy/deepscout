@@ -96,9 +96,9 @@ def _health_metrics(client, extra: Dict[str, Any] | None = None) -> Dict[str, An
 async def _run_scenario(scenario: Scenario) -> Dict[str, Any]:
     import respx
 
-    from app.agents import search as search_mod
-    from app.agents.search import SearchClient, SearchResult
-    from app.core.config import Settings
+    from app.retrieval import client as search_mod
+    from app.retrieval.client import SearchClient, SearchResult
+    from app.common.config import Settings
 
     settings = Settings(
         groq_api_key="retrieval-offline",

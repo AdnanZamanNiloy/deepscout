@@ -15,14 +15,14 @@ from __future__ import annotations
 
 import pytest
 
-from app.agents.evidence_type import classify_evidence_need, required_types
-from app.agents.search import (
+from app.evidence.types import classify_evidence_need, required_types
+from app.retrieval.client import (
     ORIGIN_CAP,
     SearchResult,
     _deduplicate_and_rank,
     _score_result,
 )
-from app.agents.sources import (
+from app.evidence.sources import (
     detect_primary_refs,
     definition_misfit,
     entity_miss,
@@ -319,7 +319,7 @@ def test_preferred_publisher_gets_a_ranking_bonus() -> None:
 
 
 def test_preference_matches_subdomains() -> None:
-    from app.agents.search import _preferred_domain_bonus
+    from app.retrieval.client import _preferred_domain_bonus
 
     assert _preferred_domain_bonus("https://bbs.gov.bd/report", ("gov.bd",)) > 0
     assert _preferred_domain_bonus("https://data.worldbank.org/x", ("worldbank.org",)) > 0
@@ -355,7 +355,7 @@ def test_preference_never_outranks_topicality() -> None:
 
 
 def test_topical_engagement_reads_content_words_and_named_subjects() -> None:
-    from app.agents.sources import topical_engagement
+    from app.evidence.sources import topical_engagement
 
     q = "How many deaths were attributed to air pollution in Malawi in 2024?"
     on = "Malawi recorded 12000 deaths attributed to air pollution in 2024"
@@ -366,7 +366,7 @@ def test_topical_engagement_reads_content_words_and_named_subjects() -> None:
 
 def test_topical_engagement_ignores_function_words() -> None:
     """Scoring on 'what/is/the/of' would make every page look equally relevant."""
-    from app.agents.sources import topical_engagement
+    from app.evidence.sources import topical_engagement
 
     q = "what is the population of Malawi"
     about = "the population of Malawi is estimated"
@@ -387,7 +387,7 @@ def test_salience_discount_fades_out_as_real_coverage_rises() -> None:
     exact-match World Bank page 0.40 — inverting the ranking. Salience may only
     refine a weak reading.
     """
-    from app.agents.sources import topical_engagement
+    from app.evidence.sources import topical_engagement
 
     q = "population total 2024 Malawi"
     full = "Malawi total population, both sexes, 2024"
@@ -410,7 +410,7 @@ def test_incidental_entity_mention_cannot_hijack_topicality() -> None:
     document passed the relevance floor. Authority is scored separately, so an
     official-but-wrong-domain publisher then outranked the right answer.
     """
-    from app.agents.sources import topical_engagement
+    from app.evidence.sources import topical_engagement
 
     q = "renewable energy capacity Germany"
     # 'Germany' appears once, in an author affiliation. Zero subject words.
@@ -424,7 +424,7 @@ def test_incidental_entity_mention_cannot_hijack_topicality() -> None:
 
 def test_entity_in_a_country_table_is_demoted_not_promoted() -> None:
     """An official publisher answering the wrong jurisdiction must not score 1.0."""
-    from app.agents.sources import topical_engagement
+    from app.evidence.sources import topical_engagement
 
     q = "population total 2024 Malawi"
     census = (
@@ -439,7 +439,7 @@ def test_entity_in_a_country_table_is_demoted_not_promoted() -> None:
 
 def test_genuine_on_topic_page_still_scores_full_engagement() -> None:
     """The demotion above must not cost the correct answer its top score."""
-    from app.agents.sources import topical_engagement
+    from app.evidence.sources import topical_engagement
 
     q = "renewable energy capacity Germany"
     on = (
@@ -451,7 +451,7 @@ def test_genuine_on_topic_page_still_scores_full_engagement() -> None:
 
 def test_entity_salience_prefers_headline_over_incidental_body_mention() -> None:
     """Repeated mentions and headline placement both beat a single aside."""
-    from app.agents.sources import _entity_salience
+    from app.evidence.sources import _entity_salience
 
     body = "Germany " * 5
     assert _entity_salience(body, ("Germany",)) > _entity_salience(
@@ -469,7 +469,7 @@ def test_incidental_mention_is_demoted_relative_to_a_genuine_match() -> None:
     at 0.10 to keep partial matches. What must not happen is it outranking the
     document that is actually about the question.
     """
-    from app.agents.sources import topical_engagement
+    from app.evidence.sources import topical_engagement
 
     q = "renewable energy capacity Germany"
     incidental = "Green cellular networks in Germany, TU Munich"
@@ -485,7 +485,7 @@ def test_entity_miss_penalty_survives_an_incidental_mention() -> None:
     aside, while the subject named in a sentence or published by the subject
     itself is genuine engagement.
     """
-    from app.agents.sources import entity_miss
+    from app.evidence.sources import entity_miss
 
     aside = "Cite this work. " * 40 + "Germany"
     assert entity_miss("q", ("Germany",), aside) < 0
@@ -503,7 +503,7 @@ def test_first_party_publisher_counts_as_maximal_entity_engagement() -> None:
     Demoting it for failing to say 'revenue guidance' is how an aggregator
     restating the question in its own words beat the primary source.
     """
-    from app.agents.sources import _entity_salience, topical_engagement
+    from app.evidence.sources import _entity_salience, topical_engagement
 
     q = "What is the latest revenue guidance for Nvidia from its most recent filing?"
     filings = "quarterly results and SEC filings"
@@ -522,7 +522,7 @@ def test_negation_words_are_never_stopwords() -> None:
     and one about states WITH access scored identically, so the ranker could
     not tell a source proving the gap from one describing progress.
     """
-    from app.agents.sources import _topical_words, topical_engagement
+    from app.evidence.sources import _topical_words, topical_engagement
 
     assert "without" in _topical_words("states without electricity access")
 
@@ -598,7 +598,7 @@ def test_a_partial_match_is_kept_for_the_ranker() -> None:
 
 def test_floor_is_not_applied_to_a_question_with_no_subject() -> None:
     """There is nothing to be irrelevant to, so nothing may be discarded."""
-    from app.agents.sources import topicality_floor_applies
+    from app.evidence.sources import topicality_floor_applies
 
     assert topicality_floor_applies("what is it", ()) is False
     assert topicality_floor_applies("define RAG", ()) is False
@@ -615,7 +615,7 @@ def test_every_unregistered_dotcom_clears_the_same_gates() -> None:
     """The reason this exists. 0.58 clears is_high_quality_domain (authority >
     0.0), verifier's 0.55, and the summarizer filter's 0.55 fallback — the
     fallback that engages on exactly the hard queries where junk matters most."""
-    from app.agents.sources import UNDOCUMENTED_AUTHORITY
+    from app.evidence.sources import UNDOCUMENTED_AUTHORITY
 
     junk = UNDOCUMENTED_AUTHORITY
     assert junk < 0.55, "junk must fall below the verifier's source gate"
@@ -624,7 +624,7 @@ def test_every_unregistered_dotcom_clears_the_same_gates() -> None:
 
 
 def test_affiliate_and_buying_guide_pages_are_demoted() -> None:
-    from app.agents.sources import UNDOCUMENTED_AUTHORITY, documentary_authority
+    from app.evidence.sources import UNDOCUMENTED_AUTHORITY, documentary_authority
 
     assert documentary_authority(
         "https://random-blog.com/post",
@@ -636,7 +636,7 @@ def test_affiliate_and_buying_guide_pages_are_demoted() -> None:
 
 
 def test_keyword_stuffed_hostnames_are_demoted() -> None:
-    from app.agents.sources import UNDOCUMENTED_AUTHORITY, documentary_authority
+    from app.evidence.sources import UNDOCUMENTED_AUTHORITY, documentary_authority
 
     assert documentary_authority(
         "https://best-solar-panel-installers-uk.com/x", "Solar panels are great"
@@ -647,7 +647,7 @@ def test_ordinary_journalism_on_an_unlisted_domain_stays_citable() -> None:
     """The failure mode of the first attempt at this rule: demoting on the
     ABSENCE of documentary markers pushed every unlisted news outlet below the
     citable bar and discarded legitimate reporting along with the junk."""
-    from app.agents.sources import documentary_authority
+    from app.evidence.sources import documentary_authority
 
     assert documentary_authority(
         "https://news-site.com/malawi-deaths",
@@ -656,7 +656,7 @@ def test_ordinary_journalism_on_an_unlisted_domain_stays_citable() -> None:
 
 
 def test_a_two_word_hyphenated_brand_is_not_keyword_stuffing() -> None:
-    from app.agents.sources import looks_keyword_stuffed
+    from app.evidence.sources import looks_keyword_stuffed
 
     assert looks_keyword_stuffed("https://solar-panel-installers.co.uk/x") is False
     assert looks_keyword_stuffed("https://bbc.co.uk/news") is False
@@ -666,7 +666,7 @@ def test_a_two_word_hyphenated_brand_is_not_keyword_stuffing() -> None:
 def test_documentary_evidence_rescues_a_promotional_looking_page() -> None:
     """An official statistics page that also asks for newsletter signups is
     still a source."""
-    from app.agents.sources import documentary_authority
+    from app.evidence.sources import documentary_authority
 
     score = documentary_authority(
         "https://data-portal.example.com/series",
@@ -678,7 +678,7 @@ def test_documentary_evidence_rescues_a_promotional_looking_page() -> None:
 def test_registered_publishers_are_never_demoted() -> None:
     """The tier registries already say what a publisher is; promotional-looking
     text on an official page must not change that."""
-    from app.agents.sources import documentary_authority
+    from app.evidence.sources import documentary_authority
 
     assert documentary_authority(
         "https://www.nasa.gov/mars", "Buy now! Discount! Sponsored content."
@@ -689,7 +689,7 @@ def test_registered_publishers_are_never_demoted() -> None:
 def test_no_text_means_no_judgement() -> None:
     """classify_source stays a pure URL classifier, so every legacy score holds
     for callers that have no text to offer."""
-    from app.agents.sources import authority_score, documentary_authority
+    from app.evidence.sources import authority_score, documentary_authority
 
     for url in ("https://example.com/a", "https://random-blog.com/post"):
         assert documentary_authority(url) == authority_score(url)
@@ -702,8 +702,8 @@ def test_contract_preferred_domains_reach_the_ranker() -> None:
     preference is where it belongs."""
     import asyncio
 
-    from app.agents.search import SearchClient
-    from app.core.config import Settings
+    from app.retrieval.client import SearchClient
+    from app.common.config import Settings
 
     settings = Settings(
         groq_api_key="k", database_url=":memory:", _env_file=None,
@@ -720,7 +720,7 @@ def test_contract_preferred_domains_reach_the_ranker() -> None:
     async def fake_fetch(url, client=None):
         return "text", ""
 
-    import app.agents.search as search_mod
+    import app.retrieval.client as search_mod
 
     original_providers = SearchClient._providers_for
     original_fetch = search_mod._fetch_content

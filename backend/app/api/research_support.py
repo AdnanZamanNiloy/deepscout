@@ -11,7 +11,7 @@ from typing import AsyncGenerator
 
 from pydantic import BaseModel, Field
 
-from app.core.logging import get_logger
+from app.common.logging import get_logger
 from app.db.sqlite import (
     complete_research_run,
     save_final_report,

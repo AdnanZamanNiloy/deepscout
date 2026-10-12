@@ -10,7 +10,7 @@ import httpx
 
 from app.core import llm_cache
 from app.core.degradation import record_provider_failure
-from app.core.logging import get_logger
+from app.common.logging import get_logger
 from app.core.llmkit.breaker import CircuitBreaker
 from app.core.llmkit.failures import _is_rate_limit, classify_provider_failure
 from app.core.llmkit.jsonparse import text_says_nothing as _text_says_nothing

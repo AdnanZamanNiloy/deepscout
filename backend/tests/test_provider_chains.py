@@ -24,7 +24,7 @@ import respx
 from cryptography.fernet import Fernet
 
 from app.core import providers as store
-from app.core.config import Settings
+from app.common.config import Settings
 from app.core.llm import (
     AllProvidersFailedError,
     LLMClient,

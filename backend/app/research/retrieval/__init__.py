@@ -3,7 +3,7 @@
 The pipeline asks a *retriever class* for sites and then fetches the pages it
 needs. In this codebase retrieval is unified: every configured retriever name
 resolves to the same :class:`SearchClientRetriever`, which delegates to
-:class:`app.agents.search.SearchClient` (the product's multi-provider search
+:class:`app.retrieval.client.SearchClient` (the product's multi-provider search
 with SearXNG/Wikipedia/arXiv/Crossref and their fallbacks). Keeping one
 retriever means retrieval behaviour and its trace are identical no matter which
 name a request selects — there is no second search stack to drift.

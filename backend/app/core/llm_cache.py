@@ -33,8 +33,8 @@ from typing import Any, Dict, Optional
 
 from diskcache import Cache
 
-from app.core.config import Settings
-from app.core.logging import get_logger
+from app.common.config import Settings
+from app.common.logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -9,7 +9,7 @@ with an untouched `.env`. The LLM key is added from the app's Model Controls
 tab (`/#/model-controls`, legacy `/#/providers`) and stored encrypted in the
 database; the variables below are optional overrides for headless use.
 
-Every default in this table is the value in `app/core/config.py`, which is the
+Every default in this table is the value in `app/common/config.py`, which is the
 single source of truth. If you change a default there, change it here.
 
 ## LLM providers (all optional)

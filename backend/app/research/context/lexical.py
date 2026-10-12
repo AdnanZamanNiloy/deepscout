@@ -14,7 +14,7 @@ from typing import List
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from app.research.models import Document
+from app.common.models import Document
 from app.research.prompts import PromptFamily
 
 _TOKEN = re.compile(r"\w+", re.UNICODE)

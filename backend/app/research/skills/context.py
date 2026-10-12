@@ -7,7 +7,7 @@ filter.
 from __future__ import annotations
 
 from app.research.context.select import select_context
-from app.research.streaming import stream_output
+from app.common.streaming import stream_output
 
 
 class ContextManager:

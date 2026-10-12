@@ -19,7 +19,7 @@ import json
 
 import pytest
 
-from app.agents.sources import clean_writer_prose
+from app.evidence.sources import clean_writer_prose
 from app.db.sqlite import load_trace_frames, save_trace_frames
 
 

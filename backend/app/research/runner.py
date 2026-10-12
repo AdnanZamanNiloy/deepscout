@@ -18,14 +18,14 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from app.core.llm import LLMClient
-from app.core.logging import get_logger
-from app.research.agents.orchestrator import build_chief_editor
+from app.common.logging import get_logger
+from app.agents.orchestrator import build_chief_editor
 from app.research.config import ResearchConfig, load_config
 from app.research.enums import ReportType, Tone
 from app.research.llm import LLMFunnel
 from app.research.researcher import Researcher
 from app.research.retrieval.factory import build_retriever_class
-from app.research.streaming import EventSink
+from app.common.streaming import EventSink
 
 logger = get_logger(__name__)
 
@@ -164,7 +164,7 @@ class ResearchRunner:
             # the misconfiguration is visible instead of looking like empty search.
             raise RuntimeError(
                 "ResearchRunner has no search client — the runtime was not "
-                "configured (app.engine.configure). Retrieval cannot run."
+                "configured (app.runtime.configure). Retrieval cannot run."
             )
         retriever_cls = build_retriever_class(
             self.search_client, loop=loop, source_sink=self._record_sources
@@ -266,7 +266,7 @@ def _sanitize_markdown(markdown: str) -> str:
     """
     text = str(markdown or "")
     try:
-        from app.engine.orchestrator import sanitize_report_markdown
+        from app.report.formatting import sanitize_report_markdown
 
         return sanitize_report_markdown(text)
     except Exception as exc:  # a sanitizer failure must never drop the report
@@ -288,7 +288,7 @@ def _clean_report_prose(markdown: str) -> str:
     if the cleaner is unavailable, so it can never shorten a report to nothing.
     """
     try:
-        from app.agents.sources import clean_writer_prose
+        from app.evidence.sources import clean_writer_prose
 
         cleaned = clean_writer_prose(markdown)
         return cleaned or markdown
@@ -326,7 +326,7 @@ def build_final_state(
     Imported lazily so the runner has no hard dependency on the audit core at
     import time and tests can drive the graph without it.
     """
-    from app.engine.audit_bridge import build_facts, build_source_index, compute_audit
+    from app.evidence.audit import build_facts, build_source_index, compute_audit
 
     report = _sanitize_markdown(str(state.get("report") or _render_report(state) or ""))
     report = _clean_report_prose(report)

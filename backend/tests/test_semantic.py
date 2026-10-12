@@ -4,7 +4,7 @@ import time
 
 import numpy as np
 
-from app.core.semantic import (
+from app.common.semantic import (
     cross_similarity,
     pair_similarity,
     rank_by_similarity,

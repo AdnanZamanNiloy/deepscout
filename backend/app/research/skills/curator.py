@@ -12,7 +12,7 @@ from typing import List
 
 import json_repair
 
-from app.research.streaming import stream_output
+from app.common.streaming import stream_output
 
 logger = logging.getLogger(__name__)
 

@@ -18,7 +18,7 @@ from app.research.context.select import resolve_context_filter, select_context
 from app.research.enums import ReportType
 from app.research.prompts import PromptFamily, get_prompt_by_report_type
 from app.research.retrieval.base import SearchClientRetriever
-from app.research.agents.routing import (
+from app.agents.routing import (
     is_human_plan_approval,
     is_none_accept_response,
     route_fact_check,
@@ -221,7 +221,7 @@ class _FakeResearcher:
 
 
 def test_graph_runs_end_to_end_with_fakes():
-    from app.research.agents.orchestrator import build_chief_editor
+    from app.agents.orchestrator import build_chief_editor
     from app.research.llm import LLMFunnel
 
     cfg = load_config()
@@ -296,7 +296,7 @@ def test_report_prose_cleanup_never_empties_a_report():
 
 def test_section_prior_context_feeds_titles_and_content():
     """Later waves see the titles and drafts of already-written sections."""
-    from app.research.agents.editor import EditorAgent
+    from app.agents.editor import EditorAgent
 
     written = [
         {"section_title": "Section A", "draft": {"Section A": "A's written body."}},
@@ -307,7 +307,7 @@ def test_section_prior_context_feeds_titles_and_content():
 
 
 def test_section_prior_context_empty_for_first_wave():
-    from app.research.agents.editor import EditorAgent
+    from app.agents.editor import EditorAgent
 
     ctx = EditorAgent._prior_context([], ["Section A", "Section B"])
     assert ctx["existing_headers"] == []
@@ -315,7 +315,7 @@ def test_section_prior_context_empty_for_first_wave():
 
 
 def test_section_input_carries_prior_content():
-    from app.research.agents.editor import EditorAgent
+    from app.agents.editor import EditorAgent
 
     prior = {
         "existing_headers": [{"subtopic task": "A", "note": "x"}],

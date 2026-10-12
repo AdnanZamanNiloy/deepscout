@@ -24,27 +24,37 @@ Entrypoint:      main.py (FastAPI app, lifespan init; installs the runtime
                  handles)
 Pipeline:        app/research/ — the first-party research pipeline: config,
                  prompts, LLM funnel, context filters (BM25), retrieval,
-                 scraping, document loaders, the researcher + skills, and the
-                 LangGraph agent team (app/research/agents/). It calls
+                 scraping, document loaders, the researcher + skills. It calls
                  app.core.llm.LLMClient for generation and
-                 app.agents.search.SearchClient for retrieval directly — no
+                 app.retrieval.client.SearchClient for retrieval directly — no
                  adapter/bridge monkeypatching.
-Runtime seam:    app/engine/ — orchestrator.py (the route's entry point,
+Agents:          app/agents/ — the LangGraph agent team: orchestrator (graph
+                 builder), editor/planner, section research unit + reviewer/
+                 reviser, and the report agents (writer, fact checker,
+                 visualizer, publisher, human plan-review).
+Runtime seam:    app/runtime/ — orchestrator.py (the route's entry point,
                  delegating to app.research.runner.ResearchRunner),
-                 event_adapter.py (pipeline events → NDJSON), audit_bridge.py
-                 (rebuilds the fact pool + audit from the report and captured
-                 sources), __init__.py (configure/runtime handle store).
+                 event_adapter.py (pipeline events → NDJSON),
+                 __init__.py (configure/runtime handle store). The audit
+                 reconstruction lives in app/evidence/audit.py; report markdown
+                 normalisation in app/report/formatting.py.
 Answer/audit:    the primary answer (state["final_report"]) NEVER carries
                  process metadata; the audit/trace carries confidence, quality,
                  evidence ledger, conflicts, decisions.
 API:             app/api/routes.py (stream, resume, trace, export, sessions);
                  app/api/providers_routes.py (providers + chains).
-Core:            app/core/*.py (config, llm client + response cache, usage
-                 ledger, semantic engine, confidence, contradictions,
-                 evidence grading, degradation, providers).
-Shared helpers:  app/agents/ retains search + evidence/source helpers used by
-                 app/core and the audit bridge (app/agents/search.py,
-                 app/agents/evidence/, app/agents/sources/, app/agents/quality/).
+Common:          app/common/ — the shared leaves every layer may import:
+                 config, logging, pure primitives, the semantic engine.
+Core:            app/core/*.py (llm client + response cache, usage ledger,
+                 confidence, contradictions, evidence grading, degradation,
+                 providers, export, cache).
+Shared helpers:  app/retrieval/ (the multi-provider search client + searchkit
+                 providers/ranking/fetch), app/evidence/ (claim hygiene, source
+                 intelligence, evidence grading inputs, audit reconstruction),
+                 app/quality/ (report/answer quality metrics), app/infra/
+                 (run limits, retry/breaker primitives, retrieval health).
+                 These are shared infrastructure, not the agent team — the
+                 agents live in app/agents/.
 Persistence:     app/db/sqlite.py (auto-initializing schema)
 Benchmarks:      bench/ (run_offline.py deterministic component suite,
                  datasets.py labeled fixtures, eval_contradictions/
@@ -56,7 +66,7 @@ Frontend:        frontend/src/App.jsx consumes the NDJSON stream; components
 > Architecture note: the retrieval + report pipeline is fully first-party under
 > `app/research/`. There is no external research engine and no `sys.path`
 > bootstrap. The pipeline's only outside seams are
-> `app.core.llm.LLMClient` (generation) and `app.agents.search.SearchClient`
+> `app.core.llm.LLMClient` (generation) and `app.retrieval.client.SearchClient`
 > (retrieval), so the Model Control Center governs every call. Do not
 > reintroduce a second orchestration path; new pipeline behavior belongs in
 > `app/research/`.
@@ -94,6 +104,15 @@ curl -N -X POST http://127.0.0.1:8000/api/research/stream \
 ---
 
 ## 2. Confirmed bug history (read this before touching agent code)
+
+> Path note: entries below name files as they were when the bug was found. Since
+> then the misnamed `app/agents/` package (which held shared infrastructure, not
+> agents) was split by purpose: `app/agents/search.py` → `app/retrieval/client.py`;
+> `app/agents/evidence_utils.py` → `app/evidence/utils.py`; `app/agents/sources/` →
+> `app/evidence/sources/`; `app/agents/budget.py` → `app/infra/budget.py`. The
+> name `app/agents/` now denotes the real agent team (moved from
+> `app/research/agents/`). Historical paths are kept for traceability against
+> the referenced commits.
 
 > v2 note: six additional bugs were found by `bench/run_offline.py` and are
 > documented in CHANGELOG.md ("Benchmark-driven bug fixes") — the notable
@@ -314,9 +333,9 @@ These are real bugs found by reading the code, not hypotheticals. Each one below
   The research pipeline was fully re-authored as first-party code under
   `app/research/` and the external engine dependency was deleted. Why this
   matters for future sessions: (a) there is now ONE orchestration path — the
-  LangGraph team in `app/research/agents/` — with no `sys.path` bootstrap, no
+  LangGraph team in `app/agents/` — with no `sys.path` bootstrap, no
   monkeypatched provider factory, and no third-party research package; (b) the pipeline calls
-  `app.core.llm.LLMClient` and `app.agents.search.SearchClient` DIRECTLY, so
+  `app.core.llm.LLMClient` and `app.retrieval.client.SearchClient` DIRECTLY, so
   the Model Control Center governs every call with no bridge seam to keep in
   sync; (c) the dead first-party modules the engine had already replaced
   (`app/agents/orchestrator.py`, `app/agents/confidence.py`,
@@ -349,7 +368,7 @@ If you find a new instance of any of these patterns anywhere in the codebase whi
    research.db was already committed once despite being gitignored —
    check `git status` before every commit, not just the first one.
 
-5. Every new setting goes through Settings (app/core/config.py) and
+5. Every new setting goes through Settings (app/common/config.py) and
    gets a placeholder in .env.example. Never call os.getenv() ad hoc
    in a new module — it's how settings drift out of sync with what's
    documented.

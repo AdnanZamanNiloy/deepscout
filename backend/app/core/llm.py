@@ -23,14 +23,14 @@ import httpx
 from pydantic import BaseModel, ValidationError
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential_jitter  # noqa: F401
 
-from app.core.config import Settings
+from app.common.config import Settings
 from app.core import llm_cache
 from app.core.llmkit.jsonparse import (
     payload_is_empty_container as _payload_is_empty_container,
     payload_says_nothing as _payload_says_nothing,
 )
 from app.core.degradation import PROVIDER_HARD, PROVIDER_TRANSIENT, record_provider_failure  # noqa: F401
-from app.core.logging import get_logger
+from app.common.logging import get_logger
 from app.core.usage import get_run_usage  # noqa: F401
 from app.core.llmkit.invoke import ProviderInvocationMixin
 from app.core.llmkit.jsonparse import JSONParseMixin
@@ -540,7 +540,7 @@ def _breaker_seconds_left(breaker: Any) -> float:
 
     `app.core.llmkit.breaker.CircuitBreaker` (the one the LLM client uses)
     exposes only `_opened_at` + `cooldown_sec` and no `retry_in()`, while
-    `app.agents.reliability.CircuitBreaker` has the opposite surface. Rather
+    `app.infra.reliability.CircuitBreaker` has the opposite surface. Rather
     than duplicating that knowledge in two places, prefer a public accessor and
     fall back to the timestamp — a breaker shape this cannot read returns 0.0,
     which disables the wait rather than guessing a wrong one.

@@ -18,7 +18,7 @@ import json_repair
 
 from app.research.documents import DocumentLoader, OnlineDocumentLoader
 from app.research.enums import ReportSource
-from app.research.streaming import stream_output
+from app.common.streaming import stream_output
 
 logger = logging.getLogger(__name__)
 
@@ -388,7 +388,7 @@ class ResearchConductor:
         if len(pages) <= 1:
             return pages
         try:
-            from app.agents.sources import (
+            from app.evidence.sources import (
                 entity_miss,
                 is_topically_irrelevant,
                 topicality_floor_applies,

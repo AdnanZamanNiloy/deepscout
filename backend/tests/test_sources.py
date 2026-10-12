@@ -5,8 +5,8 @@ depends on: canonical URLs, tier/primacy classification, legacy score
 preservation where claimed, numeric grounding, polarity, corroborating
 dedup, and aggregate evidence stats.
 """
-from app.agents import sources
-from app.agents.evidence_utils import (
+from app.evidence import sources
+from app.evidence.utils import (
     claim_polarity,
     dedupe_semantic_facts,
     evidence_stats,

@@ -11,7 +11,7 @@ from typing import Any, Dict, List
 
 import httpx
 
-from app.core.logging import get_logger
+from app.common.logging import get_logger
 from app.core.llmkit.breaker import CircuitBreaker
 from app.core.llmkit.timing import _real_key
 

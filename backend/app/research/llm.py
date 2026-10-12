@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from app.core.llm import LLMClient
-from app.core.logging import get_logger
+from app.common.logging import get_logger
 
 logger = get_logger(__name__)
 

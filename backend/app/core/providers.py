@@ -83,7 +83,7 @@ def _configured_secret() -> str:
     ).strip()
     if not raw:
         try:
-            from app.core.config import get_settings  # no cycle: config is leaf
+            from app.common.config import get_settings  # no cycle: config is leaf
 
             raw = (get_settings().deepscout_secret_key or "").strip()
         except Exception:

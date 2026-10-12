@@ -26,8 +26,8 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 from typing import Any, Dict, List
 
-from app.agents.evidence_utils import extract_domain, source_reliability_score
-from app.core.logging import get_logger
+from app.evidence.utils import extract_domain, source_reliability_score
+from app.common.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -93,7 +93,7 @@ def _freshness(
     where the confidence engine's linear 730-day curve scored a source 0.0
     while the verifier scored the identical source ~0.5-0.7.
     """
-    from app.agents.sources import freshness_score
+    from app.evidence.sources import freshness_score
 
     items: List[tuple[str, str]] = []
     pool = [f for f in (facts or []) if isinstance(f, dict)]
@@ -107,7 +107,7 @@ def _freshness(
 
     scores: List[float] = []
     for published, search_type in items:
-        from app.agents.evidence_utils import parse_published_date
+        from app.evidence.utils import parse_published_date
 
         if not parse_published_date(published):
             continue  # unparseable stays unmeasured

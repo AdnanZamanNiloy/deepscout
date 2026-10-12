@@ -19,7 +19,7 @@ def test_settings():
     developer's quota. One dummy Groq key and no others reproduces the shape
     those tests were written against, deterministically, on every machine.
     """
-    from app.core.config import get_settings
+    from app.common.config import get_settings
 
     return get_settings().model_copy(update={
         "groq_api_key": "test-key",

@@ -19,7 +19,7 @@ import {
 const STATE_LABEL = { done: "Complete", active: "Working", waiting: "Queued" };
 
 /* Canonical pipeline — the real eight stages from the shipped research graph
- * (`app/research/agents/orchestrator.py`), in execution order. Same roster as
+ * (`app/agents/orchestrator.py`), in execution order. Same roster as
  * AgentsView, so "stage 3" means the same thing everywhere.
  *
  *   browser → planner → human → researcher → writer → fact_checker →

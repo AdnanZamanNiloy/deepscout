@@ -10,7 +10,7 @@ from typing import List
 
 from app.research.scraping.extract import get_image_hash
 from app.research.scraping.scraper import scrape_urls
-from app.research.streaming import stream_output
+from app.common.streaming import stream_output
 from app.research.workers import WorkerPool
 
 

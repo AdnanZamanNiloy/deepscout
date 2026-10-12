@@ -24,7 +24,7 @@ def db_path(tmp_path, _secret):
 
 
 def _settings(**over):
-    from app.core.config import Settings
+    from app.common.config import Settings
 
     base = {"groq_api_key": "test-key", "_env_file": None}
     base.update(over)
@@ -332,7 +332,7 @@ async def test_active_provider_fallback_rescues_the_run(db_path, monkeypatch):
     import respx
 
     from app.core import providers as store
-    from app.core.config import Settings
+    from app.common.config import Settings
     from app.core.llm import LLMClient
 
     await _seed(db_path)
@@ -360,7 +360,7 @@ async def test_exclusive_probe_covers_env_fallbacks_when_enabled(db_path):
     import httpx
     import respx
 
-    from app.core.config import Settings
+    from app.common.config import Settings
     from app.core import providers as store
     from app.core.llm import LLMClient
 
@@ -550,7 +550,7 @@ def test_settings_construct_with_no_provider_keys():
     Regression for the removed `_require_llm_provider` validator, which made a
     stock setup unbootable and therefore unreachable from the Providers tab.
     """
-    from app.core.config import Settings
+    from app.common.config import Settings
 
     settings = Settings(
         groq_api_key="", huggingface_api_key="",
@@ -563,7 +563,7 @@ def test_settings_construct_with_no_provider_keys():
 
 def test_env_placeholders_are_inert():
     """The `.env.example` `your_...` values must not read as real keys."""
-    from app.core.config import Settings
+    from app.common.config import Settings
     from app.core.llm import _real_key
 
     settings = Settings(
@@ -645,7 +645,7 @@ async def test_no_provider_error_is_not_retried(db_path, monkeypatch):
 @pytest.fixture
 def _no_secret(monkeypatch, tmp_path):
     """No env secret, no `.env` secret, no key file: the lost-secret state."""
-    from app.core import config as config_mod
+    from app.common import config as config_mod
     from app.core import providers as store
 
     monkeypatch.delenv("DEEPSCOUT_SECRET_KEY", raising=False)

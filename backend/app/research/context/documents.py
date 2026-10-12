@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-from app.core.config import get_settings
-from app.research.models import Document
+from app.common.config import get_settings
+from app.common.models import Document
 
 
 def _max_content_chars() -> int:

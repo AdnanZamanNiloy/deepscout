@@ -16,7 +16,7 @@ pool. These tests pin the bridge's contract:
 """
 from __future__ import annotations
 
-from app.engine.audit_bridge import (
+from app.evidence.audit import (
     build_facts,
     build_source_index,
     compute_audit,

@@ -21,8 +21,8 @@ import httpx
 import pytest
 import respx
 
-from app.agents import search as search_mod
-from app.agents.search import (
+from app.retrieval import client as search_mod
+from app.retrieval.client import (
     SearchClient,
     _clean_html,
     _extract_pdf_text,
@@ -30,7 +30,7 @@ from app.agents.search import (
     _prepare_searxng_query,
     _searxng_to_results,
 )
-from app.core.config import Settings
+from app.common.config import Settings
 
 SEARXNG_URL = "http://searxng.test:8080/search"
 
@@ -54,7 +54,7 @@ def _reset_breakers():
     half-open guard -- which is how the previous provider suite came to depend
     on test ordering. Reset per test so each one is independent.
     """
-    from app.agents import reliability as rel
+    from app.infra import reliability as rel
 
     rel._BREAKERS.clear()
     yield
@@ -546,7 +546,7 @@ async def test_wiki_sends_user_agent():
 async def test_fetch_content_sends_browser_ua():
     """Generic page fetch identifies as a browser (upstream scraper parity):
     publishers that block script UAs would otherwise yield block pages."""
-    from app.agents import search as search_mod
+    from app.retrieval import client as search_mod
 
     with respx.mock(assert_all_called=False) as mock:
         route = mock.get("https://example.com/article").mock(
@@ -560,7 +560,7 @@ async def test_fetch_content_sends_browser_ua():
 
 
 def test_split_query_shapes():
-    from app.agents.search import _split_query
+    from app.retrieval.client import _split_query
 
     assert _split_query("plain text") == ("plain text", "")
     assert _split_query(("pair text", "news")) == ("pair text", "news")

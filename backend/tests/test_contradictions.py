@@ -79,7 +79,7 @@ def test_indian_numbering_currency_scale_parsed():
     """Indian-numbering scale words must fold in, so a crore amount keeps its
     true magnitude instead of parsing as a small scale-free count (part of why
     unrelated figures could be "compared")."""
-    from app.agents.evidence_utils import extract_numbers
+    from app.evidence.utils import extract_numbers
     nums = extract_numbers("73,746.06 crore Bangladeshi taka")
     assert nums and nums[0].value == 73746.06 * 1e7
 

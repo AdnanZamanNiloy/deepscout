@@ -36,10 +36,10 @@ async def _run(n: int) -> dict:
     backend = Path(__file__).resolve().parents[1]
     load_dotenv(backend / ".env")
 
-    from app.agents import search as search_mod
-    from app.agents.search import SearchClient
-    from app.agents.sources import classify_source
-    from app.core.config import Settings
+    from app.retrieval import client as search_mod
+    from app.retrieval.client import SearchClient
+    from app.evidence.sources import classify_source
+    from app.common.config import Settings
 
     # A warm search cache would serve results without a single fetch and make
     # the before/after comparison meaningless. Force every run to fetch.

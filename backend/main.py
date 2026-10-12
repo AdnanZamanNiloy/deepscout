@@ -5,9 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from starlette.responses import JSONResponse
 
-from app.agents.search import SearchClient
+from app.retrieval.client import SearchClient
 from app.api.routes import limiter, router as api_router
-from app.core.config import get_settings
+from app.common.config import get_settings
 from app.core.llm import LLMClient
 from app.core.searxng_service import SearxngSupervisor
 from app.db.sqlite import init_db
@@ -22,9 +22,9 @@ async def lifespan(app: FastAPI):
     # Wire the runtime handles (LLM client + search client) so the research
     # pipeline picks them up. The pipeline calls both clients directly — this
     # only publishes the handles the routes read per request.
-    from app import engine as engine_runtime
+    from app import runtime as app_runtime
 
-    runtime = engine_runtime.configure(llm, search_client)
+    runtime = app_runtime.configure(llm, search_client)
 
     # SearXNG is a separate application reached over HTTP. Start it here so one
     # command runs the whole system; it degrades to Wikipedia/arXiv/Crossref on

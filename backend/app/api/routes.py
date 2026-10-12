@@ -11,7 +11,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.core.usage import clear_run_usage, start_run_usage
-from app.core.config import get_settings
+from app.common.config import get_settings
 from app.core.providers import ProviderSecretUnavailableError
 from app.core.degradation import (
     clear_fallbacks,
@@ -39,7 +39,7 @@ from app.db.sqlite import (
     start_research_run,
     touch_session,
 )
-from app.core.logging import bind_request_context, get_logger, unbind_request_context
+from app.common.logging import bind_request_context, get_logger, unbind_request_context
 
 
 router = APIRouter()
@@ -79,7 +79,7 @@ def _final_frame_from_state(
     carried on ``final_state``; this forwards them to the wire frame. Missing
     keys fall back to the adapter's empty defaults — never invented values.
     """
-    from app.engine.event_adapter import final_report_frame
+    from app.runtime.event_adapter import final_report_frame
 
     return final_report_frame(
         report=report,
@@ -203,7 +203,7 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
     depends on around it: the NDJSON framing, the run/session lifecycle records,
     incremental persistence, verbatim frame capture for replay, and the
     terminal report write. The engine is reached through the bridges installed
-    at startup (app.engine), so the Model Control Center still selects the
+    at startup (app.runtime), so the Model Control Center still selects the
     provider and SearchClient still performs retrieval.
     """
     settings = getattr(request.app.state, "settings", None)
@@ -239,8 +239,8 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
         reset_fallbacks()
         start_run_usage(request_id, settings, mode=str(payload.mode or "standard"))
         try:
-            from app.engine.orchestrator import PipelineRunner
-            from app.engine.event_adapter import EngineEventAdapter, final_report_frame
+            from app.runtime.orchestrator import PipelineRunner
+            from app.runtime.event_adapter import EngineEventAdapter, final_report_frame
 
             async def _persist(coro):
                 """Persistence must never kill a research run — log and continue."""
@@ -512,8 +512,8 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
                     )
                     return
 
-            from app.engine.orchestrator import PipelineRunner
-            from app.engine.event_adapter import EngineEventAdapter, final_report_frame
+            from app.runtime.orchestrator import PipelineRunner
+            from app.runtime.event_adapter import EngineEventAdapter, final_report_frame
 
             runner = PipelineRunner(
                 llm=llm_client,

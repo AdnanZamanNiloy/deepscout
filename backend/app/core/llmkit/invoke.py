@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Mapping
 
 from tenacity import retry, retry_if_exception, stop_after_attempt
 
-from app.core.logging import get_logger
+from app.common.logging import get_logger
 from app.core.llmkit.timing import HF_FALLBACK_MODELS, _attempt_timeout, _real_key, _wait_with_retry_after, _with_total_cap
 from app.core.llmkit.failures import _is_retryable
 from app.core.llmkit.types import CompletionResult, PromptTooLargeError, _parse_usage

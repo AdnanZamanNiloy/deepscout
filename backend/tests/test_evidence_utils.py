@@ -1,5 +1,5 @@
-"""Pure-function tests for evidence_utils (Phase 1.8). No mocking needed."""
-from app.agents.evidence_utils import (
+"""Pure-function tests for the evidence package surface. No mocking needed."""
+from app.evidence.utils import (
     dedupe_semantic_facts,
     extract_domain,
     filter_facts_by_domain,
@@ -81,7 +81,7 @@ def test_filter_facts_by_domain_uses_fallback_when_no_strong_sources():
 def test_clean_snippet_strips_wiki_edit_marks():
     """MediaWiki '[ edit source ]' furniture must never reach a claim — it
     reads as cut-and-paste debris in the finished report (live leak)."""
-    from app.agents.evidence_utils import clean_snippet_text
+    from app.evidence.utils import clean_snippet_text
 
     out = clean_snippet_text(
         "Metallurgy [ edit source ] Electrical steel is an iron alloy which may have "

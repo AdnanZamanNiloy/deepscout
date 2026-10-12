@@ -37,9 +37,9 @@ async def _run(queries: int) -> dict:
     backend = Path(__file__).resolve().parents[1]
     load_dotenv(backend / ".env")
 
-    from app.agents import search as search_mod
-    from app.agents.search import SearchClient
-    from app.core.config import Settings
+    from app.retrieval import client as search_mod
+    from app.retrieval.client import SearchClient
+    from app.common.config import Settings
 
     # A warm search cache would return results with zero fetches and zero
     # health counters, so disable it for this live check.
@@ -56,7 +56,7 @@ async def _run(queries: int) -> dict:
     elapsed = time.perf_counter() - t0
 
     # Unique authoritative domains reached among the retrieved URLs.
-    from app.agents.sources import classify_source
+    from app.evidence.sources import classify_source
 
     urls = [str(r.get("url", "")) for r in results if isinstance(r, dict)]
     authoritative = {

@@ -61,7 +61,7 @@ def client(test_settings) -> LLMClient:
 def hf_client() -> LLMClient:
     """Client with real-looking keys for both providers, so the HF fallback
     path is exercised (placeholder keys are skipped by design)."""
-    from app.core.config import Settings
+    from app.common.config import Settings
 
     return LLMClient(Settings(groq_api_key="test-key", huggingface_api_key="test-hf-key",
                               _env_file=None))
@@ -191,7 +191,7 @@ def test_env_file_precedence_real_key_beats_placeholder():
     loaded 'your_groq_api_key_here' and every LLM call 401'd silently)."""
     from pathlib import Path
 
-    from app.core.config import Settings
+    from app.common.config import Settings
 
     project = Path(__file__).resolve().parents[1]
     env_keys = {}
@@ -245,7 +245,7 @@ async def test_rate_limit_retries_then_recovers(hf_client):
 
 
 async def test_placeholder_keys_are_skipped():
-    from app.core.config import Settings
+    from app.common.config import Settings
 
     settings = Settings(groq_api_key="your_groq_key_here",
                         huggingface_api_key="your_hf_key_here", _env_file=None)
@@ -263,7 +263,7 @@ CUSTOM_URL = "https://llm.example.com/v1/chat/completions"
 
 
 def _custom_settings(**over):
-    from app.core.config import Settings
+    from app.common.config import Settings
 
     base = {"groq_api_key": "test-key", "huggingface_api_key": "test-hf-key",
             "custom_llm_api_key": "test-custom-key",
@@ -317,7 +317,7 @@ async def test_full_endpoint_url_accepted():
 
 
 def test_validator_accepts_custom_only():
-    from app.core.config import Settings
+    from app.common.config import Settings
 
     settings = Settings(custom_llm_api_key="k", custom_llm_base_url="https://x/v1",
                         custom_llm_model="m", _env_file=None)

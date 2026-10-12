@@ -27,11 +27,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-from app.agents.evidence_utils import (
+from app.evidence.utils import (
     extract_domain,
     extract_numbers,
 )
-from app.agents.sources import classify_source
+from app.evidence.sources import classify_source
 
 # --- Grade vocabulary -------------------------------------------------------
 # A: primary/peer-reviewed, verified, independently corroborated, numerically

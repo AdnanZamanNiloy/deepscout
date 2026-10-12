@@ -3,7 +3,7 @@
 A retriever is a class instantiated once per ``(query, query_domains)`` and
 called via a synchronous ``search(max_results)`` method (the pipeline invokes it
 from a worker thread). :class:`SearchClientRetriever` fulfils that contract by
-delegating to :class:`app.agents.search.SearchClient`.
+delegating to :class:`app.retrieval.client.SearchClient`.
 
 Because the product's client already fetches page bodies, the retriever declares
 ``requires_scraping = False`` and returns the fetched text under ``raw_content``
@@ -15,8 +15,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Callable, Dict, List, Optional
 
-from app.agents.search import SearchClient
-from app.core.logging import get_logger
+from app.retrieval.client import SearchClient
+from app.common.logging import get_logger
 
 logger = get_logger(__name__)
 

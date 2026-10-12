@@ -30,12 +30,12 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List
 
-from app.agents.evidence_utils import (
+from app.evidence.utils import (
     _significant_quantities,
     claim_polarity,
     numeric_conflict,
 )
-from app.core.semantic import similarity_matrix
+from app.common.semantic import similarity_matrix
 
 # Just below the dedup merge threshold (0.86): same topic, not same claim.
 SIMILARITY_LOW = 0.50

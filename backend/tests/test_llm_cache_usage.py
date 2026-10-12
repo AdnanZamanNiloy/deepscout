@@ -6,7 +6,7 @@ import httpx
 import respx
 
 from app.core import llm_cache
-from app.core.config import Settings
+from app.common.config import Settings
 from app.core.llm import LLMClient
 from app.core.usage import clear_run_usage, get_run_usage, start_run_usage
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 from typing import List, Optional
 
-from app.agents.search import SearchClient
+from app.retrieval.client import SearchClient
 from app.research.retrieval.base import SearchClientRetriever
 
 

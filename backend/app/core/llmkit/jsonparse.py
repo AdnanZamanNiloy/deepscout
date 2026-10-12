@@ -9,7 +9,7 @@ import json
 import re
 from typing import Any, Dict
 
-from app.core.logging import get_logger
+from app.common.logging import get_logger
 
 logger = get_logger(__name__)
 

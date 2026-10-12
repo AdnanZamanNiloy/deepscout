@@ -16,7 +16,7 @@ import pytest
 from fastapi import FastAPI
 
 from app.api.routes import limiter, router as api_router
-from app.core.config import Settings
+from app.common.config import Settings
 from app.db.sqlite import (
     init_db, save_citations, save_final_report, start_research_run,
 )

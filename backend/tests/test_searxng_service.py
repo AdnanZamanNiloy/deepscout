@@ -23,7 +23,7 @@ HEALTHZ = f"{BASE}/healthz"
 
 
 def _settings(**over):
-    from app.core.config import Settings
+    from app.common.config import Settings
 
     base = {"groq_api_key": "test-key", "_env_file": None}
     base.update(over)

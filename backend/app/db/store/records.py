@@ -19,7 +19,7 @@ def _domain_for(url: str) -> str:
     the search stack, and guarded because a save must never fail over a label.
     """
     try:
-        from app.agents.searchkit.identity import canonical_source_domain
+        from app.retrieval.searchkit.identity import canonical_source_domain
 
         return canonical_source_domain(url)
     except Exception:

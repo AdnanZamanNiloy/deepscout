@@ -2,9 +2,9 @@
 
 import asyncio
 
-from app.agents import search as search_mod
-from app.agents.search import SearchClient, SearchResult
-from app.core.config import Settings
+from app.retrieval import client as search_mod
+from app.retrieval.client import SearchClient, SearchResult
+from app.common.config import Settings
 
 
 TOPICS = [

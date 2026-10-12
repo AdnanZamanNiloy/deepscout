@@ -9,14 +9,14 @@ So the two questions are counted separately and never added together:
   * engine diversity    = how many independent indexes answered
   * publisher diversity = how many distinct sites/organisations were cited
 """
-from app.agents.searchkit.diversity import (
+from app.retrieval.searchkit.diversity import (
     aggregate_reports,
     diversity_report,
     engine_diversity,
     publisher_diversity,
     unresponsive_engines,
 )
-from app.agents.searchkit.types import SearchResult
+from app.retrieval.searchkit.types import SearchResult
 
 
 def _r(domain, engine, url=None, publisher=""):
@@ -205,7 +205,7 @@ def test_success_rate_is_none_when_nothing_was_audited():
 def test_cross_engine_dedup_is_detected_and_reported():
     """The ranker keeps one hit per canonical URL, so a second engine's copy of
     the same page disappears. That is a real source loss and must be visible."""
-    from app.agents.searchkit.diversity import cross_engine_collisions
+    from app.retrieval.searchkit.diversity import cross_engine_collisions
 
     results = [
         _r("example.com", "google cse", url="https://example.com/a"),
@@ -220,7 +220,7 @@ def test_cross_engine_dedup_is_detected_and_reported():
 
 
 def test_same_engine_duplicates_are_not_reported_as_cross_engine_loss():
-    from app.agents.searchkit.diversity import cross_engine_collisions
+    from app.retrieval.searchkit.diversity import cross_engine_collisions
 
     results = [
         _r("example.com", "google cse", url="https://example.com/a"),

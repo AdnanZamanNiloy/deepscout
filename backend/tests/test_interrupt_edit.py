@@ -17,7 +17,7 @@ import httpx
 import pytest
 
 from app.api.routes import router as api_router
-from app.core.config import Settings
+from app.common.config import Settings
 from app.db.sqlite import (
     complete_research_run,
     ensure_session,

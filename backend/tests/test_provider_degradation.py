@@ -19,7 +19,7 @@ import httpx
 import pytest
 import respx
 
-from app.core.config import Settings
+from app.common.config import Settings
 from app.core.degradation import (
     EVIDENCE_WEAK,
     PROVIDER_HARD,

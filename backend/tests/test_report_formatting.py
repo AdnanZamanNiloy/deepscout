@@ -7,7 +7,7 @@ trace, replay and every export share one clean form.
 """
 from __future__ import annotations
 
-from app.engine.orchestrator import sanitize_report_markdown
+from app.report.formatting import sanitize_report_markdown
 
 
 def test_literal_br_tags_are_removed_not_printed():

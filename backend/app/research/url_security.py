@@ -22,7 +22,7 @@ class UnsafeURLError(ValueError):
 
 
 def _private_urls_allowed() -> bool:
-    from app.core.config import get_settings
+    from app.common.config import get_settings
 
     return bool(get_settings().allow_private_urls)
 

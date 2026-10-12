@@ -31,7 +31,7 @@ def db_path(tmp_path, _secret):
 
 
 def _settings(**over):
-    from app.core.config import Settings
+    from app.common.config import Settings
 
     base = {"groq_api_key": "test-key", "huggingface_api_key": "test-hf-key",
             "_env_file": None}

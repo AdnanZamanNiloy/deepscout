@@ -33,7 +33,7 @@ import httpx
 import pytest
 import respx
 
-from app.core.config import Settings
+from app.common.config import Settings
 from app.core.llm import LLMClient, _breaker_seconds_left
 
 ENDPOINT = "http://localhost:20128/v1/chat/completions"

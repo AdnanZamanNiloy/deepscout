@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from app.core.logging import get_logger
+from app.common.logging import get_logger
 
 logger = get_logger(__name__)
 

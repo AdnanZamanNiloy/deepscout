@@ -19,7 +19,7 @@ import json
 
 import pytest
 
-from app.core.config import Settings
+from app.common.config import Settings
 from app.core.llm import LLMClient
 from app.core.providers import (
     _public,

@@ -21,7 +21,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Dict, List
 
 from app.research.enums import ReportSource, ReportType, Tone
-from app.research.models import Document
+from app.common.models import Document
 
 
 class PromptFamily:

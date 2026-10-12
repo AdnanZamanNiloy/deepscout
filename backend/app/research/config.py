@@ -3,11 +3,11 @@
 Model selection is NOT configured here — every generation call goes through
 :class:`app.core.llm.LLMClient`, which owns the provider, model, temperature and
 retry policy selected in the Model Control Center. Retrieval likewise runs
-through :class:`app.agents.search.SearchClient`. What remains here are the few
+through :class:`app.retrieval.client.SearchClient`. What remains here are the few
 knobs that shape *how* a run is composed: report length, language, how many
 sources to gather per query, and how much content to hand the model.
 
-Values come from :class:`app.core.config.Settings` (env + .env) with
+Values come from :class:`app.common.config.Settings` (env + .env) with
 conservative defaults, so a run is fully specified even with no extra
 configuration.
 """
@@ -85,11 +85,11 @@ class ResearchConfig:
 def load_config(**overrides) -> ResearchConfig:
     """Build a :class:`ResearchConfig` from app settings with per-call overrides.
 
-    Values come from :class:`app.core.config.Settings` (the single source of
+    Values come from :class:`app.common.config.Settings` (the single source of
     truth for configuration — env + .env; AGENTS.md rule 5). Unknown override
     keys are ignored so a caller can pass a loose dict without a TypeError.
     """
-    from app.core.config import get_settings
+    from app.common.config import get_settings
 
     s = get_settings()
     base = {

@@ -31,7 +31,7 @@ from typing import Any, Dict, List
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.core.config import Settings  # noqa: E402
+from app.common.config import Settings  # noqa: E402
 
 RESULTS: Dict[str, Any] = {}
 
@@ -49,7 +49,7 @@ def _settings(tmp_dir: str) -> Settings:
 # ---------------------------------------------------------------------------
 
 def bench_citation_support(settings: Settings) -> Dict[str, Any]:
-    from app.agents.evidence_utils import verify_answer_support
+    from app.evidence.utils import verify_answer_support
     from bench.datasets import CITATION_ANSWER, CITATION_FACTS, CITATION_SENTENCE_LABELS
 
     support = verify_answer_support(CITATION_ANSWER, CITATION_FACTS)
@@ -220,7 +220,7 @@ def _spearman(xs: List[float], ys: List[float]) -> float:
 
 
 def bench_semantic(settings: Settings) -> Dict[str, Any]:
-    from app.core.semantic import pair_similarity, similarity_matrix
+    from app.common.semantic import pair_similarity, similarity_matrix
     from bench.datasets import DEDUP_PAIRS, SIMILARITY_PAIRS
 
     labels = [label for (_, _, label) in SIMILARITY_PAIRS]
@@ -345,9 +345,9 @@ async def _bench_cache(settings: Settings) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def bench_latency(settings: Settings) -> Dict[str, Any]:
-    from app.agents.evidence_utils import dedupe_semantic_facts, verify_answer_support
+    from app.evidence.utils import dedupe_semantic_facts, verify_answer_support
     from app.core.contradictions import find_contradictions
-    from app.core.semantic import cross_similarity, similarity_matrix
+    from app.common.semantic import cross_similarity, similarity_matrix
 
     import numpy as np
 
@@ -412,7 +412,7 @@ def bench_latency(settings: Settings) -> Dict[str, Any]:
 def bench_memory(settings: Settings) -> Dict[str, Any]:
     import resource
 
-    from app.core.semantic import similarity_matrix
+    from app.common.semantic import similarity_matrix
 
     before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss  # KiB on Linux
     import numpy as np

@@ -16,14 +16,14 @@ from __future__ import annotations
 import httpx
 import respx
 
-from app.agents import search as search_mod
-from app.agents.search import (
+from app.retrieval import client as search_mod
+from app.retrieval.client import (
     SearchClient,
     SearchResult,
     _fetch_content_outcome,
     _fetch_once,
 )
-from app.agents.retrieval_health import (
+from app.infra.retrieval_health import (
     DomainRegistry,
     FailedFetchLog,
     RetrievalHealth,
@@ -31,7 +31,7 @@ from app.agents.retrieval_health import (
     failure_cools_host,
     failure_is_transient,
 )
-from app.core.config import Settings
+from app.common.config import Settings
 
 
 def _settings(**over) -> Settings:
@@ -258,7 +258,7 @@ async def test_retry_after_respects_the_calling_policy_ceiling():
     """The measured failure: a Wikipedia 429 carrying `Retry-After: 52`
     overrode that leg's own `max_delay` of 3.0s and slept 52 seconds inside a
     single contract search, on an optional enrichment provider."""
-    from app.agents.reliability import retry_after_seconds
+    from app.infra.reliability import retry_after_seconds
 
     class _Resp:
         headers = {"Retry-After": "52"}
@@ -280,7 +280,7 @@ async def test_retry_after_respects_the_calling_policy_ceiling():
 
 async def test_search_provider_retry_is_bounded_by_its_policy():
     """End to end through retry_async: the sleep must respect the policy."""
-    from app.agents.reliability import RetryPolicy, retry_async
+    from app.infra.reliability import RetryPolicy, retry_async
 
     class _Resp:
         headers = {"Retry-After": "52"}
@@ -301,7 +301,7 @@ async def test_search_provider_retry_is_bounded_by_its_policy():
             raise _Throttled("429")
         return "ok"
 
-    import app.agents.reliability as rel
+    import app.infra.reliability as rel
     original = rel.asyncio.sleep
     rel.asyncio.sleep = _record_sleep
     try:

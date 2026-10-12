@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 from diskcache import Cache
 
-from app.core.config import Settings
+from app.common.config import Settings
 
 _cache: Optional[Cache] = None
 

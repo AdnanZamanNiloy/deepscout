@@ -24,7 +24,7 @@ flowchart TD
 ```
 
 The team is driven by `app/research/runner.py` (exposed to the route as
-`app/engine/orchestrator.py::PipelineRunner`), which streams node updates as
+`app/runtime/orchestrator.py::PipelineRunner`), which streams node updates as
 the graph runs. The API route (`app/api/routes.py`) translates those updates
 into the frontend's NDJSON events and owns the run/session lifecycle,
 persistence and replay capture.
@@ -38,7 +38,7 @@ patching layer:
   Model Control Center governs generation, and the client's circuit breakers,
   response cache, usage ledger and concurrency cap apply.
 * **Retrieval** — `app/research/retrieval/base.py::SearchClientRetriever`
-  delegates to `app.agents.search.SearchClient` (SearXNG with Wikipedia / arXiv /
+  delegates to `app.retrieval.client.SearchClient` (SearXNG with Wikipedia / arXiv /
   Crossref fallbacks), reusing the already-fetched page bodies.
 
 Report sections are researched in bounded waves (`MAX_PARALLEL_AGENTS`) rather
@@ -65,10 +65,10 @@ retrieved evidence ──> pipeline ──> report markdown (the answer)
 * **The answer** is the report the pipeline assembles: an introduction, the
   researched sections, a conclusion, an optional diagram, and references. It is
   assembled by `PublisherAgent` from the researched sections
-  (`app/research/agents/report_agents.py`) and never carries a confidence
+  (`app/agents/report_agents.py`) and never carries a confidence
   number, a score, or a limitation list inside the body.
 * **The fact pool** is reconstructed deterministically — no LLM — by
-  `app/engine/audit_bridge.py`, which pairs each claim-bearing sentence with the
+  `app/evidence/audit.py`, which pairs each claim-bearing sentence with the
   URL it cites and runs the retained audit core over it. Because it is cheap and
   model-free, it runs on every request.
 * **The audit fields** travel beside the answer in the `final_report` frame:
@@ -89,7 +89,7 @@ structure is the same, and the section outline is derived from the question.
 
 | Module | Responsibility |
 |---|---|
-| `app/research/agents/` | The team: orchestrator (graph builder), editor/planner, section research unit + reviewer/reviser, report writer, fact checker, visualizer, publisher, plan gate, and the bounded review routing. |
+| `app/agents/` | The team: orchestrator (graph builder), editor/planner, section research unit + reviewer/reviser, report writer, fact checker, visualizer, publisher, plan gate, and the bounded review routing. |
 | `app/research/researcher.py` | `Researcher`: one research unit — choose a role, gather evidence, write a report. |
 | `app/research/skills/` | The capabilities a researcher composes: research conductor, report generator, context manager, browser/scraper manager, source curator. |
 | `app/research/retrieval/` | Retriever contract, factory, and `SearchClientRetriever` (delegates to `SearchClient`). |
@@ -98,25 +98,30 @@ structure is the same, and the section outline is derived from the question.
 | `app/research/prompts.py`, `config.py`, `llm.py` | Prompt families, run configuration, and the generation funnel to `LLMClient`. |
 | `app/research/runner.py` | `ResearchRunner`: builds the task, compiles the graph, streams node updates, assembles the final state. |
 
-### Runtime seam (`app/engine/`)
+### Runtime seam (`app/runtime/`)
 
 | Module | Responsibility |
 |---|---|
-| `app/engine/orchestrator.py` | `PipelineRunner`, the route's entry point; delegates to `app/research/runner.py`. Also owns `sanitize_report_markdown`. |
-| `app/engine/event_adapter.py` | Maps pipeline node events onto the frontend's NDJSON vocabulary and builds the terminal `final_report` frame. |
-| `app/engine/audit_bridge.py` | Reconstructs the fact pool from the report + captured sources and runs the audit core over it. |
-| `app/engine/__init__.py` | Publishes the runtime handles (`LLMClient`, `SearchClient`) the routes read per request. |
+| `app/runtime/orchestrator.py` | `PipelineRunner`, the route's entry point; delegates to `app/research/runner.py`. |
+| `app/runtime/event_adapter.py` | Maps pipeline node events onto the frontend's NDJSON vocabulary and builds the terminal `final_report` frame. |
+| `app/runtime/__init__.py` | Publishes the runtime handles (`LLMClient`, `SearchClient`) the routes read per request. |
 
 ### Retained analysis & support
 
 | Module | Responsibility |
 |---|---|
-| `app/agents/search.py` | `SearchClient`: multi-provider retrieval (SearXNG / Wikipedia / arXiv / Crossref), circuit breakers, canonical-URL dedup, domain diversity, disk cache, page fetch. |
-| `app/agents/sources/`, `app/agents/evidence_utils.py` | Source classification, reliability, freshness, corroboration-query building, claim/number extraction, answer-support scoring — the shared evidence vocabulary. |
-| `app/agents/budget.py` | Per-run ceilings (model calls, wall-clock seconds) and mode multipliers. |
+| `app/retrieval/client.py` | `SearchClient`: multi-provider retrieval (SearXNG / Wikipedia / arXiv / Crossref), circuit breakers, canonical-URL dedup, domain diversity, disk cache, page fetch. |
+| `app/retrieval/searchkit/` | Search-client internals: providers, ranking, fetch, dedup, scoring and query handling. |
+| `app/evidence/sources/`, `app/evidence/utils.py` | Source classification, reliability, freshness, corroboration-query building, claim/number extraction, answer-support scoring — the shared evidence vocabulary. |
+| `app/evidence/audit.py` | Reconstructs the fact pool from the report + captured sources and runs the audit core over it. |
+| `app/report/formatting.py` | Report markdown normalisation (tables, placeholders, duplicate headings), shared by the pipeline and the export path. |
+| `app/infra/budget.py` | Per-run ceilings (model calls, wall-clock seconds) and mode multipliers. |
+| `app/infra/reliability.py` | Retry / circuit-breaker / timeout primitives. |
+| `app/infra/retrieval_health.py` | Run-scoped retrieval health: domain cooldowns, failed-fetch memory, telemetry. |
+| `app/quality/` | Report/answer quality scoring and calibration. |
 | `app/core/confidence.py` | Confidence engine: base signals + citation support + axis coverage + pool-size-scaled contradiction penalty; degraded-run cap 0.55. |
 | `app/core/contradictions.py` | Three detectors (polarity, temporal, unit-aware numeric), severity ordering, cap 5. |
-| `app/core/semantic.py` | TF-IDF hybrid engine: stemming, synonym canonicalization, negation weighting, vectorized batch scoring. |
+| `app/common/semantic.py` | TF-IDF hybrid engine: stemming, synonym canonicalization, negation weighting, vectorized batch scoring. |
 | `app/core/evidence_grade.py` | Claim grading (claim→source→verification→independence→corroboration→contradiction). |
 
 ### Control & efficiency
@@ -126,7 +131,7 @@ structure is the same, and the section outline is derived from the question.
 | `app/core/usage.py` | Per-run ledger (ContextVar): LLM calls, searches, cache hits. |
 | `app/core/llm.py` + `app/core/llmkit/` | Provider resolution with circuit breakers, fail-fast auth/quota errors, Retry-After honoring (capped), JSON repair, usage parsing and provider probing; the single generation funnel for the pipeline and the retained helpers. |
 | `app/core/llm_cache.py` | Exact-prompt disk cache (TTL 6h, size-capped). |
-| `app/core/semantic.py` | Shared similarity engine (TF-IDF hybrid). |
+| `app/common/semantic.py` | Shared similarity engine (TF-IDF hybrid). |
 
 ### Surfaces
 

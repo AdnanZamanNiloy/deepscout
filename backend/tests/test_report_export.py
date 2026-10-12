@@ -197,7 +197,7 @@ def test_safe_filename_slugifies_query():
 
 async def _app_with_run(db_path, trace):
     from app.api.routes import limiter, router as api_router
-    from app.core.config import Settings
+    from app.common.config import Settings
     from app.db.sqlite import (
         save_citations, save_claims, save_final_report, start_research_run,
     )
@@ -270,7 +270,7 @@ async def test_export_route_incomplete_run_returns_409(tmp_path):
     """A run that exists but has no stored report must return 409, not an
     empty 200 download."""
     from app.api.routes import limiter, router as api_router
-    from app.core.config import Settings
+    from app.common.config import Settings
     from app.db.sqlite import init_db, start_research_run
 
     db_path = str(tmp_path / "export409.db")

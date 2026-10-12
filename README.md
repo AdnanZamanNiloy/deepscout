@@ -55,15 +55,15 @@ handling, and calibrated confidence. Measured results are in
 
 | Capability | What it does | Where |
 |---|---|---|
-| **Multi-agent research team** | A LangGraph team (browser → editor/planner → researcher → writer → fact checker → visualizer → publisher) conducts the research and assembles the report. | `app/research/agents/`, `app/engine/orchestrator.py` |
-| **Wave-based section research** | Report sections are researched in bounded waves, each running a research → review → revise loop; each wave sees the sections already written so writers do not repeat them. | `app/research/agents/` |
-| **Multi-provider search** | Self-hosted SearXNG metasearch plus Wikipedia, arXiv and Crossref — no search API key — with canonical-URL dedup, domain diversity, circuit breakers, and a bounded disk cache. | `app/agents/search.py` |
+| **Multi-agent research team** | A LangGraph team (browser → editor/planner → researcher → writer → fact checker → visualizer → publisher) conducts the research and assembles the report. | `app/agents/`, `app/runtime/orchestrator.py` |
+| **Wave-based section research** | Report sections are researched in bounded waves, each running a research → review → revise loop; each wave sees the sections already written so writers do not repeat them. | `app/agents/` |
+| **Multi-provider search** | Self-hosted SearXNG metasearch plus Wikipedia, arXiv and Crossref — no search API key — with canonical-URL dedup, domain diversity, circuit breakers, and a bounded disk cache. | `app/retrieval/client.py` |
 | **Provider control** | The Model Control Center selects a single OpenAI-compatible provider or an ordered fallback chain; pipeline generation is routed through it, with breakers, response cache and usage ledger. | `app/core/providers.py`, `app/research/llm.py` |
 | **Contradiction detection** | Numeric (unit-aware divergence), polarity (affirms vs. negates), and temporal (same measure, different periods) detectors with severity ranking. | `app/core/contradictions.py` |
 | **Confidence engine** | Multi-signal score (citation support, axis coverage, source quality, contradiction penalty, …). Degraded runs are capped below the sufficiency threshold with an explanatory breakdown. | `app/core/confidence.py` |
 | **Evidence grading** | Claim→source→verification→independence→corroboration→contradiction records, graded per claim and aggregated into a distribution. | `app/core/evidence_grade.py` |
 | **Replay, trace & export** | Every run persists its events, sources, claims, final report and verbatim NDJSON frames; replay reconstructs the timeline and reports export to MD/DOCX/PDF. | `app/api/routes.py`, `app/db/sqlite.py` |
-| **Bounded work** | Every run is capped on model calls, wall-clock time and per-stage timeouts; a run that cannot finish inside `RESEARCH_TIMEOUT_SEC` is reported as such rather than hanging. | `app/agents/budget.py`, `app/core/usage.py` |
+| **Bounded work** | Every run is capped on model calls, wall-clock time and per-stage timeouts; a run that cannot finish inside `RESEARCH_TIMEOUT_SEC` is reported as such rather than hanging. | `app/infra/budget.py`, `app/core/usage.py` |
 | **LLM response cache** | Exact-prompt disk cache — an identical re-run or a repeated plan is served from disk with zero provider spend. Bounded size and TTL. | `app/core/llm_cache.py` |
 | **Semantic engine** | CPU-light TF-IDF hybrid (stemming, synonym canonicalization, negation weighting) powering dedup, contradiction banding, and citation support. | `app/core/semantic.py` |
 
@@ -86,10 +86,10 @@ Query
 ```
 
 The research pipeline is first-party code under `app/research/`, driven by
-`app/engine/orchestrator.py`. It calls the rest of the product directly through
+`app/runtime/orchestrator.py`. It calls the rest of the product directly through
 two seams: generation goes through `app.core.llm.LLMClient` (so the **Model
 Control Center** decides what runs), and retrieval goes through
-`app.agents.search.SearchClient`. Persistent state lives in SQLite
+`app.retrieval.client.SearchClient`. Persistent state lives in SQLite
 (`aiosqlite`); streaming is NDJSON over a single HTTP response.
 
 A full component map, data model, and the reasoning behind each design
@@ -325,7 +325,7 @@ Full setup, including platform notes and troubleshooting, is in
 
 ## Configuration
 
-All configuration goes through `app/core/config.py` (`pydantic-settings`) and is
+All configuration goes through `app/common/config.py` (`pydantic-settings`) and is
 documented in `backend/.env.example` and [`CONFIG.md`](CONFIG.md). Highlights:
 
 | Setting | Default | Purpose |
@@ -414,15 +414,23 @@ The complete rulebook, including the bug classes each rule prevents, is
 ```text
 backend/
   main.py                 FastAPI app + lifespan init (publishes runtime handles)
-  app/research/           the research pipeline: runner, agents, skills, retrieval,
+  app/research/           the research pipeline: runner, skills, retrieval,
                           scraping, context, prompts, config
-  app/engine/             runtime seam: orchestrator, event adapter, audit bridge
-  app/agents/             search + evidence/source/quality helpers
+  app/agents/             the LangGraph agent team (orchestrator, editor,
+                          research unit, report agents)
+  app/runtime/            runtime seam: route entry point + NDJSON event adapter
+  app/retrieval/          multi-provider search client + searchkit internals
+  app/evidence/           claim hygiene, source intelligence, audit reconstruction
+  app/quality/            report/answer quality metrics
+  app/infra/              run limits, retry/breaker primitives, retrieval health
+  app/report/             markdown normalisation shared by pipeline + export
   app/api/routes.py       stream, resume, trace, export, sessions
   app/api/providers_routes.py  providers + fallback chains (Model Control Center)
-  app/core/               config, llm client + cache, usage ledger, semantic
-                          engine, confidence, contradictions, evidence grading,
-                          isolation, degradation, providers
+  app/common/             shared leaves: config, logging, primitives,
+                          semantic engine
+  app/core/               llm client + cache, usage ledger, confidence,
+                          contradictions, evidence grading, degradation,
+                          providers, export
   app/db/sqlite.py        auto-initializing schema + persistence
   bench/                  deterministic component suite + labeled datasets
   tests/                  pytest suite
