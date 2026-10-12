@@ -10,11 +10,11 @@ behind the design decisions that differ from a standard RAG chatbot.
 ```mermaid
 flowchart TD
     Q[User query + mode] --> RT[POST /api/research/stream]
-    RT --> TEAM[Multi-agent engine team<br/>LangGraph StateGraph, compiled per request]
+    RT --> TEAM[Research team<br/>LangGraph StateGraph, compiled per request]
     TEAM --> BR[Browser: initial research]
     BR --> ED[Editor: plan section outline]
     ED --> HU[Human review gate<br/>auto-accept in the API context]
-    HU --> RS[Researcher: parallel per-section research<br/>each section researched + reviewed + revised]
+    HU --> RS[Researcher: per-section research in waves<br/>each section researched + reviewed + revised]
     RS --> WR[Writer: introduction, TOC, conclusion, sources]
     WR --> FC[Fact checker: accept or send back to writer]
     FC -->|revise| WR
@@ -23,24 +23,28 @@ flowchart TD
     PB --> OUT[final_report frame + persisted report]
 ```
 
-The engine team is driven by `app/engine/orchestrator.py`, which streams node
-updates as the graph runs. The API route (`app/api/routes.py`) translates those
-updates into the frontend's NDJSON events and owns the run/session lifecycle,
+The team is driven by `app/research/runner.py` (exposed to the route as
+`app/engine/orchestrator.py::MultiAgentRunner`), which streams node updates as
+the graph runs. The API route (`app/api/routes.py`) translates those updates
+into the frontend's NDJSON events and owns the run/session lifecycle,
 persistence and replay capture.
 
-Two seams connect the engine to the rest of the product, both installed at
-startup by `app.engine.configure`:
+The pipeline is first-party code under `app/research/`. It reaches the rest of
+the product through exactly two seams, and calls both **directly** — there is no
+patching layer:
 
-* **Generation** (`app/engine/llm_bridge.py`) — every engine LLM call is routed
-  through `app.core.llm.LLMClient`, so the provider or fallback chain selected
-  in the Model Control Center governs engine generation, and the client's
-  circuit breakers, response cache, usage ledger and concurrency cap apply.
-* **Retrieval** (`app/engine/retriever_bridge.py`) — the engine's web search is
-  backed by `app.agents.search.SearchClient` (SearXNG with Wikipedia / arXiv /
+* **Generation** — every model call goes through `app.research.llm.LLMFunnel`
+  → `app.core.llm.LLMClient`, so the provider or fallback chain selected in the
+  Model Control Center governs generation, and the client's circuit breakers,
+  response cache, usage ledger and concurrency cap apply.
+* **Retrieval** — `app/research/retrieval/base.py::SearchClientRetriever`
+  delegates to `app.agents.search.SearchClient` (SearXNG with Wikipedia / arXiv /
   Crossref fallbacks), reusing the already-fetched page bodies.
 
-The engine itself lives under `backend/engine/` (`refeng/` research core +
-`agent_team/` agent team), vendored as a self-contained, importable package.
+Report sections are researched in bounded waves (`MAX_PARALLEL_AGENTS`) rather
+than all at once: each wave's writers receive the titles and written drafts of
+the sections already completed, so later sections do not restate earlier
+findings.
 
 ---
 
@@ -83,16 +87,27 @@ from the question and the evidence.
 
 ## Component map
 
-### Engine (research + synthesis)
+### Research pipeline (`app/research/`)
 
 | Module | Responsibility |
 |---|---|
-| `backend/engine/agent_team/` | The agent team: orchestrator (ChiefCoordinatorAgent graph), editor/planner, researcher, reviewer/reviser, writer, fact checker, visualizer, publisher. |
-| `backend/engine/refeng/` | The shared research core the team calls: research conductor, context/compression, retrievers and scrapers, report generation, prompts. |
-| `app/engine/orchestrator.py` | Builds the team task from a request, compiles the graph, streams node updates, captures engine log signals, and assembles the final state (report + sources). |
-| `app/engine/llm_bridge.py` | Routes the engine's LLM funnel to `LLMClient` (Model Control Center governs generation). |
-| `app/engine/retriever_bridge.py` | Backs the engine's web search with `SearchClient`, declaring `requires_scraping=False` to reuse fetched bodies. |
-| `app/engine/event_adapter.py` | Maps engine node events onto the frontend's NDJSON vocabulary and builds the terminal `final_report` frame. |
+| `app/research/agents/` | The team: orchestrator (graph builder), editor/planner, section research unit + reviewer/reviser, report writer, fact checker, visualizer, publisher, plan gate, and the bounded review routing. |
+| `app/research/researcher.py` | `Researcher`: one research unit — choose a role, gather evidence, write a report. |
+| `app/research/skills/` | The capabilities a researcher composes: research conductor, report generator, context manager, browser/scraper manager, source curator. |
+| `app/research/retrieval/` | Retriever contract, factory, and `SearchClientRetriever` (delegates to `SearchClient`). |
+| `app/research/scraping/` | Page fetcher (httpx), HTML text extraction, and the anti-bot / word-list / PDF guards. |
+| `app/research/context/` | BM25 lexical filtering and the document→context selection layer. |
+| `app/research/prompts.py`, `config.py`, `llm.py` | Prompt families, run configuration, and the generation funnel to `LLMClient`. |
+| `app/research/runner.py` | `ResearchRunner`: builds the task, compiles the graph, streams node updates, assembles the final state. |
+
+### Runtime seam (`app/engine/`)
+
+| Module | Responsibility |
+|---|---|
+| `app/engine/orchestrator.py` | `MultiAgentRunner`, the route's entry point; delegates to `app/research/runner.py`. Also owns `sanitize_report_markdown`. |
+| `app/engine/event_adapter.py` | Maps pipeline node events onto the frontend's NDJSON vocabulary and builds the terminal `final_report` frame. |
+| `app/engine/audit_bridge.py` | Reconstructs the fact pool from the report + captured sources and runs the audit core over it. |
+| `app/engine/__init__.py` | Publishes the runtime handles (`LLMClient`, `SearchClient`) the routes read per request. |
 
 ### Retained analysis & support
 
@@ -104,8 +119,7 @@ from the question and the evidence.
 | `app/core/confidence.py` | Confidence engine: base signals + citation support + axis coverage + pool-size-scaled contradiction penalty; degraded-run cap 0.55. |
 | `app/core/contradictions.py` | Three detectors (polarity, temporal, unit-aware numeric), severity ordering, cap 5. |
 | `app/core/semantic.py` | TF-IDF hybrid engine: stemming, synonym canonicalization, negation weighting, vectorized batch scoring. |
-| `app/core/evidence_grade.py`, `app/core/investigation_state.py` | Claim grading (claim→source→verification→independence→corroboration→contradiction) and per-claim investigation memory. |
-| `app/graph/evidence.py`, `app/graph/state.py` | Shared evidence-acquisition helpers (`_claim_terms`, corroboration/coverage-gap functions) and the research-state TypedDict, retained after the orchestration removal. |
+| `app/core/evidence_grade.py` | Claim grading (claim→source→verification→independence→corroboration→contradiction). |
 
 ### Control & efficiency
 
@@ -145,24 +159,28 @@ fabricated; the frontend treats every event type as optional.
 
 ## Design decisions worth knowing
 
-**Why the engine is vendored, not a runtime dependency.** `backend/engine/`
-holds the multi-agent engine locally so the backend imports it without an
-external checkout and pins exactly what runs. Its internal absolute imports
-(`refeng.*`, `agent_team.*`) are preserved by a one-time `sys.path` bootstrap
-in `engine/__init__.py`.
+**Why the pipeline is first-party.** The research pipeline lives in
+`app/research/` as ordinary first-party code. There is no vendored engine, no
+`sys.path` bootstrap, and no monkeypatched provider factory: the code that runs a
+research request is code this project owns and can read end to end.
 
-**Why the provider stack is bridged, not duplicated.** The engine has its own
-config and provider layer, but the product's contract is that the Model
-Control Center decides what runs. The bridge routes the engine's single LLM
-funnel through `LLMClient`, so one mechanism (active provider or enabled chain,
-with its breakers/cache/ledger) governs all generation — no second provider
-configuration to drift.
+**Why the provider stack is shared, not duplicated.** The product's contract is
+that the Model Control Center decides what runs. Every model call in the
+pipeline goes through `LLMFunnel` → `LLMClient`, so one mechanism (active
+provider or enabled chain, with its breakers/cache/ledger) governs all
+generation — there is no second provider configuration to drift.
 
-**Why retrieval is shared.** The engine's retriever seam is backed by
+**Why retrieval is shared.** The pipeline's retriever delegates to
 `SearchClient`, so web search behaves identically to the rest of the product
 (SearXNG + Wikipedia/arXiv/Crossref fallbacks, the same caches and health
-accounting), and page bodies fetched here are reused by the engine instead of
+accounting), and page bodies fetched during retrieval are reused rather than
 re-scraped.
+
+**Why sections are researched in waves.** Sections drafted in parallel cannot
+see each other, so two sections independently restate the same finding. Waves
+bound how many sections run at once, and each wave's writers receive the titles
+and written drafts of the sections already completed — which is what the
+anti-duplication prompt instructions were always written against.
 
 **Why the LLM cache is exact-prompt.** Semantic caching returns subtly
 wrong answers to slightly different questions. Research pipelines re-issue

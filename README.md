@@ -56,10 +56,10 @@ handling, and calibrated confidence. Measured results are in
 
 | Capability | What it does | Where |
 |---|---|---|
-| **Multi-agent research team** | A LangGraph team (browser → editor/planner → researcher → writer → fact checker → visualizer → publisher) conducts the research and assembles the report. | `backend/engine/agent_team/`, `app/engine/orchestrator.py` |
-| **Parallel section research** | Report sections are researched concurrently, each running a research → review → revise loop; siblings are named so writers do not overlap. | `backend/engine/agent_team/agents/` |
+| **Multi-agent research team** | A LangGraph team (browser → editor/planner → researcher → writer → fact checker → visualizer → publisher) conducts the research and assembles the report. | `app/research/agents/`, `app/engine/orchestrator.py` |
+| **Wave-based section research** | Report sections are researched in bounded waves, each running a research → review → revise loop; each wave sees the sections already written so writers do not repeat them. | `app/research/agents/` |
 | **Multi-provider search** | Self-hosted SearXNG metasearch plus Wikipedia, arXiv and Crossref — no search API key — with canonical-URL dedup, domain diversity, circuit breakers, and a bounded disk cache. | `app/agents/search.py` |
-| **Provider control** | The Model Control Center selects a single OpenAI-compatible provider or an ordered fallback chain; engine generation is routed through it, with breakers, response cache and usage ledger. | `app/core/providers.py`, `app/engine/llm_bridge.py` |
+| **Provider control** | The Model Control Center selects a single OpenAI-compatible provider or an ordered fallback chain; pipeline generation is routed through it, with breakers, response cache and usage ledger. | `app/core/providers.py`, `app/research/llm.py` |
 | **Contradiction detection** | Numeric (unit-aware divergence), polarity (affirms vs. negates), and temporal (same measure, different periods) detectors with severity ranking. | `app/core/contradictions.py` |
 | **Confidence engine** | Multi-signal score (citation support, axis coverage, source quality, contradiction penalty, …). Degraded runs are capped below the sufficiency threshold with an explanatory breakdown. | `app/core/confidence.py` |
 | **Evidence grading** | Claim→source→verification→independence→corroboration→contradiction records; per-claim investigation memory tracks corroboration attempts. | `app/core/evidence_grade.py`, `app/core/investigation_state.py` |
@@ -87,9 +87,9 @@ Query
   → final_report frame + persisted report
 ```
 
-The engine team is vendored under `backend/engine/` and driven by
-`app/engine/orchestrator.py`. Its two external seams are bridged to the rest of
-the product: generation goes through `app.core.llm.LLMClient` (so the **Model
+The research pipeline is first-party code under `app/research/`, driven by
+`app/engine/orchestrator.py`. It calls the rest of the product directly through
+two seams: generation goes through `app.core.llm.LLMClient` (so the **Model
 Control Center** decides what runs), and retrieval goes through
 `app.agents.search.SearchClient`. Persistent state lives in SQLite
 (`aiosqlite`); streaming is NDJSON over a single HTTP response.
@@ -400,12 +400,11 @@ The complete rulebook, including the bug classes each rule prevents, is
 
 ```text
 backend/
-  main.py                 FastAPI app + lifespan init (installs engine bridges)
-  engine/                 vendored multi-agent engine (refeng/ core + agent_team/)
-  app/engine/             engine adapters: orchestrator, llm/retriever bridges,
-                          event adapter
-  app/agents/             retained search + evidence/source helpers
-  app/graph/              shared helpers (evidence acquisition, research state)
+  main.py                 FastAPI app + lifespan init (publishes runtime handles)
+  app/research/           the research pipeline: runner, agents, skills, retrieval,
+                          scraping, context, prompts, config
+  app/engine/             runtime seam: orchestrator, event adapter, audit bridge
+  app/agents/             search + evidence/source/quality helpers
   app/api/routes.py       stream, resume, trace, export, sessions
   app/api/providers_routes.py  providers + fallback chains (Model Control Center)
   app/core/               config, llm client + cache, usage ledger, semantic
