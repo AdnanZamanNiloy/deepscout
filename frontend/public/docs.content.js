@@ -36,7 +36,7 @@
 
   var NAV = [
     { group: "Getting Started", items: [
-      { id: "introduction", title: "Introduction", icon: I.overview },
+      { id: "what-is-deepscout", title: "Introduction", icon: I.overview },
       { id: "capabilities", title: "Capabilities", icon: I.layers },
       { id: "quickstart", title: "Quick Start", icon: I.bolt },
       { id: "modes", title: "Research Modes", icon: I.control }
@@ -50,7 +50,7 @@
     { group: "Agents", items: [
       { id: "agents", title: "Agent Roster", icon: I.agents },
       { id: "search", title: "Search & Retrieval", icon: I.search },
-      { id: "summarizer", title: "Specialist Extraction", icon: I.book }
+      { id: "section-research", title: "Section Research", icon: I.book }
     ]},
     { group: "Evidence & Verification", items: [
       { id: "verification", title: "Claim Verification", icon: I.shield },
@@ -59,7 +59,7 @@
       { id: "confidence", title: "Confidence Engine", icon: I.gauge }
     ]},
     { group: "Operations", items: [
-      { id: "budget", title: "Cost & Budget", icon: I.gauge },
+      { id: "budget", title: "Run Limits", icon: I.gauge },
       { id: "stopping", title: "Depth & Stopping", icon: I.target },
       { id: "reliability", title: "Reliability", icon: I.warn },
       { id: "persistence", title: "Persistence & Trace", icon: I.db },
@@ -93,7 +93,7 @@
   function y(text) { return '<span class="tok-y">' + esc(text) + "</span>"; }
 
   /* ============================ Introduction ============================ */
-  C.introduction = [
+  C["what-is-deepscout"] = [
     '<div class="hero">',
       '<p class="eyebrow">Multi-Agent Research System · v2.1</p>',
       '<h1>Research beyond the obvious.</h1>',
@@ -107,18 +107,18 @@
         '<div class="hero-stat"><div class="v">1.00</div><div class="k">Verification F1 · 16 labeled cases</div></div>',
         '<div class="hero-stat"><div class="v">0%</div><div class="k">Hallucination leak · 6/6 rejected</div></div>',
         '<div class="hero-stat"><div class="v">1.00</div><div class="k">Contradiction detection F1</div></div>',
-        '<div class="hero-stat"><div class="v">343</div><div class="k">Offline tests passing</div></div>',
+        '<div class="hero-stat"><div class="v">577</div><div class="k">Offline tests passing</div></div>',
       "</div>",
     "</div>",
 
     "<h2 id=\"what-is-deepscout\">What DeepScout is</h2>",
-    "<p>DeepScout is not a chatbot wrapped around a search API. It behaves like a research organization assembled for one question: it understands the question before it searches, plans a strategy, delegates work to specialist agents, runs independent investigations, verifies evidence deterministically, attacks its own findings, and synthesizes a decision-ready answer with traceable citations.</p>",
-    "<p>The pipeline is a <strong>LangGraph state machine</strong> driving bounded, asynchronous agents. Generation runs on remote LLM APIs — Groq primary, HuggingFace fallback, plus any OpenAI-compatible endpoint you add. Every run persists its full timeline to SQLite, so it can be replayed, audited, or resumed after a failure.</p>",
+    "<p>DeepScout is not a chatbot wrapped around a search API. It behaves like a small research team assembled for one question: it researches the question first, plans a report outline from what it found, then researches each section of that outline — searching, reading, and citing real sources — before assembling and delivering a written report.</p>",
+    "<p>The pipeline is a <strong>LangGraph state machine</strong> driving bounded, asynchronous agents. Generation runs on remote LLM APIs — Groq primary, HuggingFace fallback, plus any OpenAI-compatible endpoint you add. Every run persists its full timeline to SQLite, so it can be replayed and audited.</p>",
 
     '<div class="callout">',
       '<span class="c-ico">', I.info, "</span>",
       '<div class="c-body"><div class="c-title">Built for modest hardware</div>',
-      "<p>DeepScout targets an 8&nbsp;GB RAM host with no GPU and no local model inference. Concurrency is bounded everywhere — <code>MAX_PARALLEL_SEARCH=2</code>, <code>MAX_PARALLEL_LLM=2</code>, <code>MAX_PARALLEL_AGENTS=3</code> — and raw page content is released from memory after verification. These are real constraints, not aspirations.</p></div>",
+      "<p>DeepScout targets an 8&nbsp;GB RAM host with no GPU and no local model inference. Concurrency is bounded everywhere — <code>MAX_PARALLEL_SEARCH=3</code>, <code>MAX_PARALLEL_LLM=4</code>, <code>MAX_PARALLEL_AGENTS=3</code> — and raw page content is released from memory after verification. These are real constraints, not aspirations.</p></div>",
     "</div>",
 
     "<h2 id=\"design-philosophy\">Design philosophy</h2>",
@@ -200,9 +200,9 @@
 
     '<h3 id="qs-tests">4 · Tests &amp; benchmarks</h3>',
     shBlock([
-      g("pytest") + t(" tests/ -v                 ") + c("# 343 tests, fully offline"),
+      g("pytest") + t(" tests/ -v                 ") + c("# 577 tests, fully offline"),
       g("python") + t(" bench/run_offline.py      ") + c("# deterministic, no network, no keys"),
-      g("python") + t(" bench/run_live.py         ") + c("# live-provider quality suite"),
+      g("python") + t(" bench/live_retrieval_check.py") + c("# live-provider retrieval probe"),
       g("ruff") + t(" check app tests bench scripts"),
       g("mypy") + t(" app")
     ]),
@@ -218,45 +218,20 @@
   C.modes = [
     '<p class="eyebrow">Getting started</p>',
     '<h2 id="modes">Research modes</h2>',
-    "<p class=\"lede\">A mode is an explicit budget-and-depth contract: how many agents, how many iteration passes, whether deep research is armed, and the confidence target the run must reach before it is allowed to stop.</p>",
+    "<p class=\"lede\">A mode is an explicit contract for how much research a run does: how many report sections the planner may propose, and how many times a review stage may send work back.</p>",
     '<div class="table-wrap"><table>',
-      "<thead><tr><th>Mode</th><th class=\"num\">Max agents</th><th class=\"num\">Max iterations</th><th>Deep research</th><th class=\"num\">Confidence target</th><th class=\"num\">Budget ×</th></tr></thead>",
+      "<thead><tr><th>Mode</th><th class=\"num\">Report sections</th><th class=\"num\">Plan revisions</th><th class=\"num\">Draft revisions</th><th class=\"num\">Fact-check revisions</th></tr></thead>",
       "<tbody>",
-        '<tr><td><strong>quick</strong></td><td class="num">2</td><td class="num">1</td><td>—</td><td class="num">0.60</td><td class="num">0.35×</td></tr>',
-        '<tr><td><strong>standard</strong></td><td class="num">4</td><td class="num">3</td><td>—</td><td class="num">0.75</td><td class="num">1.0×</td></tr>',
-        '<tr><td><strong>deep</strong></td><td class="num">5</td><td class="num">5</td><td><span class="pill mint">On</span></td><td class="num">0.80</td><td class="num">2.5×</td></tr>',
-
-
+        '<tr><td><strong>quick</strong></td><td class="num">3</td><td class="num">1</td><td class="num">1</td><td class="num">1</td></tr>',
+        '<tr><td><strong>standard</strong> <span class="pill mint">default</span></td><td class="num">5</td><td class="num">2</td><td class="num">2</td><td class="num">1</td></tr>',
+        '<tr><td><strong>deep</strong></td><td class="num">8</td><td class="num">2</td><td class="num">2</td><td class="num">1</td></tr>',
       "</tbody>",
     "</table></div>",
-    '<p class="small muted">Mode presets live in <code>MODE_PRESETS</code> (app/agents/orchestrator.py). <code>deep</code> is the only mode allowed to exceed <code>MAX_PARALLEL_AGENTS</code> — an explicit opt-in, then a budget-governor check. Retired names (<code>executive</code>, <code>audit</code>) are mapped forward by <code>resolve_mode</code> rather than rejected, so saved runs keep working.</p>',
+    '<p class="small muted">The mode sets <em>how much research happens</em>, not what the report looks like — every mode produces the same report shape (introduction, sections, conclusion, references). The section outline itself is derived from the question by the planner, so a mode with more sections researches the same subject more widely rather than changing the format. An unrecognised mode is not rejected; it falls back to <code>standard</code>.</p>',
 
-    '<h3 id="modes-recommend">Mode recommendation</h3>',
-    "<p><code>recommend_mode()</code> suggests a mode from the query shape, in priority order:</p>",
-    "<ul>",
-      "<li>Decision framing + high/very-high complexity → <code>deep</code></li>",
-      "<li>Very-high complexity → <code>deep</code></li>",
-      "<li>Low complexity + factual → <code>quick</code></li>",
-      "<li>Contested claim → <code>deep</code></li>",
-      "<li>Otherwise → <code>standard</code></li>",
-    "</ul>",
-
-    '<h3 id="modes-complexity">Complexity scoring</h3>',
-    "<p>The orchestrator scores complexity with an additive, LLM-free model — spending a model call to decide how many model calls to spend is a bad trade. Signals include query length, comparative/analytical/exploratory markers, entity count, time bounds, decision framing, controversy and multi-dimensionality.</p>",
-    '<div class="table-wrap"><table>',
-      '<thead><tr><th>Signal</th><th class="num">Points</th></tr></thead><tbody>',
-        '<tr><td>Comparative framing (<code>vs</code>, <code>compare</code>, <code>trade-offs</code>)</td><td class="num">+3</td></tr>',
-        '<tr><td>Query longer than 25 words</td><td class="num">+3</td></tr>',
-        "<tr><td>≥ 4 research dimensions detected</td><td class=\"num\">+3</td></tr>",
-        '<tr><td>Analytical framing (<code>should</code>, <code>impact</code>, <code>risk</code>)</td><td class="num">+2</td></tr>',
-        '<tr><td>Exploratory framing (<code>overview</code>, <code>trends</code>, <code>future of</code>)</td><td class="num">+2</td></tr>',
-        '<tr><td>Decision framing (<code>should we</code>, <code>invest</code>, <code>recommend</code>)</td><td class="num">+2</td></tr>',
-        '<tr><td>Contested (<code>debate</code>, <code>ethical</code>, <code>myth</code>)</td><td class="num">+1</td></tr>',
-        '<tr><td>Entity count ≥ 3</td><td class="num">+1</td></tr>',
-        '<tr><td>Time-bound (<code>2025</code>, <code>over</code>, <code>decade</code>)</td><td class="num">+1</td></tr>',
-      "</tbody>",
-    "</table></div>",
-    "<p><strong>Levels:</strong> score ≥ 7 → <code>very_high</code>; ≥ 5 → <code>high</code>; ≥ 3 → <code>medium</code>; else <code>low</code>. Base sub-question targets by level are 3 / 4 / 5 / 6 respectively. Ten dimensions can be detected (financial, market, technical, legal, policy, scientific, academic, geopolitical, environmental, social), capped at six.</p>"
+    '<h3 id="modes-waves">How the sections are researched</h3>',
+    "<p>Sections are researched in bounded waves of <code>MAX_PARALLEL_AGENTS</code> (default 3). Sections in the same wave cannot see each other's drafts, so each later wave is given the titles <em>and</em> the written drafts of the sections already completed. That is what lets a section be told not to restate a statistic or argument a sibling already made.</p>",
+    '<p class="small muted">A smaller wave means tighter de-duplication and longer wall-clock time; a larger wave is faster but the first wave has more independently-written sections.</p>'
   ];
 
   /* ============================ Architecture ============================ */
@@ -266,37 +241,35 @@
     '<p class="lede">One LangGraph instance drives the research loop. Each node is a bounded, independently testable agent; shared intelligence lives in deterministic core modules.</p>',
 
     '<div class="pipeline">',
-      '<div class="pipe-node"><div class="pn-ico">01</div><div class="pn-body"><div class="pn-title">Intent</div><div class="pn-desc">Resolve ambiguity, domain and explanation level before research is shaped.</div></div></div>', ARROW,
-      '<div class="pipe-node"><div class="pn-ico">02</div><div class="pn-body"><div class="pn-title">Orchestrator <code>app/agents/orchestrator.py</code></div><div class="pn-desc">Complexity score → target agents, iteration ceiling, required axes, budget multiplier.</div></div></div>', ARROW,
-      '<div class="pipe-node"><div class="pn-ico">03</div><div class="pn-body"><div class="pn-title">Planner <code>app/agents/planner.py</code></div><div class="pn-desc">Delegation contracts: axis, search type, minimum sources, variants, wave, sense.</div></div></div>', ARROW,
-      '<div class="pipe-node"><div class="pn-ico">04</div><div class="pn-body"><div class="pn-title">Search <code>app/agents/search.py</code></div><div class="pn-desc">Five providers, circuit breakers, canonical-url dedup, domain diversity caps, disk cache.</div></div></div>', ARROW,
-      '<div class="pipe-node"><div class="pn-ico">05</div><div class="pn-body"><div class="pn-title">Summarizer <code>app/agents/summarizer.py</code></div><div class="pn-desc">Wave-ordered specialist extraction; wave N receives wave N−1 findings as grounding.</div></div></div>', ARROW,
-      '<div class="pipe-node"><div class="pn-ico">06</div><div class="pn-body"><div class="pn-title">Verifier <code>app/agents/verifier.py</code></div><div class="pn-desc">Deterministic per-claim checks; blanks raw content after each pass.</div></div></div>', ARROW,
-      '<div class="pipe-node"><div class="pn-ico">07</div><div class="pn-body"><div class="pn-title">Critic · Contradictions · Confidence</div><div class="pn-desc">Sufficiency gate, conflict detection, evidence-derived score.</div></div></div>', ARROW,
-      '<div class="pipe-node"><div class="pn-ico">08</div><div class="pn-body"><div class="pn-title">Synthesizer <code>app/agents/synthesizer.py</code></div><div class="pn-desc">Sense-separated, cited answer with mandatory disambiguation.</div></div></div>', ARROW,
-      '<div class="pipe-node"><div class="pn-ico">09</div><div class="pn-body"><div class="pn-title">Quality gate → Citation health → Finalize</div><div class="pn-desc">Five-axis answer score, one bounded re-synthesis, live URL validation, persisted report.</div></div></div>',
+      '<div class="pipe-node"><div class="pn-ico">01</div><div class="pn-body"><div class="pn-title">Initial research</div><div class="pn-desc">A first research pass over the question, which seeds everything that follows.</div></div></div>', ARROW,
+      '<div class="pipe-node"><div class="pn-ico">02</div><div class="pn-body"><div class="pn-title">Planner <code>app/research/agents/editor.py</code></div><div class="pn-desc">Derives the report outline from that first pass. The mode caps how many sections it may propose.</div></div></div>', ARROW,
+      '<div class="pipe-node"><div class="pn-ico">03</div><div class="pn-body"><div class="pn-title">Section research <code>app/research/agents/research_unit.py</code></div><div class="pn-desc">Each section is researched in bounded waves. A wave is given the sections already written.</div></div></div>', ARROW,
+      '<div class="pipe-node"><div class="pn-ico">04</div><div class="pn-body"><div class="pn-title">Search + context <code>app/research/retrieval/</code>, <code>app/research/context/</code></div><div class="pn-desc">SearXNG with fallbacks, then pages are relevance-gated and filtered to what the section actually needs.</div></div></div>', ARROW,
+      '<div class="pipe-node"><div class="pn-ico">05</div><div class="pn-body"><div class="pn-title">Write <code>app/research/skills/writer.py</code></div><div class="pn-desc">Each section is written with its citations, scoped to its own subtopic.</div></div></div>', ARROW,
+      '<div class="pipe-node"><div class="pn-ico">06</div><div class="pn-body"><div class="pn-title">Review + revise</div><div class="pn-desc">A section can be sent back for revision against the task guidelines before it is accepted.</div></div></div>', ARROW,
+      '<div class="pipe-node"><div class="pn-ico">07</div><div class="pn-body"><div class="pn-title">Fact check</div><div class="pn-desc">The assembled draft is checked for factual problems and may be sent back to the writer once.</div></div></div>', ARROW,
+      '<div class="pipe-node"><div class="pn-ico">08</div><div class="pn-body"><div class="pn-title">Publish <code>app/research/agents/report_agents.py</code></div><div class="pn-desc">Assembles the markdown report: title, date, introduction, sections, conclusion, references.</div></div></div>', ARROW,
+      '<div class="pipe-node"><div class="pn-ico">09</div><div class="pn-body"><div class="pn-title">Audit <code>app/engine/audit_bridge.py</code></div><div class="pn-desc">The fact pool is reconstructed from the report and its sources, then scored: confidence, contradictions, evidence grades, quality.</div></div></div>',
     "</div>",
 
     '<div class="callout info">',
       '<span class="c-ico">', I.flow, "</span>",
-      '<div class="c-body"><div class="c-title">One loop, three exits</div>',
-      "<p><code>route_after_critic</code> chooses <strong>expand</strong> (more research), <strong>finalize</strong> (sufficient), or a hard stop (budget wall, iteration ceiling, marginal-gain stall, or no novel queries left). The stop logic lives in <code>app/core/depth_controller.py</code>.</p></div>",
+      '<div class="c-body"><div class="c-title">The answer and its audit are built separately</div>',
+      "<p>The report a reader sees is assembled from the researched sections and carries no score, no confidence number and no process metadata. The audit runs afterwards, deterministically and without a model call, and ships beside it in the same stream frame. That is why an ungrounded answer cannot be dressed up as a researched one.</p></div>",
     "</div>",
 
     '<h3 id="arch-modules">Core intelligence modules</h3>',
     '<div class="table-wrap"><table>',
       "<thead><tr><th>Module</th><th>Responsibility</th></tr></thead><tbody>",
-        "<tr><td><code>agents/intent.py</code></td><td>Ambiguity → ranked senses, domain, explanation level; deterministic fallback with a curated homonym table.</td></tr>",
-        "<tr><td><code>agents/answer_quality.py</code></td><td>Pre-delivery five-axis 0–100 score from measured state; one bounded re-synthesis; sub-threshold answers disclosed.</td></tr>",
-        "<tr><td><code>agents/planner.py</code></td><td>Delegation contracts with axis coverage enforcement and dependency waves (max 3).</td></tr>",
-        "<tr><td><code>agents/search.py</code></td><td>Five providers, per-provider circuit breakers, canonical-url and near-dup dedup, domain caps, freshness half-lives.</td></tr>",
-        "<tr><td><code>agents/verifier.py</code></td><td>Deterministic claim checks; memory hygiene.</td></tr>",
-        "<tr><td><code>core/contradictions.py</code></td><td>Polarity → temporal → unit-aware numeric detectors; severity ordering; cap 5.</td></tr>",
-        "<tr><td><code>core/confidence.py</code></td><td>Nine signals plus a pool-size-scaled contradiction penalty; degraded-run cap.</td></tr>",
-        "<tr><td><code>agents/citation_check.py</code></td><td>Live URL re-validation fused with sentence support into per-source verdicts.</td></tr>",
-        "<tr><td><code>core/semantic.py</code></td><td>CPU-light TF-IDF hybrid: stemming, synonym canonicalization, negation weighting.</td></tr>",
-        "<tr><td><code>core/depth_controller.py</code></td><td>Intelligent stopping: sufficiency, marginal-gain stalls, ceilings, budget walls.</td></tr>",
-        "<tr><td><code>core/decision.py</code></td><td>Decision layer (options → recommendation → rationale → risk) for strategic queries.</td></tr>",
+        "<tr><td><code>app/research/runner.py</code></td><td>Builds the run, compiles the graph, streams stage updates, assembles the final state.</td></tr>",
+        "<tr><td><code>app/research/llm.py</code></td><td>The generation funnel. Every model call goes through the Model Control Center, so its provider, breakers, cache and ledger all apply.</td></tr>",
+        "<tr><td><code>app/research/retrieval/base.py</code></td><td>Every retriever name resolves to one retriever backed by <code>SearchClient</code>.</td></tr>",
+        "<tr><td><code>app/research/context/lexical.py</code></td><td>BM25 chunk selection \u2014 the dependency-free context filter.</td></tr>",
+        "<tr><td><code>app/agents/search.py</code> + <code>searchkit/</code></td><td>Providers, circuit breakers, canonical-URL dedup, domain caps, freshness and page fetch.</td></tr>",
+        "<tr><td><code>app/core/contradictions.py</code></td><td>Polarity, temporal and unit-aware numeric detectors; severity ordering.</td></tr>",
+        "<tr><td><code>app/core/confidence.py</code></td><td>Multi-signal confidence with a contradiction penalty and a degraded-run cap.</td></tr>",
+        "<tr><td><code>app/core/evidence_grade.py</code></td><td>Per-claim evidence grading into a distribution.</td></tr>",
+        "<tr><td><code>app/core/semantic.py</code></td><td>CPU-light TF-IDF hybrid: stemming, synonym canonicalization, negation weighting.</td></tr>",
       "</tbody>",
     "</table></div>",
 
@@ -313,38 +286,28 @@
   C.workflow = [
     '<p class="eyebrow">Architecture</p>',
     '<h2 id="workflow">Research workflow</h2>',
-    '<p class="lede">The sixteen-step lifecycle, from question to auditable answer. Steps 5–12 form the bounded research loop; everything is streamed live to the console.</p>',
+    '<p class="lede">The lifecycle, from question to auditable answer. The stages are bounded: a run researches the outline it planned, once, and stops.</p>',
     '<div class="table-wrap"><table>',
       '<thead><tr><th class="num">#</th><th>Stage</th><th>What happens</th></tr></thead><tbody>',
         '<tr><td class="num">01</td><td><strong>Receive</strong></td><td>User submits a query and mode.</td></tr>',
-        '<tr><td class="num">02</td><td><strong>Understand</strong></td><td>Intent classifier resolves ambiguity, domain and explanation level.</td></tr>',
-        '<tr><td class="num">03</td><td><strong>Score</strong></td><td>Orchestrator scores complexity and sets plan targets.</td></tr>',
-        '<tr><td class="num">04</td><td><strong>Plan</strong></td><td>Planner emits delegation contracts, axis coverage and dependency waves.</td></tr>',
-        '<tr><td class="num">05</td><td><strong>Search</strong></td><td>Providers run concurrently under a bounded semaphore; results are deduped and diversity-capped.</td></tr>',
-        '<tr><td class="num">06</td><td><strong>Summarize</strong></td><td>Specialist agents extract claims per contract, wave by wave, with prerequisite grounding.</td></tr>',
-        '<tr><td class="num">07</td><td><strong>Collect</strong></td><td>Claims enter the evidence pool; raw content is released after verification.</td></tr>',
-        '<tr><td class="num">08</td><td><strong>Verify</strong></td><td>Deterministic checks annotate every claim with a score and reasons.</td></tr>',
-        '<tr><td class="num">09</td><td><strong>Challenge</strong></td><td>Critic attacks the evidence base and rules on sufficiency.</td></tr>',
-        '<tr><td class="num">10</td><td><strong>Resolve</strong></td><td>Contradiction detectors surface and rank conflicting evidence.</td></tr>',
-        '<tr><td class="num">11</td><td><strong>Decide depth</strong></td><td>Depth controller chooses expand or finalize.</td></tr>',
-        '<tr><td class="num">12</td><td><strong>Expand</strong></td><td>Corroboration and counter-evidence queries target the weakest claims, then loop back to search.</td></tr>',
-        '<tr><td class="num">13</td><td><strong>Synthesize</strong></td><td>Cited answer, sense-separated, with a decision layer for strategic queries.</td></tr>',
-        '<tr><td class="num">14</td><td><strong>Gate</strong></td><td>Five-axis quality score; one bounded re-synthesis if below threshold.</td></tr>',
-        '<tr><td class="num">15</td><td><strong>Validate</strong></td><td>Live citation health check on the report legend.</td></tr>',
-        '<tr><td class="num">16</td><td><strong>Deliver</strong></td><td>Report, evidence, contradictions, limitations and confidence persisted and streamed.</td></tr>',
+        '<tr><td class="num">02</td><td><strong>Initial research</strong></td><td>A first pass over the question, which grounds the outline.</td></tr>',
+        '<tr><td class="num">03</td><td><strong>Plan</strong></td><td>The editor derives the section outline. The mode caps how many sections.</td></tr>',
+        '<tr><td class="num">04</td><td><strong>Search</strong></td><td>Per section: sub-queries are planned from the section title, then providers run under a bounded semaphore.</td></tr>',
+        '<tr><td class="num">05</td><td><strong>Fetch + filter</strong></td><td>Pages are scraped, then relevance-gated against the section and reduced to the chunks that matter.</td></tr>',
+        '<tr><td class="num">06</td><td><strong>Write the section</strong></td><td>Cited prose, scoped to the section, with the already-written sections supplied to avoid overlap.</td></tr>',
+        '<tr><td class="num">07</td><td><strong>Review + revise</strong></td><td>A bounded review loop can send the section back for revision.</td></tr>',
+        '<tr><td class="num">08</td><td><strong>Assemble</strong></td><td>The writer produces the introduction and conclusion around the researched sections.</td></tr>',
+        '<tr><td class="num">09</td><td><strong>Fact check</strong></td><td>The assembled draft is checked; it may be sent back once.</td></tr>',
+        '<tr><td class="num">10</td><td><strong>Publish</strong></td><td>The report is assembled as markdown with references.</td></tr>',
+        '<tr><td class="num">11</td><td><strong>Audit</strong></td><td>The fact pool is reconstructed from the report and its sources, then scored.</td></tr>',
+        '<tr><td class="num">12</td><td><strong>Deliver</strong></td><td>Report, sources, claims, contradictions and confidence are persisted and streamed.</td></tr>',
       "</tbody>",
     "</table></div>",
 
-    '<h3 id="wf-corrob">Targeted corroboration</h3>',
-    "<p>When a claim rests on a single publisher, the workflow does not passively hope for a second source. It builds a claim-specific query that targets the claim’s own terms, <em>excludes</em> the current publisher (<code>-site:domain</code>), and aims at authoritative registries — government, education, international, agencies, journals and datasets. A per-claim investigation registry spends a bounded attempt budget (<code>max_corroboration_attempts = 2</code>) and records outcomes, so exhausted single-source gaps are disclosed as limitations rather than silently re-chased.</p>",
-
-    '<h3 id="wf-counter">Counter-evidence by design</h3>',
-    "<p>The prompt is explicit: do not only search for support. For every single-source or contradicted claim, the workflow issues a query seeking counter-evidence, limitations, or credible opposing views. These ride the normal expansion loop — no extra pipeline stage.</p>",
-
     '<div class="callout">',
       '<span class="c-ico">', I.search, "</span>",
-      '<div class="c-body"><div class="c-title">Executed-query memory</div>',
-      "<p>Every query actually issued is remembered by normalized text, so an identical query can never be re-issued across passes. A repeat would return the same evidence at full cost.</p></div>",
+      '<div class="c-body"><div class="c-title">Relevance is a gate, not a ranker</div>',
+      "<p>Each sub-query can surface papers about something else entirely \u2014 a weather-forecasting benchmark in a report about hiring, say. Pages that engage nothing in the section\u2019s subject are dropped before the writer sees them, so a stray result cannot become a paragraph. The gate is deliberately a floor: it never empties a section\u2019s evidence, because a thin report is better than no report.</p></div>",
     "</div>"
   ];
 
@@ -352,32 +315,21 @@
   C.orchestration = [
     '<p class="eyebrow">Architecture</p>',
     '<h2 id="orchestration">Orchestration &amp; waves</h2>',
-    '<p class="lede">The planner does not emit a flat list of questions. It emits contracts with dependency awareness, and the summarizer executes them in dependency order.</p>',
+    '<p class="lede">The report is not written in one pass. Sections are researched independently, in waves, and the waves are ordered so that each can build on what earlier ones established rather than repeat them.</p>',
 
-    '<h3 id="orch-contract">Delegation contracts</h3>',
-    "<p>Every sub-question is a structured contract. This is what prevents agents from duplicating one another and keeps each investigation bounded.</p>",
-    '<div class="code-block" data-lang="contract.json"><div class="code-head"><span class="lang">delegation contract</span><button class="copy-btn" type="button">', I.copy, " Copy</button></div><pre><code>{\n  \"id\": 2,\n  \"question\": \"Compare capex and levelised cost of nuclear vs solar\",\n  \"axis\": \"comparison\",\n  \"search_type\": \"comparison\",\n  \"specialist\": \"financial\",\n  \"minimum_sources\": 3,\n  \"priority\": 1,\n  \"depends_on\": [1],\n  \"wave\": 1,\n  \"sense\": \"\",\n  \"variants\": [\"nuclear vs solar cost per MWh\"],\n  \"primary_source_query\": \"site:gov OR site:edu nuclear LCOE solar LCOE\"\n}</code></pre></div>",
+    '<h3 id="orch-waves">How waves work</h3>',
+    "<p>At most <code>MAX_PARALLEL_AGENTS</code> sections are researched at a time. When a wave completes, its section titles <em>and</em> its written drafts become input to the next wave\u2019s writers:</p>",
+    '<div class="code-block" data-lang="python"><div class="code-head"><span class="lang">what a later section is given</span><button class="copy-btn" type="button">', I.copy, " Copy</button></div><pre><code>existing_headers = [{&quot;subtopic task&quot;: &quot;Section A&quot;, &quot;note&quot;: &quot;covered by another section&quot;}]\nrelevant_written_contents = [{&quot;section_title&quot;: &quot;Section A&quot;, &quot;written_content&quot;: &quot;...the draft another section already wrote...&quot;}]</code></pre></div>",
+    "<p>Those two inputs are what the section prompt\u2019s anti-duplication instructions were written against. Without them the instruction is a request the writer cannot satisfy; with them it is something it can check.</p>",
 
-    '<h3 id="orch-axis">Axis coverage enforcement</h3>',
-    "<p>The orchestrator derives <strong>required research axes</strong> from the query shape, and the planner is required to cover them. Missing axes are injected deterministically rather than left to the model’s discretion.</p>",
-    "<ul>",
-      "<li>Non-quick modes always require the <code>evidence</code> and <code>criticism</code> axes.</li>",
-      "<li><code>mechanism</code> is added for analytical, comparative or exploratory queries, or when recency matters.</li>",
-      "<li><code>comparison</code> for comparative queries; <code>outlook</code> when recency-sensitive; <code>definition</code> for factual or low-complexity queries.</li>",
-      "<li>Required axes are capped at 5; specialists at 5.</li>",
-      "<li>A <code>counter_evidence</code> axis is <strong>always on</strong>, for every query.</li>",
-    "</ul>",
+    '<div class="callout">',
+      '<span class="c-ico">', I.brain, "</span>",
+      '<div class="c-body"><div class="c-title">The tradeoff is deliberate</div>',
+      "<p>A smaller wave means more overlap prevented and a longer run; a larger one is faster but the first wave always contains sections that cannot see each other. The default of 3 is a balance, not a guarantee \u2014 the first wave is the irreducible case.</p></div>",
+    "</div>",
 
-    '<h3 id="orch-waves">Dependency waves</h3>',
-    "<p>Contracts carry explicit dependencies, sanitized deterministically: dangling deps and self-references are dropped, each node keeps at most three deps, cycles are broken, and depth is capped at two — never more than three waves, as a latency floor.</p>",
-    "<p>Within a wave, contracts run concurrently with <code>asyncio.gather</code>. Dependent contracts in later waves receive the accumulated findings of earlier waves as bounded grounding context — so “compare X vs Y” runs <em>after</em> “what is X” and can resolve references it could not from raw pages alone.</p>",
-    '<div class="code-block" data-lang="waves"><div class="code-head"><span class="lang">execution waves</span><button class="copy-btn" type="button">', I.copy, " Copy</button></div><pre><code>wave 0  [ definition ]  [ evidence ]        <span class=\"tok-c\"># concurrent</span>\n              \\              /\n               v            v\nwave 1  [ comparison ]  [ mechanism ]       <span class=\"tok-c\"># receive wave-0 findings</span>\n                    |\n                    v\nwave 2  [ counter_evidence ]                <span class=\"tok-c\"># adversarial close-out</span></code></pre></div>",
-
-    '<div class="callout info">',
-      '<span class="c-ico">', I.control, "</span>",
-      '<div class="c-body"><div class="c-title">Hardware cap</div>',
-      "<p><code>MAX_PARALLEL_AGENTS</code> defaults to 3 on the 8&nbsp;GB host and is enforced at dispatch, not merely documented. <code>deep</code> is the only mode permitted to lift the cap, and only with the budget governor armed.</p></div>",
-    "</div>"
+    '<h3 id="orch-review">Bounded review loops</h3>',
+    "<p>Plan review and draft review may each send work back a fixed number of times, and the fact checker may revise once. Every loop has a ceiling: past it the graph force-accepts and moves on, so a stage that keeps finding fault cannot hold the request open. Each ceiling is reported in the stream rather than being invisible.</p>"
   ];
 
   /* ============================ Streaming ============================ */
@@ -385,21 +337,17 @@
     '<p class="eyebrow">Architecture</p>',
     '<h2 id="streaming">Streaming events</h2>',
     '<p class="lede"><code>POST /api/research/stream</code> returns newline-delimited JSON (NDJSON). Each line is one event; the console renders them as a live research timeline.</p>',
-    '<div class="code-block" data-lang="http"><div class="code-head"><span class="lang">http · request</span><button class="copy-btn" type="button">', I.copy, " Copy</button></div><pre><code>POST /api/research/stream\nContent-Type: application/json\n\n{ \"query\": \"Should Bangladesh expand nuclear energy?\", \"mode\": \"deep\" }</code></pre></div>",
+    '<div class="code-block" data-lang="http"><div class="code-head"><span class="lang">http · request</span><button class="copy-btn" type="button">', I.copy, " Copy</button></div><pre><code>POST /api/research/stream\nContent-Type: application/json\n\n{ &quot;query&quot;: &quot;Should Bangladesh expand nuclear energy?&quot;, &quot;mode&quot;: &quot;deep&quot; }</code></pre></div>",
 
     '<h3 id="stream-schema">Event schema</h3>',
     '<div class="card" style="padding:8px 0">',
-      '<div class="event-row"><div class="e-name">progress</div><div class="e-desc"><code>request_id</code>, <code>message</code> — run accepted, identity assigned.</div></div>',
-      '<div class="event-row"><div class="e-name">intent</div><div class="e-desc"><code>query_type</code>, <code>domain</code>, <code>explanation_level</code>, <code>ambiguity</code>, <code>senses</code>, <code>recommended_action</code>.</div></div>',
-      '<div class="event-row"><div class="e-name">plan</div><div class="e-desc"><code>items</code> (sub-questions), <code>orchestration</code> (complexity, targets, clamping), <code>waves</code>.</div></div>',
-      '<div class="event-row"><div class="e-name">search_progress</div><div class="e-desc"><code>snippets</code> — cumulative source count.</div></div>',
-      '<div class="event-row"><div class="e-name">critic</div><div class="e-desc"><code>iteration</code>, <code>reason</code>, <code>breakdown</code> (confidence signals), <code>budget</code> (live ledger).</div></div>',
-      '<div class="event-row"><div class="e-name">findings</div><div class="e-desc"><code>items</code> — claims with verification flags, scores and reasons. Re-emitted once with <code>verified_update: true</code> after verification.</div></div>',
-      '<div class="event-row"><div class="e-name">final_report</div><div class="e-desc"><code>report</code>, <code>confidence</code>, <code>degraded</code>, <code>answer_support</code>, <code>budget</code>, <code>wave_report</code>, <code>citation_health</code>.</div></div>',
-      '<div class="event-row"><div class="e-name">decisions</div><div class="e-desc"><code>items</code> — decision-layer options for strategic queries.</div></div>',
+      '<div class="event-row"><div class="e-name">progress</div><div class="e-desc"><code>request_id</code>, <code>session_id</code>, <code>message</code> — run accepted, then a label per stage as the pipeline works.</div></div>',
+      '<div class="event-row"><div class="e-name">plan</div><div class="e-desc"><code>items</code> — the planned report sections.</div></div>',
+      '<div class="event-row"><div class="e-name">critic</div><div class="e-desc"><code>iteration</code>, <code>reason</code> — the fact checker outcome, and what it wants revised.</div></div>',
+      '<div class="event-row"><div class="e-name">final_report</div><div class="e-desc"><code>report</code>, <code>confidence</code>, <code>confidence_breakdown</code>, <code>quality</code>, <code>contradictions</code>, <code>source_count</code>.</div></div>',
       '<div class="event-row"><div class="e-name">error</div><div class="e-desc"><code>message</code> — actionable cause (key, quota, timeout).</div></div>',
     "</div>",
-    '<p class="small muted">A backend event type with no matching frontend case is silently dropped, so the NDJSON contract and the UI are treated as one contract and changed together.</p>'
+    '<p class="small muted">Those five are the only types emitted. A stage the pipeline has no honest signal for is not invented; the frontend treats every event type as optional, so a run renders cleanly without one. A backend event type with no matching frontend case would be silently dropped, so the NDJSON contract and the UI are changed together.</p>'
   ];
 
   /* ============================ Agents ============================ */
@@ -408,22 +356,21 @@
     '<h2 id="agents">Agent roster</h2>',
     '<p class="lede">DeepScout operates as a temporary research organization. Each agent has one job, a deterministic fallback, and a specific module.</p>',
     '<div class="grid cols-2">',
-      '<div class="feature"><div class="f-ico">', I.target, "</div><h4>Intent classifier</h4><p><code>agents/intent.py</code> — resolves meaning before research. Ranked senses, domain, explanation level, deterministic homonym fallback.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.brain, "</div><h4>Orchestrator</h4><p><code>agents/orchestrator.py</code> — LLM-free complexity scoring, target agents, required axes, mode recommendation and budget multiplier.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.flow, "</div><h4>Planner</h4><p><code>agents/planner.py</code> — delegation contracts, axis-coverage enforcement, dependency waves, primary-source query hints.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.search, "</div><h4>Scout / retrieval</h4><p><code>agents/search.py</code> — five providers under circuit breakers, dedup, domain diversity caps, page fetch and PDF extraction.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.book, "</div><h4>Specialists</h4><p><code>agents/summarizer.py</code> — eight role overlays (financial, technical, market, legal, scientific, policy, academic, general) extracting structured claims.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.shield, "</div><h4>Verifier</h4><p><code>agents/verifier.py</code> — deterministic per-claim checks: overlap, authority, numeric grounding, polarity, quote location, freshness.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.warn, "</div><h4>Critic</h4><p><code>agents/critic.py</code> — sufficiency gate plus an adversarial self-check of the evidence base.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.scale, "</div><h4>Contradiction engine</h4><p><code>core/contradictions.py</code> — polarity, temporal and unit-aware numeric detectors with severity ranking.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.gauge, "</div><h4>Synthesizer</h4><p><code>agents/synthesizer.py</code> — cites claims, separates senses, mandates disambiguation, builds an answer-first outline.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.check, "</div><h4>Quality gate</h4><p><code>agents/answer_quality.py</code> — five-axis score, one bounded re-synthesis, disclosure of sub-threshold drafts.</p></div>",
+      '<div class="feature"><div class="f-ico">', I.search, "</div><h4>Researcher</h4><p><code>research/researcher.py</code> — one research unit: choose a role for the query, gather evidence, write its report. Skills: research conductor, report generator, context manager, browser manager, source curator.</p></div>",
+      '<div class="feature"><div class="f-ico">', I.flow, "</div><h4>Editor / planner</h4><p><code>research/agents/editor.py</code> — derives the section outline from the initial research, then runs the sections in bounded waves so each can avoid restating earlier ones.</p></div>",
+      '<div class="feature"><div class="f-ico">', I.book, "</div><h4>Section research unit</h4><p><code>research/agents/research_unit.py</code> — researches one section, with a reviewer and reviser loop that can send it back for revision.</p></div>",
+      '<div class="feature"><div class="f-ico">', I.layers, "</div><h4>Writer</h4><p><code>research/agents/report_agents.py</code> — writes the report introduction and conclusion from the researched sections.</p></div>",
+      '<div class="feature"><div class="f-ico">', I.shield, "</div><h4>Fact checker</h4><p><code>research/agents/report_agents.py</code> — reviews the assembled draft for factual problems and may send it back to the writer once.</p></div>",
+      '<div class="feature"><div class="f-ico">', I.bolt, "</div><h4>Visualizer</h4><p><code>research/agents/report_agents.py</code> — proposes a single diagram from the research data, which the UI renders as a figure.</p></div>",
+      '<div class="feature"><div class="f-ico">', I.check, "</div><h4>Publisher</h4><p><code>research/agents/report_agents.py</code> — assembles the final markdown: title, date, introduction, sections, conclusion, references.</p></div>",
+      '<div class="feature"><div class="f-ico">', I.target, "</div><h4>Retrieval</h4><p><code>research/retrieval/</code> + <code>agents/search.py</code> — SearXNG with Wikipedia / arXiv / Crossref fallbacks, circuit breakers, dedup, domain diversity and page fetch.</p></div>",
+      '<div class="feature"><div class="f-ico">', I.scale, "</div><h4>Audit layer</h4><p><code>engine/audit_bridge.py</code> + <code>core/</code> — reconstructs the fact pool from the report and its sources, then runs confidence, contradiction and evidence-grade analysis.</p></div>",
     "</div>",
 
     '<h3 id="agents-fallback">The fallback contract</h3>',
-    "<p>Every LLM-calling agent follows the same shape: try the model, validate the output, and on failure fall back to a deterministic default while recording the degradation. A new agent without a non-LLM fallback is a regression relative to the rest of the system.</p>",
-    '<div class="code-block" data-lang="python"><div class="code-head"><span class="lang">python · the required shape</span><button class="copy-btn" type="button">', I.copy, " Copy</button></div><pre><code>NAME_SYSTEM_PROMPT = <span class=\"tok-y\">\"\"\"...\"\"\"</span>.strip()\n\n<span class=\"tok-g\">async def</span> name_agent(llm, ...) -&gt; ...:\n    <span class=\"tok-g\">try</span>:\n        payload = <span class=\"tok-g\">await</span> llm.generate_json(NAME_SYSTEM_PROMPT, user_prompt)\n    <span class=\"tok-g\">except</span> Exception <span class=\"tok-g\">as</span> exc:\n        logger.warning(<span class=\"tok-y\">\"[Name] LLM failed, using fallback\"</span>, exc_info=exc)\n        <span class=\"tok-g\">return</span> deterministic_fallback(...)\n\n    result = extract_and_validate(payload)\n    <span class=\"tok-g\">if not</span> result:\n        logger.warning(<span class=\"tok-y\">\"[Name] empty/invalid LLM output, using fallback\"</span>)\n        <span class=\"tok-g\">return</span> deterministic_fallback(...)\n    <span class=\"tok-g\">return</span> result</code></pre></div>",
-    '<p class="small muted">The critic extends this pattern with query-type-aware gating: definitional shape is required only when the query is factual or definitional, so comparative and analytical queries are never forced into guaranteed expansion loops.</p>'
+    "<p>Every LLM-calling step follows the same shape: try the model, validate the output, and on failure fall back to a deterministic default while logging the degradation with its context. A new step without a non-LLM fallback is a regression relative to the rest of the system.</p>",
+    '<div class="code-block" data-lang="python"><div class="code-head"><span class="lang">python · the required shape</span><button class="copy-btn" type="button">', I.copy, " Copy</button></div><pre><code><span class=\"tok-g\">async def</span> name_step(llm: LLMFunnel, ...) -&gt; ...:\n    <span class=\"tok-g\">try</span>:\n        payload = <span class=\"tok-g\">await</span> llm.generate_json(SYSTEM_PROMPT, user_prompt)\n    <span class=\"tok-g\">except</span> Exception <span class=\"tok-g\">as</span> exc:\n        logger.warning(<span class=\"tok-y\">\"[Name] LLM failed, using fallback\"</span>, exc_info=exc)\n        <span class=\"tok-g\">return</span> deterministic_fallback(...)\n\n    result = extract_and_validate(payload)\n    <span class=\"tok-g\">if not</span> result:\n        logger.warning(<span class=\"tok-y\">\"[Name] empty/invalid LLM output, using fallback\"</span>)\n        <span class=\"tok-g\">return</span> deterministic_fallback(...)\n    <span class=\"tok-g\">return</span> result</code></pre></div>",
+    '<p class="small muted">A fallback that empties the result is worse than an error the caller can see: a report that silently contains nothing reads as a finding rather than a failure.</p>'
   ];
 
   /* ============================ Search ============================ */
@@ -459,36 +406,39 @@
         '<tr><td>Encyclopedia</td><td class="num">2200</td></tr>',
       "</tbody>",
     "</table></div>",
-    "<p>Undated sources receive a mid-scale score of <code>0.45</code> rather than being treated as stale. Fetching is bulwarked — <code>MAX_PARALLEL_SEARCH=2</code> for searches, <code>MAX_PARALLEL_FETCH=4</code> for content — capped at 3&nbsp;MB per page, with clear block-page detection.</p>"
+    "<p>Undated sources receive a mid-scale score of <code>0.45</code> rather than being treated as stale. Fetching is bulwarked — <code>MAX_PARALLEL_SEARCH=3</code> for searches, <code>MAX_PARALLEL_FETCH=4</code> for content — capped at 3&nbsp;MB per page, with clear block-page detection.</p>"
   ];
 
   /* ============================ Summarizer ============================ */
-  C.summarizer = [
+  C["section-research"] = [
     '<p class="eyebrow">Agents</p>',
-    '<h2 id="summarizer">Specialist extraction</h2>',
-    '<p class="lede">The summarizer is not one generic prompt. It is eight specialists sharing one disciplined output contract.</p>',
-    '<h3 id="sum-roles">Roles</h3>',
-    "<p>The planner routes each contract to a specialist via its domain. Each role appends a focused overlay to the base extraction prompt:</p>",
-    "<p>",
-      '<span class="pill pill-deepscout">financial</span> <span class="pill">technical</span> <span class="pill">market</span> <span class="pill">legal</span> ',
-      '<span class="pill">scientific</span> <span class="pill">policy</span> <span class="pill">academic</span> <span class="pill">general</span>',
-    "</p>",
-    '<h3 id="sum-rules">Extraction rules</h3>',
+    '<h2 id="section-research">Section research</h2>',
+    '<p class="lede">Each report section is researched on its own, by a full research pass scoped to that one section\'s title — then reviewed and revised before it joins the report.</p>',
+    '<h3 id="sum-roles">How a section is researched</h3>',
+    "<ol>",
+      "<li>The section is researched: sub-queries are planned from the section title, sources are retrieved, and pages are fetched and filtered against that subtopic.</li>",
+      "<li>The evidence is relevance-gated: pages that engage nothing in the section\'s subject are dropped, so a sub-query cannot smuggle in an unrelated study.</li>",
+      "<li>The draft is written with the sections already completed supplied to the writer, which is what keeps two sections from making the same point twice.</li>",
+      "<li>A reviewer and reviser loop may send the draft back against the task guidelines before it is accepted.</li>",
+    "</ol>",
+
+    '<h3 id="sum-rules">Section rules</h3>',
     "<ul>",
-      "<li>Rewrite, never copy. One fact per claim, maximum five claims per source.</li>",
-      "<li>The source URL is copied exactly; unattributable claims are discarded.</li>",
-      "<li>Numbers keep their unit, period and scope.</li>",
-      "<li>Model confidence is banded, then blended with source authority: <code>0.70 × model + 0.25 × source</code>.</li>",
-      "<li>Claims whose source reliability falls below <code>0.55</code> or whose query overlap falls below <code>0.15</code> are dropped.</li>",
+      "<li>Write only about this section. A loosely related example belongs to the section whose subtopic it actually serves.</li>",
+      "<li>Do not restate a statistic, example or argument another section already made \u2014 reference it in a phrase instead.</li>",
+      "<li>Every sentence carrying a number, date or factual assertion ends with an inline citation to the exact source it came from.</li>",
+      "<li>A comparison or ranking must state its criteria and apply them to every item it compares.</li>",
+      "<li>Where the evidence only shows research potential \u2014 a method, prototype or dataset \u2014 say so rather than presenting it as demonstrated practice.</li>",
+      "<li>Paragraphs stay short and technical terms are defined once in plain words.</li>",
     "</ul>",
     '<div class="callout">',
       '<span class="c-ico">', I.layers, "</span>",
-      '<div class="c-body"><div class="c-title">Wave grounding and cache correctness</div>',
-      "<p>Later-wave specialists receive up to five prior findings as a “prerequisite findings already established” block, so they do not re-extract what earlier waves settled. The extraction cache is keyed by role, sense and a digest of prerequisite findings — and <code>PROMPT_VERSION</code> is bumped on any change to claim shape, so stale claims can never be served from cache.</p></div>",
+      '<div class="c-body"><div class="c-title">Waves are what make de-duplication possible</div>',
+      "<p>Sections researched fully in parallel cannot see each other, so two sections independently reach for the same headline statistic. Running them in bounded waves, and handing each wave the drafts already written, is what turns the anti-duplication instructions in the prompt from a request into something the writer can actually satisfy.</p></div>",
     "</div>"
   ];
 
-  /* ============================ Verification ============================ */
+
   C.verification = [
     '<p class="eyebrow">Evidence &amp; Verification</p>',
     '<h2 id="verification">Claim verification</h2>',
@@ -614,26 +564,27 @@
   /* ============================ Budget ============================ */
   C.budget = [
     '<p class="eyebrow">Operations</p>',
-    '<h2 id="budget">Cost &amp; budget</h2>',
-    '<p class="lede">Every run has a budget, a live ledger, and a governor that refuses work the run cannot pay for.</p>',
-    '<h3 id="bud-ceilings">Four ceilings</h3>',
+    '<h2 id="budget">Run limits</h2>',
+    '<p class="lede">Every run is bounded, so a slow or failing provider can never hold a request open indefinitely. The bounds are wall-clock and call-count based — DeepScout does not meter or cap spend.</p>',
+    '<h3 id="bud-ceilings">The ceilings</h3>',
     '<div class="table-wrap"><table>',
       '<thead><tr><th>Ceiling</th><th class="num">Default</th><th>Setting</th></tr></thead><tbody>',
-        '<tr><td>Estimated cost</td><td class="num">$0.50</td><td><code>max_budget_usd</code></td></tr>',
-        '<tr><td>Tokens</td><td class="num">400,000</td><td><code>max_budget_tokens</code></td></tr>',
-        '<tr><td>LLM calls</td><td class="num">60</td><td><code>max_llm_calls</code></td></tr>',
-        '<tr><td>Wall-clock seconds</td><td class="num">300</td><td><code>max_research_seconds</code></td></tr>',
+        '<tr><td>LLM calls per run</td><td class="num">60</td><td><code>MAX_LLM_CALLS</code></td></tr>',
+        '<tr><td>Research wall-clock seconds</td><td class="num">300</td><td><code>MAX_RESEARCH_SECONDS</code></td></tr>',
+        '<tr><td>Per-request ceiling</td><td class="num">1000</td><td><code>RESEARCH_TIMEOUT_SEC</code></td></tr>',
+        '<tr><td>Per-call timeout (Groq / Hugging Face)</td><td class="num">60</td><td><code>LLM_TIMEOUT_SEC</code></td></tr>',
+        '<tr><td>Per-call timeout (custom provider)</td><td class="num">60</td><td><code>CUSTOM_LLM_TIMEOUT_SEC</code></td></tr>',
+        '<tr><td>Concurrent LLM calls</td><td class="num">4</td><td><code>MAX_PARALLEL_LLM</code></td></tr>',
       "</tbody>",
     "</table></div>",
-    "<p>Mode multipliers scale all four ceilings together. The governor’s <code>can_afford_pass</code> estimate uses a 3.9&nbsp;chars-per-token ratio and estimates input, output and call counts before approving an expansion pass.</p>",
+    "<p>Mode multipliers scale the run ceilings together. The custom-provider timeout is separate because OpenAI-compatible hosts are typically slower on planner-sized prompts, and the circuit breaker trips on a single timeout so one stalled host cannot degrade every stage.</p>",
 
     '<h3 id="bud-ledger">The run ledger</h3>',
-    "<p>The ledger rides a <code>ContextVar</code>, so concurrent runs never share state. It tracks tokens and USD by stage, LLM calls, search calls, cache hits and misses, wall time, and a worst-case utilization fraction. Cache hits record tokens but charge <strong>$0</strong> — a hit refunds USD while keeping token accounting honest.</p>",
-    "<p>Search cost is not negligible when it is paid: SearXNG aggregates free upstream engines, so the whole search stack costs <strong>$0</strong>. LLM pricing is per-model and prefix-matched, with a conservative default of <code>(0.0004, 0.0008)</code> USD per 1K input/output tokens.</p>",
+    "<p>The ledger rides a <code>ContextVar</code>, so concurrent runs never share state. It counts LLM calls, search calls, cache hits and misses, and wall time per run. Those counts are what the UI shows; DeepScout deliberately does not attach a price to them.</p>",
     '<div class="callout info">',
       '<span class="c-ico">', I.info, "</span>",
-      '<div class="c-body"><div class="c-title">The ledger is a control input, not just a meter</div>',
-      "<p>The depth controller consults the ledger before every expansion, and the live snapshot streams to the UI on each critic event. Cost-aware reasoning is part of the loop, not a post-hoc report.</p></div>",
+      '<div class="c-body"><div class="c-title">Bounded work, not metered spend</div>',
+      "<p>There is no USD ceiling, no token ceiling, and no budget governor. If a run cannot finish inside <code>RESEARCH_TIMEOUT_SEC</code> it is reported as a timeout rather than left hanging, and the browser disconnects cleanly on Stop.</p></div>",
     "</div>"
   ];
 
@@ -641,23 +592,16 @@
   C.stopping = [
     '<p class="eyebrow">Operations</p>',
     '<h2 id="stopping">Depth &amp; stopping</h2>',
-    '<p class="lede">DeepScout must know when to stop. The depth controller is pure and stateless, and decides expand versus finalize from measured state — never from a model’s optimism.</p>',
-    '<h3 id="stop-order">Decision order</h3>',
+    '<p class="lede">A run ends when its stages finish or when a bound is hit. There is no adaptive depth controller: the amount of work a run does is decided up front, by the mode and the outline the planner produces.</p>',
+    '<h3 id="stop-order">How much a run does</h3>',
     "<ol>",
-      "<li><strong>Hard walls first.</strong> Budget exhausted or iteration ceiling reached → finalize immediately.</li>",
-      "<li><strong>Minimum depth.</strong> Mode minimum iterations not yet reached → expand.</li>",
-      "<li><strong>Evidence completeness.</strong> Uncovered axes, active high-impact uncorroborated claims, severe contradictions or thin dimensions → expand if novel follow-ups exist; otherwise finalize and disclose gaps as limitations.</li>",
-      "<li><strong>Critic signal.</strong> Insufficient with novel follow-ups → expand.</li>",
-      "<li><strong>Soft stops.</strong> Sufficiency (critic sufficient, or confidence at target with no weak axes); two consecutive marginal-gain stalls; or no novel queries remain.</li>",
+      "<li><strong>Mode sets the ceiling.</strong> The planner may propose up to <code>3</code> sections in <code>quick</code>, <code>5</code> in <code>standard</code> and <code>8</code> in <code>deep</code>.</li>",
+      "<li><strong>Section research runs in waves.</strong> <code>MAX_PARALLEL_AGENTS</code> sections are researched at a time; each wave's writers also receive the sections already written, so later sections do not restate earlier findings.</li>",
+      "<li><strong>Review loops are bounded.</strong> Plan review and draft review may each send work back a fixed number of times; the fact checker may revise once.</li>",
+      "<li><strong>Bounds end the run.</strong> If a stage exceeds its share of the budget or the request hits <code>RESEARCH_TIMEOUT_SEC</code>, the run stops and says so.</li>",
     "</ol>",
-    "<p>Marginal gain tracks confidence deltas across iterations against <code>min_marginal_gain = 0.03</code>. Novel-query memory uses Jaccard similarity ≥ 0.8, so a rephrasing of an already-issued query is recognised as not novel.</p>",
-    '<div class="table-wrap"><table>',
-      '<thead><tr><th>Mode</th><th class="num">Minimum iterations</th></tr></thead><tbody>',
-        "<tr><td><code>quick</code></td><td class=\"num\">1</td></tr>",
-
-      "</tbody>",
-    "</table></div>",
-    "<p class=\"small muted\">When a stop is driven by a wall rather than sufficiency, the reason is written into the report’s Limitations section — an early stop is disclosed, never hidden.</p>"
+    "<p>There is no confidence target per mode and no marginal-gain stopping: a run researches the sections it planned, once, and assembles the report.</p>",
+    '<p class="small muted">When a run stops on a bound rather than completing, the reason is reported in the stream as an <code>error</code> or <code>timeout</code> event — an early stop is disclosed, never hidden.</p>'
   ];
 
   /* ============================ Reliability ============================ */

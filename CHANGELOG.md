@@ -1,5 +1,45 @@
 # Changelog
 
+## Unreleased — First-party research pipeline
+
+The multi-agent research engine that previously drove every request was
+replaced by first-party code, and the code it had already displaced was removed.
+
+- **Pipeline re-authored under `app/research/`.** 36 modules covering the run
+  config, prompt families, the generation funnel, BM25 context filtering,
+  retrieval, scraping, document loaders, the researcher and its skills, and the
+  LangGraph agent team. The pipeline calls `app.core.llm.LLMClient` (generation)
+  and `app.agents.search.SearchClient` (retrieval) **directly**, so the Model
+  Control Center governs every call with no monkeypatched provider factory and
+  no `sys.path` bootstrap. `app/engine/llm_bridge.py` and
+  `app/engine/retriever_bridge.py` are gone.
+- **Engine tree deleted.** The vendored engine is removed entirely.
+- **Dead first-party code removed.** `app/agents/orchestrator.py`,
+  `app/agents/confidence.py`, `app/agents/planner.py`, `app/agents/planning/`,
+  `app/core/schemas.py`, and the inert epistemic-adjustment branch in
+  `app/core/confidence.py` — all unreachable since the engine landed.
+- **Retrieval unified.** Every retriever name resolves to
+  `app/research/retrieval/base.py::SearchClientRetriever`.
+- **34 dead settings deleted** from `app/core/config.py` (and the matching
+  `.env.example` keys): the depth controller, intent classifier, query router,
+  answer quality gate, citation checker and the whole `SYNTHESIS_*` block.
+  107 settings -> 73. `CONFIG.md` was rewritten against the live config so it
+  cannot drift again.
+- **Report quality.** Sections are researched in bounded waves, and each wave's
+  writers receive the sections already written, which is what the
+  anti-duplication prompt instructions were always written against. Duplicate
+  Introduction/Conclusion headings are collapsed; a source-relevance gate drops
+  pages that engage nothing in the report's subject; references must name a
+  specific publication and "Author not specified" filler is stripped; the
+  report is dated with the actual run date; mermaid diagrams render as figures
+  in the UI.
+- **Docs brought back in line with the code.** README, ARCHITECTURE, CONFIG,
+  SETUP, AGENTS and this file now describe the shipped system: no cost-ceiling
+  claims, correct resume semantics, the five stream events actually emitted, the
+  full endpoint list, and real defaults throughout.
+
+577 backend tests pass; ruff clean.
+
 ## Unreleased — Backend consolidation
 
 Continuing the reduction of the backend surface, without changing behaviour.
@@ -15,11 +55,14 @@ Continuing the reduction of the backend surface, without changing behaviour.
 - **Contradiction resolution folded in.** `core/contradiction_resolution.py` is
   merged into `core/contradictions.py` (detection + resolution now live
   together; the resolution pass no longer imports four private helpers across a
-  module boundary). Public names `resolve_contradiction`,
-  `resolve_contradictions`, `unresolved_contradictions` are re-exported from
-  the merged module, so imports are unchanged in effect.
+  module boundary). Public names `resolve_contradiction` and
+  `resolve_contradictions` are re-exported from the merged module, so imports
+  are unchanged in effect.
 
-All 1,694 tests pass; ruff clean.
+> Note: most modules named above were subsequently removed by the
+> first-party-pipeline consolidation (the facade targets `core/depth.*`,
+> `core/synthesis_intel.*` and `agents/epistemic.*` no longer exist). This
+> entry is kept as a record of work done at the time.
 
 ## Unreleased — Question-shaped answers
 

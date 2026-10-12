@@ -19,10 +19,16 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r backend/requirements.txt
 ```
 
-Dependencies (all pure-Python or wheels — nothing compiles):
-FastAPI, LangGraph, httpx, tenacity, diskcache, aiosqlite, cryptography,
-structlog, slowapi, pydantic-settings, numpy.
-`pymupdf` is optional and only enables PDF extraction from arXiv results.
+Runtime dependencies (all install cleanly from wheels):
+FastAPI, uvicorn, LangGraph, langchain-text-splitters, httpx, tenacity,
+diskcache, aiosqlite, cryptography, structlog, slowapi, pydantic,
+pydantic-settings, numpy, python-dotenv, ddgs, beautifulsoup4, json-repair.
+
+`pymupdf` (PDF extraction), `python-docx` (DOCX export) and `weasyprint` (PDF
+export) are optional at runtime — the features that use them degrade if the
+library is missing. Note that `weasyprint` also needs system libraries (pango,
+cairo) beyond its wheel, so PDF export can fail on a bare host even when it
+installed. Test dependencies are pytest, pytest-asyncio and respx.
 
 ### Configure the LLM (in the app, not here)
 
@@ -81,21 +87,32 @@ Search needs no search API key. Wikipedia, arXiv and Crossref are queried
 directly and work with nothing installed; SearXNG adds general web search and
 is what the system queries by default.
 
+**The backend starts SearXNG for you.** With `SEARXNG_AUTOSTART=true` (the
+default) it spawns SearXNG from a local clone on startup, waits for it to
+answer `/healthz`, and stops it again on shutdown — so one command runs the
+whole system. You only need the clone prepared once:
+
 ```bash
-git clone https://github.com/searxng/searxng.git
+# clone into <repo>/searxng (that exact path, or set SEARXNG_HOME)
+git clone https://github.com/searxng/searxng.git searxng
 cd searxng
 python3 -m venv .venv && .venv/bin/pip install -U -r requirements.txt
 
-# give it a secret key, then run it
+# give it a secret key
 cp settings.yml settings.local.yml
 #   edit settings.local.yml -> server: secret_key: "<any long random string>"
-SEARXNG_SETTINGS_PATH=settings.local.yml .venv/bin/python -m searx.webapp
 ```
 
-It listens on `127.0.0.1:8080`, which is where the backend already looks
-(`SEARXNG_URL`). No container runtime is needed. Leave it running in its own
-terminal. If it is down, runs still work — they fall back to Wikipedia, arXiv
-and Crossref.
+Two details matter. SearXNG must run on **its own** virtualenv — flask, lxml
+and curl_cffi are not backend dependencies — so point `SEARXNG_PYTHON` at
+`<repo>/searxng/.venv/bin/python` if it is not where the backend looks. And it
+listens on `127.0.0.1:8080`, which is where the backend already looks
+(`SEARXNG_URL`); no container runtime is needed.
+
+If SearXNG never comes up, runs still work — they fall back to Wikipedia, arXiv
+and Crossref. Set `SEARXNG_ENABLED=false` to skip it deliberately, or
+`SEARXNG_AUTOSTART=false` to keep the old behaviour of running it yourself in
+its own terminal.
 
 ### Start the server
 
@@ -119,8 +136,8 @@ curl -N -X POST http://127.0.0.1:8000/api/research/stream \
   -d '{"query": "What is the evidence that retrieval augmented generation reduces hallucinations?", "mode": "standard"}'
 ```
 
-Each line of the response is a JSON event (`plan`, `search_progress`,
-`findings`, `critic`, `final_report`, ...). The full event schema is in
+Each line of the response is a JSON event. There are five types: `progress`,
+`plan`, `critic`, `final_report` and `error`. The full event schema is in
 `ARCHITECTURE.md`.
 
 ---
@@ -149,18 +166,16 @@ npx vite preview       # serve the built bundle
 
 Select the research mode in the composer:
 
-| Mode | Agents | Max passes | Confidence target | Use for |
-|---|---|---|---|---|
-| Mode | Agents | Max passes | Confidence target | Use for |
-|---|---|---|---|---|
-| quick | 2 | 1 | 0.60 | fast lookups |
-| standard | 3 | 3 | 0.75 | default research |
-| deep | 5 | 5 | 0.80 | multi-angle investigations |
+| Mode | Report sections | Plan revisions | Draft revisions | Fact-check revisions | Use for |
+|---|---|---|---|---|---|
+| `quick` | 3 | 1 | 1 | 1 | fast lookups |
+| `standard` (default) | 5 | 2 | 2 | 1 | normal research |
+| `deep` | 8 | 2 | 2 | 1 | multi-angle investigations |
 
-`standard` is the default. The retired `executive` and `audit` modes are still
-accepted: an old run, saved URL, or older client sending one of them is mapped to
-the mode that inherited its behaviour (`executive` -> `deep`, `audit` ->
-`standard`) rather than rejected.
+The mode sets how much research a run does — how many sections the planner may
+propose, and how many times a stage may send work back. It does not change the
+report's shape or its audit. An unknown mode is not rejected: it falls back to
+`standard`.
 
 ---
 
@@ -186,7 +201,7 @@ test below); the offline suite covers the deterministic components only.
 
 ```bash
 cd backend
-../.venv/bin/python -m pytest tests/ -q   # ~1460 tests, all offline
+../.venv/bin/python -m pytest tests/ -q   # 577 tests, all offline
 ```
 
 Every test runs without network or API keys: HTTP is mocked with respx, the
@@ -225,9 +240,11 @@ still work using Wikipedia, arXiv and Crossref alone.
 **Runs feel slow**
 - The first run of a query pays full search + LLM latency; re-runs hit the
   disk caches (search: 1h TTL; LLM prompts: 6h TTL).
-- `MAX_PARALLEL_LLM=2` is deliberate — raising it on free tiers causes
-  429s that cost more time than they save.
-- `deep` mode runs up to 5 passes; use `standard` for interactive work.
+- `MAX_PARALLEL_LLM=4` balances quota against stalls: a free tier's daily
+  token limit is exhausted by a few parallel large prompts, while a paid or
+  large-context endpoint waits at a low value. Lower it for a strict free tier.
+- `deep` mode proposes 8 report sections instead of 5, and runs its sections in
+  waves; use `standard` for interactive work.
 
 **Some SearXNG engines report "too many requests"**
 SearXNG aggregates many upstreams and some rate-limit unauthenticated traffic.

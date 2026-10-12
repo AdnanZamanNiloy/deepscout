@@ -41,14 +41,14 @@ API:             app/api/routes.py (stream, resume, trace, export, sessions);
                  app/api/providers_routes.py (providers + chains).
 Core:            app/core/*.py (config, llm client + response cache, usage
                  ledger, semantic engine, confidence, contradictions,
-                 evidence grading, isolation, degradation, providers).
+                 evidence grading, degradation, providers).
 Shared helpers:  app/agents/ retains search + evidence/source helpers used by
                  app/core and the audit bridge (app/agents/search.py,
                  app/agents/evidence/, app/agents/sources/, app/agents/quality/).
 Persistence:     app/db/sqlite.py (auto-initializing schema)
 Benchmarks:      bench/ (run_offline.py deterministic component suite,
-                 datasets.py labeled fixtures, eval_depth/eval_router/
-                 eval_contradictions/eval_retrieval/eval_provider/eval_report_quality).
+                 datasets.py labeled fixtures, eval_contradictions/
+                 eval_retrieval/eval_provider/eval_report_quality).
 Frontend:        frontend/src/App.jsx consumes the NDJSON stream; components
                  in frontend/src/components/
 ```
@@ -68,7 +68,7 @@ Commands:
 # Setup (repo root; backend lives in backend/, frontend in frontend/)
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r backend/requirements.txt
-cp backend/.env.example backend/.env   # fill in GROQ_API_KEY at minimum
+cp backend/.env.example backend/.env   # optional: no key is required to start
 cd frontend && npm install && cd ..
 
 # Run
@@ -79,7 +79,7 @@ cd frontend && npm run dev
 cd backend && pytest tests/ -v
 
 # Lint (configured in backend/pyproject.toml; install: pip install "ruff>=0.6")
-cd backend && ruff check app tests bench scripts
+cd backend && ruff check app tests bench
 
 # Type check (baseline, informational — see [tool.mypy] in backend/pyproject.toml)
 cd backend && mypy app
@@ -408,7 +408,7 @@ Not acceptable:  except Exception: return ""
 Minimum bar:     except Exception as exc: logger.warning(..., exc_info=exc); return fallback_value
 ```
 
-If a fallback is genuinely intended behavior (not just "don't crash"), say so in a comment the way `summarizer.py`'s "Heuristic fallback when the model output is malformed or empty" comment already does well — that's the standard to match, not the bare `except:` blocks in `search.py`'s `_wiki()`/`_fetch_content()`. A silent catch is exactly what let the planner bug survive undetected — every broad exception handler is a place a future bug can hide the same way.
+If a fallback is genuinely intended behavior (not just "don't crash"), say so in a comment. A silent catch is exactly what let the planner bug survive undetected — every broad exception handler is a place a future bug can hide the same way. The standard in `app/research/` is the pattern every skill follows: `logger.warning("[Name] ...", exc_info=exc)` on the way to a documented deterministic fallback, as in `ResearchConductor._search` (logs the retriever that failed, returns `[]` for that retriever only) and `app/research/runner.py::_sanitize_markdown` (falls back to a plain whitespace tidy rather than dropping the report).
 
 ### 4.5 — No dead code
 
@@ -469,10 +469,12 @@ fallback is a regression relative to the rest of the codebase, even if it
 The target host has 8GB RAM and no local model inference — every constraint here is about orchestration memory and concurrency, not compute:
 
 ```text
-- Default concurrency caps (MAX_PARALLEL_SEARCH, and MAX_PARALLEL_AGENTS
-  once it exists) start low (2-3) and only get raised after you've
+- Default concurrency caps (MAX_PARALLEL_SEARCH, MAX_PARALLEL_FETCH and
+  MAX_PARALLEL_AGENTS) start low (3-4) and only get raised after you've
   actually measured memory headroom under load — not because a feature
-  spec suggests a bigger number.
+  spec suggests a bigger number. MAX_PARALLEL_AGENTS is the wave size
+  for section research, so lowering it also tightens cross-section
+  de-duplication at the cost of latency.
 - Release raw fetched content (SearchResult.content) from memory once
   it's been summarized. Don't let full source text accumulate across a
   whole research run's state.
