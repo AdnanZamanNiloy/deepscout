@@ -121,7 +121,10 @@ class Researcher:
         if response:
             try:
                 payload = json_repair.loads(response)
-            except Exception:
+            except Exception as exc:
+                # A non-JSON config response means "no override", not a failure;
+                # logged so a permanently malformed config is visible.
+                logger.debug("[Researcher] config response was not JSON", exc_info=exc)
                 payload = None
         if isinstance(payload, dict) and payload.get("server") and payload.get("agent_role_prompt"):
             return payload["server"], payload["agent_role_prompt"]

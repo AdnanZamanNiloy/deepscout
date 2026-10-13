@@ -94,12 +94,6 @@ export function renderInline(text: string, keyBase = "i"): ReactNode[] {
   return nodes;
 }
 
-/** True when the text contains at least one inline marker worth parsing. */
-export function hasInlineMarkdown(text: string): boolean {
-  const src = String(text ?? "");
-  return /\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`|\[[^\]\n]+\]\(https?:\/\//.test(src);
-}
-
 /**
  * Drop a markdown marker left dangling at the very end of a string.
  *

@@ -939,3 +939,20 @@ test("the critic reason is sent whole, not sliced in the adapter", async () => {
   assert.doesNotMatch(src, /reason=str\(notes\)\[:\d+\]/,
     "the critic reason must not be truncated with a character slice");
 });
+
+test("a quoted span keeps its chip while markdown still renders", async () => {
+  // Regression from the shared-renderer refactor: swapping in renderInline
+  // dropped the quoted-span chip, because the old renderer applied both in one
+  // pass. Quotes are now applied AFTER markdown, so they compose.
+  const html = await render({
+    events: [{
+      type: "critic", iteration: 1,
+      reason: 'Checked the "quantum key distribution" claim and the **post-quantum** standard.',
+      __ts: 1,
+    }],
+    status: "done",
+  });
+  assert.match(html, /<code class="apt-inline">quantum key distribution<\/code>/);
+  assert.match(html, /<strong>post-quantum<\/strong>/);
+  assert.doesNotMatch(html, /"quantum key distribution"/, "the quotes must be consumed");
+});

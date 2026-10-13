@@ -107,7 +107,11 @@ class ResearchRunner:
         if hitl is None:
             try:
                 hitl = bool(get_settings().plan_review_interactive)
-            except Exception:
+            except Exception as exc:
+                # Settings are optional for a bare run; default to no review
+                # rather than failing, but say so — a silent fallback here would
+                # make "the toggle did nothing" impossible to diagnose.
+                logger.warning("[Runner] plan-review setting unreadable, defaulting off", exc_info=exc)
                 hitl = False
         self.hitl = bool(hitl)
         # Items: ("activity", RunnerEvent) | ("node", (node, output)) | None sentinel.
@@ -144,7 +148,8 @@ class ResearchRunner:
         try:
             plan_timeout = float(get_settings().plan_review_timeout_sec)
             alternatives = int(get_settings().plan_review_alternatives)
-        except Exception:
+        except Exception as exc:
+            logger.warning("[Runner] plan-review timing unreadable, using defaults", exc_info=exc)
             plan_timeout, alternatives = 300.0, 3
         return {
             "query": self.query,

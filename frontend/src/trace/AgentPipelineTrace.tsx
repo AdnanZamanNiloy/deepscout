@@ -199,7 +199,7 @@ function Prose({ text }: { text: string }) {
 
   while ((m = URL_RE.exec(text)) !== null) {
     // Inline markdown first, so a URL that appears inside bold text is bold.
-    if (m.index > last) nodes.push(...renderInline(text.slice(last, m.index), `t${key++}`));
+    if (m.index > last) nodes.push(...inlineChunk(text.slice(last, m.index), `t${key++}`));
     const url = m[0];
     nodes.push(
       <a
@@ -214,9 +214,19 @@ function Prose({ text }: { text: string }) {
     );
     last = m.index + url.length;
   }
-  if (last < text.length) nodes.push(...renderInline(text.slice(last), `t${key++}`));
+  if (last < text.length) nodes.push(...inlineChunk(text.slice(last), `t${key++}`));
 
   return <>{nodes}</>;
+}
+
+/* Inline markdown, then the quoted-span chip treatment on whatever plain text
+ * came back. Quotes are applied AFTER markdown so a `"quoted query"` inside
+ * bold text is still chipped; the old renderer did this in one pass and lost
+ * it when the markdown half was replaced. */
+function inlineChunk(text: string, keyBase: string): ReactNode[] {
+  return renderInline(text, keyBase).flatMap((n, i) =>
+    typeof n === "string" ? highlightQuotes(n, `${keyBase}-s${i}`) : [n],
+  );
 }
 
 /** Wrap "quoted spans" in the inline chip treatment. */
