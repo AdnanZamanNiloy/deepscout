@@ -117,3 +117,19 @@ test("the app stores stage lifecycle frames on the run", () => {
 test("patchRun accepts an updater so the stage map merges safely", () => {
   assert.match(APP, /typeof patch === "function" \? patch\(m\.run\) : patch/);
 });
+
+test("a plan_review frame only opens the card when it is awaiting an outline", () => {
+  // Regression: a restored run carries legacy frames written before `status`
+  // existed. They arrive as `done` with no alternatives, and treating "not
+  // expired" as "awaiting" rendered an EMPTY card — no sections, nothing to
+  // approve, dead Start button.
+  assert.match(APP, /if \(evt\.status !== "awaiting"\) break;/);
+  assert.match(APP, /if \(!Array\.isArray\(evt\.alternatives\) \|\| !evt\.alternatives\.length\) break;/);
+});
+
+test("the card renders nothing rather than an empty outline", () => {
+  // The second line of defence: even if a review object somehow reaches the
+  // card with no sections, it must not draw a choice list with zero choices.
+  assert.match(CARD, /const alternatives = \(review\?\.alternatives \|\| \[\]\)\.filter\(/);
+  assert.match(CARD, /if \(!alternatives\.length\) return null;/);
+});

@@ -501,6 +501,12 @@ export default function App() {
           patchRun(tempId, { planReview: null });
           break;
         }
+        // Only an explicit `awaiting` opens the card. Frames written before the
+        // status field existed arrive as `done` (or with no status at all) and
+        // carry no alternatives; treating "not expired" as "awaiting" rendered
+        // an empty card with nothing to approve and a dead Start button.
+        if (evt.status !== "awaiting") break;
+        if (!Array.isArray(evt.alternatives) || !evt.alternatives.length) break;
         patchRun(tempId, {
           planReview: {
             runId: typeof evt.run_id === "string" ? evt.run_id : null,
@@ -512,9 +518,7 @@ export default function App() {
             // rather than when the card happened to mount.
             deadlineTs: typeof evt.deadline_ts === "number" ? evt.deadline_ts : null,
             title: typeof evt.title === "string" ? evt.title : "",
-            alternatives: Array.isArray(evt.alternatives)
-              ? evt.alternatives.filter((a) => Array.isArray(a) && a.length)
-              : [],
+            alternatives: evt.alternatives.filter((a) => Array.isArray(a) && a.length),
             submitting: false,
             error: "",
           },
@@ -831,7 +835,7 @@ export default function App() {
 
   /* Fixed page title: the current research question on the workspace view,
    * plain view names elsewhere. The menu acts on the displayed chat. */
-  const VIEW_TITLES = { missions: "Research", evidence: "Evidence", knowledge: "Knowledge", agents: "Agents", "model-controls": "Model Controls" };
+  const VIEW_TITLES = { missions: "Research", agents: "Agents", "model-controls": "Model Controls" };
   const titleMessage = [...messages].reverse().find((m) =>
     (m.kind === "run" && m.run?.query) ||
     (m.kind === "replay" && m.query) ||

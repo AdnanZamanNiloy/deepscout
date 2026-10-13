@@ -42,7 +42,13 @@ function formatCountdown(seconds) {
  * is the default, and the user narrows it down rather than building it up.
  */
 export default function PlanReviewCard({ review, onSubmit }) {
-  const alternatives = review?.alternatives || [];
+  // A review with no outline is not reviewable. Bailing here means a legacy or
+  // malformed frame cannot render an empty card with a dead Start button —
+  // there is nothing to approve, so there is nothing to show.
+  const alternatives = (review?.alternatives || []).filter(
+    (a) => Array.isArray(a) && a.length,
+  );
+  if (!alternatives.length) return null;
   const submitting = review?.submitting === true;
   const error = review?.error || "";
 
