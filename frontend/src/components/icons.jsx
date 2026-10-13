@@ -40,6 +40,10 @@ export const IconChevronLeft = (p) => base({ ...p, children: <path d="m15 18-6-6
 export const IconChevronRight = (p) => base({ ...p, children: <path d="m9 18 6-6-6-6" /> });
 export const IconRefresh = (p) => base({ ...p, children: <><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></> });
 export const IconMenu = (p) => base({ ...p, children: <><path d="M4 6h16M4 12h16M4 18h16" /></> });
+/* The insights-panel toggle. One icon for BOTH states on purpose: a chevron
+ * that changes direction is easy to misread (it looks like "scroll"), while
+ * this reads as "the panel" and the accessible name carries show/hide. */
+export const IconPanel = (p) => base({ ...p, children: <><circle cx="5" cy="7" r="2" /><path d="M10 7h11" /><circle cx="5" cy="16" r="2" /><path d="M10 16h11" /></> });
 export const IconMore = (p) => base({ ...p, children: <><circle cx="12" cy="5" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="12" cy="19" r="1.4" /></> });
 export const IconX = (p) => base({ ...p, children: <><path d="M18 6 6 18M6 6l12 12" /></> });
 export const IconPencil = (p) => base({ ...p, children: <><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></> });

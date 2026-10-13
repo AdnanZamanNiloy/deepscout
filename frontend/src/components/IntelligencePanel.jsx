@@ -1,6 +1,6 @@
 import {
-  IconAlert, IconChart, IconCheckCircle, IconChevronRight,
-  IconDoc, IconRefresh, IconSearch, IconShield, IconShieldCheck, IconTarget,
+  IconAlert, IconChart, IconCheckCircle,
+  IconDoc, IconPanel, IconRefresh, IconSearch, IconShield, IconShieldCheck, IconTarget,
 } from "./icons";
 
 /* Mission Intelligence — the run's instrument rail.
@@ -88,8 +88,14 @@ export default function IntelligencePanel({
             )}
           </p>
         </div>
-        <button className="icon-btn" onClick={onCollapse} title="Collapse panel" aria-label="Collapse the intelligence panel">
-          <IconChevronRight size={15} />
+        <button
+          className="icon-btn"
+          onClick={onCollapse}
+          aria-expanded={true}
+          title="Hide run insights"
+          aria-label="Hide the run insights panel"
+        >
+          <IconPanel size={15} />
         </button>
       </div>
 

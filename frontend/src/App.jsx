@@ -16,7 +16,7 @@ import AgentsView from "./components/AgentsView";
 import ModelControlsView from "./components/ModelControlsView";
 import Landing from "./components/Landing";
 import DocsView from "./components/DocsView";
-import { IconChevronDown, IconChevronLeft, IconMenu, IconPencil, IconPin, IconTrash } from "./components/icons";
+import { IconChevronDown, IconMenu, IconPanel, IconPencil, IconPin, IconTrash } from "./components/icons";
 
 let seq = 1;
 const nid = () => `m${Date.now()}-${seq++}`;
@@ -1038,8 +1038,14 @@ export default function App() {
               onResume={() => activeRun && resumeRun(activeRun)}
             />
             {intelCollapsed ? (
-              <button className="icon-btn intel-expand" onClick={() => setIntelCollapsed(false)} title="Expand panel" aria-label="Expand panel">
-                <IconChevronLeft size={15} />
+              <button
+                className="icon-btn intel-expand"
+                onClick={() => setIntelCollapsed(false)}
+                aria-expanded={false}
+                title="Show run insights"
+                aria-label="Show the run insights panel"
+              >
+                <IconPanel size={15} />
               </button>
             ) : null}
           </ErrorBoundary>
