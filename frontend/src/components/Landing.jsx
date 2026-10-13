@@ -52,13 +52,15 @@ const PREVIEW_RECENT = [
 ];
 
 /* Capabilities — what the system does that a single-prompt assistant does not.
- * Every line maps to a real module in the pipeline (planner, evidence grader,
- * confidence engine, contradiction resolver, depth controller). */
+ * Every line maps to a real module in the pipeline: the planner
+ * (app/agents/architect.py), the evidence grader and claim hygiene
+ * (app/evidence/), the confidence engine and contradiction resolver
+ * (app/core/), and the source tiering (app/evidence/sources/). */
 const CAPABILITIES = [
   {
     icon: IconRoute,
     title: "Question decomposition",
-    desc: "Hard queries are split into delegation contracts with explicit axes and search types, so every dimension of the question is researched, not just the most quotable one.",
+    desc: "The question is researched first, then split into an outline whose sections are planned from what was actually found — so every part of the question is investigated, not just the most quotable one.",
   },
   {
     icon: IconSearch,
@@ -72,8 +74,8 @@ const CAPABILITIES = [
   },
   {
     icon: IconLayers,
-    title: "Evidence grading A–D",
-    desc: "Claims are graded on primacy, independent corroboration and numeric grounding. Grades drive what leads the answer, what is hedged, and what is omitted.",
+    title: "Evidence grading",
+    desc: "Claims are graded on source primacy, independent corroboration and numeric grounding. Grades drive what leads the answer, what is hedged, and what is omitted.",
   },
   {
     icon: IconFlask,
@@ -87,8 +89,8 @@ const CAPABILITIES = [
   },
   {
     icon: IconTarget,
-    title: "Adaptive depth",
-    desc: "The depth controller decides when the evidence is sufficient and stops. Quick, standard and deep modes set research breadth and iteration budgets to the stakes.",
+    title: "Bounded effort",
+    desc: "Every run is bounded in advance: sections per mode, revision loops, parallel agents, LLM calls and wall-clock time. The run stops at its budget and says so rather than expanding without limit.",
   },
   {
     icon: IconChart,
@@ -97,15 +99,15 @@ const CAPABILITIES = [
   },
 ];
 
-/* Research modes — the orchestrator's real MODE_PRESETS, three of them.
- * The "Executive" mode this list used to advertise was removed from the
- * backend (its decision/contested handling folded into `deep`), so listing it
- * here described a mode that cannot be selected. The agent and pass counts are
- * the preset values themselves, not marketing round numbers. */
+/* Research modes — the section counts the runner actually uses
+ * (`_MODE_SECTIONS` in app/research/runner.py) and the revision budgets that
+ * go with them (`_build_task`). The "Executive" mode this list used to
+ * advertise was removed from the backend long ago, so listing it described a
+ * mode that cannot be selected. */
 const MODES = [
-  { name: "Quick", desc: "A fast, tight answer with a single research pass. Two agents, no expansion loops — for lookups and simple questions." },
-  { name: "Standard", desc: "Balanced breadth and verification for everyday research questions. Three agents, up to three passes." },
-  { name: "Deep", desc: "Wider decomposition, deeper evidence requirements and a pass budget that scales with the research map." },
+  { name: "Quick", desc: "3 sections, one revision loop, up to 3 agents. For lookups and narrow factual questions where breadth is not the point." },
+  { name: "Standard", desc: "5 sections and up to 2 revision loops. Balanced breadth and verification for everyday research questions." },
+  { name: "Deep", desc: "8 sections with the same revision ceilings but a wider decomposition, so more of the question gets its own investigation." },
 ];
 
 /* Guarantees — the non-negotiable behaviours the pipeline enforces. */
@@ -436,7 +438,7 @@ export default function Landing({ onStart, onDocs, onDemo }) {
             <button type="button" className="landing-footer-linkbtn" onClick={onStart}>
               Start research
             </button>
-            <span className="landing-footer-meta">7-agent pipeline</span>
+            <span className="landing-footer-meta">8-stage pipeline</span>
             <span className="landing-footer-meta">3 research modes</span>
             <span className="landing-footer-meta">Bring-your-own key or default chain</span>
           </nav>

@@ -3,7 +3,7 @@
  * and cost are not instrumented yet — said plainly rather than faked.
  *
  * The roster mirrors the shipped research graph
- * (`app/agents/orchestrator.py`): eight stages in execution order. */
+ * (`app/agents/team.py`): eight stages in execution order. */
 
 import { IconChart, IconDoc, IconSearch, IconShieldCheck, IconTarget } from "./icons";
 

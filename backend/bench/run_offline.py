@@ -512,8 +512,8 @@ def write_markdown_report(report: Dict[str, Any], results_dir: Path) -> Path:
     a("  constraint): synonym-level paraphrases are partially handled by the")
     a("  stemmer + curated synonym map; deeper equivalence needs embeddings.")
     a("- Offline benchmarks exercise deterministic components and a scripted")
-    a("  end-to-end pipeline. Live-model quality (planner/synthesizer wording)")
-    a("  is measured by `bench/run_live.py` with real provider keys.")
+    a("  end-to-end pipeline. They say nothing about live-model wording, which is")
+    a("  judged by reading real runs; there is no automated live-model benchmark.")
     a("")
 
     md_path = results_dir / "BENCHMARK_RESULTS.md"

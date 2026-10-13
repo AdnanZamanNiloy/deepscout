@@ -201,7 +201,7 @@ test below); the offline suite covers the deterministic components only.
 
 ```bash
 cd backend
-../.venv/bin/python -m pytest tests/ -q   # 577 tests, all offline
+../.venv/bin/python -m pytest tests/ -q   # 602 tests, all offline
 ```
 
 Every test runs without network or API keys: HTTP is mocked with respx, the

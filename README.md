@@ -55,18 +55,19 @@ handling, and calibrated confidence. Measured results are in
 
 | Capability | What it does | Where |
 |---|---|---|
-| **Multi-agent research team** | A LangGraph team (browser → editor/planner → researcher → writer → fact checker → visualizer → publisher) conducts the research and assembles the report. | `app/agents/`, `app/runtime/orchestrator.py` |
-| **Human-in-the-loop plan review** | Opt-in: a run pauses after planning, proposes alternative outlines, and waits for the user to approve or edit them before section research. Defaults to automatic approval when disabled. | `app/runtime/plan_review.py`, `app/agents/report.py` |
-| **Wave-based section research** | Report sections are researched in bounded waves, each running a research → review → revise loop; each wave sees the sections already written so writers do not repeat them. | `app/agents/` |
+| **Multi-agent research team** | A LangGraph team of eight stages — `pathfinder → architect → review_gate → scout_swarm → narrative_writer → evidence_auditor → diagram_designer → report_assembler` — conducts the research and assembles the report. | `app/agents/team.py` |
+| **Human-in-the-loop plan review** | Opt-in: a run pauses after planning, proposes alternative outlines, and waits for the user to approve or edit them before section research. Defaults to automatic approval when disabled, and the UI counts down to the real deadline. | `app/runtime/plan_review.py`, `app/agents/report.py` |
+| **Wave-based section research** | Report sections are researched in bounded waves, each running a research → review → revise loop; each wave sees the sections already written so writers do not repeat them. | `app/agents/architect.py`, `app/agents/scout.py` |
 | **Multi-provider search** | Self-hosted SearXNG metasearch plus Wikipedia, arXiv and Crossref — no search API key — with canonical-URL dedup, domain diversity, circuit breakers, and a bounded disk cache. | `app/retrieval/client.py` |
 | **Provider control** | The Model Control Center selects a single OpenAI-compatible provider or an ordered fallback chain; pipeline generation is routed through it, with breakers, response cache and usage ledger. | `app/core/providers.py`, `app/research/llm.py` |
+| **Stage lifecycle on the wire** | Every graph node announces when it starts and finishes, so the live pipeline rail and the live trace are driven by one signal instead of the rail re-deriving progress from finished artifacts. | `app/agents/team.py`, `app/runtime/event_adapter.py` |
 | **Contradiction detection** | Numeric (unit-aware divergence), polarity (affirms vs. negates), and temporal (same measure, different periods) detectors with severity ranking. | `app/core/contradictions.py` |
 | **Confidence engine** | Multi-signal score (citation support, axis coverage, source quality, contradiction penalty, …). Degraded runs are capped below the sufficiency threshold with an explanatory breakdown. | `app/core/confidence.py` |
 | **Evidence grading** | Claim→source→verification→independence→corroboration→contradiction records, graded per claim and aggregated into a distribution. | `app/core/evidence_grade.py` |
 | **Replay, trace & export** | Every run persists its events, sources, claims, final report and verbatim NDJSON frames; replay reconstructs the timeline and reports export to MD/DOCX/PDF. | `app/api/routes.py`, `app/db/sqlite.py` |
 | **Bounded work** | Every run is capped on model calls, wall-clock time and per-stage timeouts; a run that cannot finish inside `RESEARCH_TIMEOUT_SEC` is reported as such rather than hanging. | `app/infra/budget.py`, `app/core/usage.py` |
 | **LLM response cache** | Exact-prompt disk cache — an identical re-run or a repeated plan is served from disk with zero provider spend. Bounded size and TTL. | `app/core/llm_cache.py` |
-| **Semantic engine** | CPU-light TF-IDF hybrid (stemming, synonym canonicalization, negation weighting) powering dedup, contradiction banding, and citation support. | `app/core/semantic.py` |
+| **Semantic engine** | CPU-light TF-IDF hybrid (stemming, synonym canonicalization, negation weighting) powering dedup, contradiction banding, and citation support. | `app/common/semantic.py` |
 
 ---
 
@@ -75,23 +76,29 @@ handling, and calibrated confidence. Measured results are in
 ```
 Query
   → Multi-agent research pipeline (LangGraph StateGraph, one graph per request)
-      Browser      initial research on the query
-      Editor       plan the section outline
-      Human        plan review gate (auto-accepted in the API)
-      Researcher   parallel per-section research: research → review → revise
-      Writer       introduction, table of contents, conclusion, sources
-      Fact checker review the draft; send back to the writer or accept
-      Visualizer   optional diagram
-      Publisher    assemble the report
+      pathfinder         first research pass: search, read, write an initial report
+      architect          derive the section outline from that pass
+      review_gate        review the outline (deterministic, or a human approval)
+      scout_swarm        per-section research in bounded waves
+      narrative_writer   introduction and conclusion around the researched sections
+      evidence_auditor   check the assembled draft; may send it back
+      diagram_designer   optional Mermaid diagram
+      report_assembler   assemble title, date, sections, conclusion, references
   → final_report frame + persisted report
 ```
 
+Two conditional edges loop, and both are bounded by the run's mode:
+
+- `review_gate → architect` when the outline is sent back for revision;
+- `evidence_auditor → narrative_writer` when the draft is sent back for revision.
+
 The research pipeline is first-party code under `app/research/`, driven by
-`app/runtime/orchestrator.py`. It calls the rest of the product directly through
-two seams: generation goes through `app.core.llm.LLMClient` (so the **Model
-Control Center** decides what runs), and retrieval goes through
-`app.retrieval.client.SearchClient`. Persistent state lives in SQLite
-(`aiosqlite`); streaming is NDJSON over a single HTTP response.
+`app/research/runner.py` through the thin `app/runtime/orchestrator.py` facade.
+It calls the rest of the product directly through two seams: generation goes
+through `app.core.llm.LLMClient` (so the **Model Control Center** decides what
+runs), and retrieval goes through `app.retrieval.client.SearchClient`. Persistent
+state lives in SQLite (`aiosqlite`); streaming is NDJSON over a single HTTP
+response.
 
 A full component map, data model, and the reasoning behind each design
 decision are in [`ARCHITECTURE.md`](ARCHITECTURE.md). The product vision and
@@ -101,23 +108,26 @@ feature rationale are in [`DeepScout-vision-v2.md`](DeepScout-vision-v2.md).
 
 ## The research pipeline
 
-1. **Scope.** The pipeline's initial-research stage performs initial research on
-   the query.
-2. **Plan.** The editor plans an outline of report sections (max sections
-   scales with the quick/standard/deep mode). In the API context the plan is
-   auto-accepted at the human-review gate.
-3. **Research.** Sections are researched in parallel; each section runs a
-   research → review → revise loop, and every section knows its siblings so
-   writers do not overlap. Retrieval fans out through `SearchClient` (SearXNG
-   with Wikipedia / arXiv / Crossref fallbacks), with the same dedup, domain
-   diversification, caching and circuit breakers as the rest of the product.
-4. **Write.** The writer composes the introduction, table of contents,
-   conclusion and source list from the researched sections.
-5. **Fact-check.** The fact checker reviews the assembled draft and either
+1. **Scope.** `pathfinder` performs the initial research pass on the query.
+2. **Plan.** `architect` derives an outline of report sections (max sections
+   scales with the quick/standard/deep mode).
+3. **Gate.** `review_gate` reviews that outline. In the default automatic mode
+   it runs deterministic structural checks; when interactive review is requested
+   it pauses for a human to approve or edit, and can send the outline back to the
+   architect.
+4. **Research.** `scout_swarm` researches sections in bounded waves; each
+   section runs a research → review → revise loop, and every section knows its
+   siblings so writers do not overlap. Retrieval fans out through `SearchClient`
+   (SearXNG with Wikipedia / arXiv / Crossref fallbacks), with the same dedup,
+   domain diversification, caching and circuit breakers as the rest of the
+   product.
+5. **Write.** `narrative_writer` composes the introduction and conclusion around
+   the researched section bodies.
+6. **Fact-check.** `evidence_auditor` reviews the assembled draft and either
    accepts it or returns notes, sending the draft back to the writer.
-6. **Assemble.** The publisher assembles the final report (optionally a
-   diagram from the visualizer).
-7. **Persist.** The route writes the run, sources, events, final report and the
+7. **Assemble.** `diagram_designer` optionally adds a Mermaid diagram, then
+   `report_assembler` compiles title, date, sections, conclusion and references.
+8. **Persist.** The route writes the run, sources, events, final report and the
    verbatim NDJSON frames, joinable by `run_id` for replay and export.
 
 ---
@@ -221,11 +231,20 @@ Base path `/api`. The research stream is rate-limited (`RATE_LIMIT`, default
 | `POST` | `/provider-chains/{chain_id}/enabled` | Enable or disable a chain |
 | `POST` | `/provider-chains/clear` | Disable all chains |
 
-**Stream event types:** `progress`, `plan`, `critic`, `final_report`, `error`.
-`progress` carries stage transitions, `plan` the section outline, `critic` the
-fact-check outcome, and `final_report` the report plus its audit fields
-(`confidence`, `confidence_breakdown`, `quality`, `contradictions`,
-`source_count`).
+**Stream event types:** `progress`, `stage`, `plan`, `plan_review`, `critic`,
+`final_report`, `error`.
+
+- `progress` — run accepted, then a live activity line as the pipeline works.
+- `stage` — `{ node, status: running|done, label }`: a pipeline node starting or
+  finishing. The live rail and the trace are both driven by this one signal.
+- `plan` — the planned section outline (`items`).
+- `plan_review` — `{ status: awaiting|expired, run_id, title, alternatives,
+  deadline_ts }`: opens the interactive approval card and closes it when the
+  window expires.
+- `critic` — the fact-check outcome (`iteration`, `reason`).
+- `final_report` — the report plus its audit fields (`confidence`,
+  `confidence_breakdown`, `quality`, `contradictions`, `answer_support`,
+  `degraded`, `source_count`).
 
 Example:
 
@@ -240,11 +259,12 @@ curl -N -X POST http://127.0.0.1:8000/api/research/stream \
 ## Frontend
 
 React 18 + Vite 5 single-page console (`frontend/src/App.jsx`) that consumes the
-NDJSON stream and renders the thread, per-run pipeline steps, the intelligence
-panel (plan, budget, confidence breakdown, citation health), the
-claim drawer, and the research library (Evidence, Knowledge). It includes
-session management (stable ids, restore-on-reload, interrupt/edit), the
-provider management tab, and a docs view. Development proxies `/api` to
+NDJSON stream and renders the thread, the live per-run pipeline trace, the Run
+Insights rail (stage lifecycle, source counts, confidence breakdown, citation
+health), the interactive plan-review card, and the research library. A hash
+router exposes six views: **landing**, **workspace**, **Research** (past runs
+with replay), **Agents** (the pipeline roster), **Model Controls** (providers,
+fallback chains, serving mode) and **Docs**. Development proxies `/api` to
 `http://127.0.0.1:8000`.
 
 ---
@@ -418,8 +438,10 @@ backend/
   main.py                 FastAPI app + lifespan init (publishes runtime handles)
   app/research/           the research pipeline: runner, skills, retrieval,
                           scraping, context, prompts, config
-  app/agents/             the LangGraph agent team (orchestrator, editor,
-                          research unit, report agents)
+  app/agents/             the LangGraph agent team: team.py (graph builder +
+                          stage lifecycle), architect.py (planning + section
+                          waves), scout.py (section research), report.py
+                          (review gate, writer, auditor, designer, assembler)
   app/runtime/            runtime seam: route entry point, NDJSON adapter,
                           human-in-the-loop plan-review handshake
   app/retrieval/          multi-provider search client + searchkit internals
@@ -430,7 +452,7 @@ backend/
   app/api/routes.py       stream, resume, plan, trace, export, sessions
   app/api/providers_routes.py  providers + fallback chains (Model Control Center)
   app/common/             shared leaves: config, logging, primitives,
-                          semantic engine
+                          semantic engine, state models, streaming sink
   app/core/               llm client + cache, usage ledger, confidence,
                           contradictions, evidence grading, degradation,
                           providers, export

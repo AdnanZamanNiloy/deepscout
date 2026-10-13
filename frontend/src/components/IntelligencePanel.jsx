@@ -19,11 +19,11 @@ import {
 const STATE_LABEL = { done: "Complete", active: "Working", waiting: "Queued" };
 
 /* Canonical pipeline — the real eight stages from the shipped research graph
- * (`app/agents/orchestrator.py`), in execution order. Same roster as
- * AgentsView, so "stage 3" means the same thing everywhere.
+ * (`app/agents/team.py`), in execution order. Same roster as AgentsView, so
+ * "stage 3" means the same thing everywhere.
  *
- *   browser → planner → human → researcher → writer → fact_checker →
- *   visualizer → publisher
+ *   pathfinder → architect → review_gate → scout_swarm → narrative_writer →
+ *   evidence_auditor → diagram_designer → report_assembler
  *
  * (`node` is the graph node name the wire reports, used to match live stages;
  * `desc` is filled from real counts in deriveAgents.) */

@@ -11,17 +11,22 @@ behind the design decisions that differ from a standard RAG chatbot.
 flowchart TD
     Q[User query + mode] --> RT[POST /api/research/stream]
     RT --> TEAM[Research team<br/>LangGraph StateGraph, compiled per request]
-    TEAM --> BR[Browser: initial research]
-    BR --> ED[Editor: plan section outline]
-    ED --> HU[Human review gate<br/>auto-accept in the API context]
-    HU --> RS[Researcher: per-section research in waves<br/>each section researched + reviewed + revised]
-    RS --> WR[Writer: introduction, TOC, conclusion, sources]
-    WR --> FC[Fact checker: accept or send back to writer]
-    FC -->|revise| WR
-    FC -->|accept| VZ[Visualizer]
-    VZ --> PB[Publisher: assemble the report]
-    PB --> OUT[final_report frame + persisted report]
+    TEAM --> PF[pathfinder: initial research pass]
+    PF --> AR[architect: plan the section outline]
+    AR --> RG[review_gate: deterministic checks<br/>or human approval when hitl is on]
+    RG -->|revise| AR
+    RG -->|accept| SS[scout_swarm: per-section research in waves<br/>research + review + revise per section]
+    SS --> NW[narrative_writer: introduction and conclusion]
+    NW --> EA[evidence_auditor: check the assembled draft]
+    EA -->|revise| NW
+    EA -->|accept| DD[diagram_designer: optional Mermaid diagram]
+    DD --> RA[report_assembler: assemble the report]
+    RA --> OUT[final_report frame + persisted report]
 ```
+
+Both loops are bounded by the run's mode. Exceeding a revision ceiling
+force-accepts and moves on, so a stage that keeps finding fault cannot hold the
+request open.
 
 The team is driven by `app/research/runner.py` (exposed to the route as
 `app/runtime/orchestrator.py::PipelineRunner`), which streams node updates as
@@ -64,8 +69,8 @@ retrieved evidence ──> pipeline ──> report markdown (the answer)
 
 * **The answer** is the report the pipeline assembles: an introduction, the
   researched sections, a conclusion, an optional diagram, and references. It is
-  assembled by `PublisherAgent` from the researched sections
-  (`app/agents/report_agents.py`) and never carries a confidence
+  assembled by `ReportAssembler` from the researched sections
+  (`app/agents/report.py`) and never carries a confidence
   number, a score, or a limitation list inside the body.
 * **The fact pool** is reconstructed deterministically — no LLM — by
   `app/evidence/audit.py`, which pairs each claim-bearing sentence with the
@@ -89,7 +94,7 @@ structure is the same, and the section outline is derived from the question.
 
 | Module | Responsibility |
 |---|---|
-| `app/agents/` | The team: orchestrator (graph builder), editor/planner, section research unit + reviewer/reviser, report writer, fact checker, visualizer, publisher, plan gate, and the bounded review routing. |
+| `app/agents/` | The LangGraph team. `team.py` builds the graph (`ResearchTeam`, `Pathfinder`) and wraps every node so it announces its start and end. `architect.py` is `ResearchArchitect` (planning + the per-section wave sub-graph). `scout.py` is `Scout` / `DraftReviewer` / `DraftReviser`. `report.py` holds `ReviewGate`, `NarrativeWriter`, `EvidenceAuditor`, `DiagramDesigner`, `ReportAssembler`. `routing.py` owns the two bounded loop routers. |
 | `app/research/researcher.py` | `Researcher`: one research unit — choose a role, gather evidence, write a report. |
 | `app/research/skills/` | The capabilities a researcher composes: research conductor, report generator, context manager, browser/scraper manager, source curator. |
 | `app/research/retrieval/` | Retriever contract, factory, and `SearchClientRetriever` (delegates to `SearchClient`). |
@@ -152,17 +157,19 @@ structure is the same, and the section outline is derived from the question.
 | `stage` | `node` (graph node), `status` (`running` / `done`), `label`. The pipeline stage lifecycle: emitted when a node STARTS and when it finishes. The live Research Workflow rail reads this, so the rail and the live trace are driven by one signal instead of the rail re-deriving progress from finished artifacts. |
 | `plan` | `items` (the planned section outline) |
 | `plan_review` | `run_id`, `status` (`awaiting` / `expired`), `alternatives`, `deadline_ts`. Human-in-the-loop: opens the approval card, and closes it when the review window runs out. |
-| `findings` | extracted claims, with verification flags |
-| `search_progress` / `search_query` | retrieval progress, never a fabricated source count |
-| `critic` | `iteration`, `reason` (fact-checker revision notes) |
+| `critic` | `iteration`, `reason` (the fact-checker's revision notes, sent whole) |
 | `final_report` | `report` (the primary answer), `confidence`, `confidence_breakdown`, `quality`, `contradictions`, `answer_support`, `degraded`, `degraded_reasons`, `source_count` |
 | `error` | `message` (actionable: key / quota / timeout causes) |
 
-Anything the pipeline has no genuine signal for is deliberately not
-fabricated; the frontend treats every event type as optional, so a clean
-pipeline renders without inventing one. Every backend event type has a
-matching `case` in `App.jsx` — the switch has a `default: break`, so a type
-added here without one is silently dropped rather than raising.
+That is the complete emitted set. `intent`, `route`, `direct_answer`,
+`findings`, `search_progress` and `search_query` are **not** emitted by the
+current pipeline — the frontend still has reducers for them, but nothing
+produces them, so they are not listed as part of the contract. Any event type
+the pipeline has no genuine signal for is deliberately not fabricated; the
+frontend treats every event type as optional, so a clean pipeline renders
+without inventing one. Every emitted type has a matching `case` in `App.jsx` —
+the switch has a `default: break`, so a type added here without one is silently
+dropped rather than raising.
 
 ---
 
