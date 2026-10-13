@@ -31,6 +31,11 @@ class MaxDraftRevisionsExceededError(RuntimeError):
     """Raised when reviewer/reviser rounds exceed the draft limit."""
 
 
+def _revision_limit_error(kind: str, count, limit) -> str:
+    """The single message shape used by all three revision-limit guards."""
+    return f"{kind} revision limit exceeded: {count} > {limit}."
+
+
 def is_none_accept_response(response) -> bool:
     """True only when ``response`` is exactly the accept sentinel ``None``.
 
@@ -65,7 +70,7 @@ def route_review_gate(review, max_plan_revisions=DEFAULT_MAX_PLAN_REVISIONS):
     count = review.get("plan_revision_count", 0)
     if count > max_plan_revisions:
         raise MaxPlanRevisionsExceededError(
-            f"Plan revision limit exceeded: {count} > {max_plan_revisions}."
+            _revision_limit_error("Plan", count, max_plan_revisions)
         )
     return "revise"
 
@@ -79,7 +84,7 @@ def route_evidence_audit(state, max_fact_check_revisions=DEFAULT_MAX_FACT_CHECK_
     count = state.get("fact_check_revision_count", 0)
     if count > max_fact_check_revisions:
         raise MaxFactCheckRevisionsExceededError(
-            f"Fact-check revision limit exceeded: {count} > {max_fact_check_revisions}."
+            _revision_limit_error("Fact-check", count, max_fact_check_revisions)
         )
     return "revise"
 
@@ -93,7 +98,7 @@ def route_draft_review(draft, max_draft_revisions=DEFAULT_MAX_DRAFT_REVISIONS):
     count = draft.get("draft_revision_count", 0)
     if count > max_draft_revisions:
         raise MaxDraftRevisionsExceededError(
-            f"Draft revision limit exceeded: {count} > {max_draft_revisions}."
+            _revision_limit_error("Draft", count, max_draft_revisions)
         )
     return "revise"
 

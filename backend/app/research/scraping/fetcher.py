@@ -28,9 +28,10 @@ logger = logging.getLogger(__name__)
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 MAX_CONTENT_BYTES = 10 * 1024 * 1024  # Skip pages larger than 10MB
 
-# Known anti-bot/challenge-page markers, case-insensitive substring match.
-# These pages return HTTP 200 with real (often large) HTML bodies, so neither an
-# exception nor the short-content check catches them.
+# A challenge/interstitial page answers with HTTP 200 and a real body, so only a
+# textual tell distinguishes it from article text. These markers are the exact
+# wording those pages ship; they are specific enough not to collide with normal
+# prose. Only the beginning of a response is scanned.
 _BLOCK_PAGE_MARKERS = (
     "anubis uses a proof-of-work scheme",
     "making sure you're not a bot",
@@ -41,40 +42,42 @@ _BLOCK_PAGE_MARKERS = (
     "attention required! | cloudflare",
     "sorry, you have been blocked",
 )
-_BLOCK_PAGE_CHECK_PREFIX_LEN = 5_000
+_BLOCK_PAGE_SCAN_PREFIX = 5_000
 
-# Word-list dumps have essentially zero sentence-ending punctuation relative to
-# their size, unlike any real prose. Size alone is not a signal — only near-total
-# absence of sentence structure combined with real size. Includes CJK fullwidth
-# terminators so long-form CJK prose is not misclassified for lacking ASCII
-# punctuation.
-_MIN_LENGTH_FOR_WORDLIST_CHECK = 200_000
-_MAX_SENTENCE_DENSITY = 1 / 5000
-_SENTENCE_ENDING_CHARS = frozenset(".!?。！？")
+# A word-list dump is a long body of unpunctuated tokens: real prose, however
+# dense, keeps sentence-ending marks far denser than this. Length alone is not
+# a signal; the check needs both real size and the near-absence of punctuation.
+# CJK terminators count so long-form CJK prose is not mistaken for a list.
+_WORDLIST_MIN_LENGTH = 200_000
+_WORDLIST_MAX_SENTENCE_DENSITY = 1 / 5000
+_SENTENCE_TERMINATORS = frozenset(".!?。！？")
 
-# PDF structural syntax, which essentially never occurs in real prose. Two
-# independent hits is enough to be confident this is raw PDF, not text.
+# PDF's own structural tokens, which ordinary prose does not contain. Two
+# independent hits are enough to conclude the body is raw PDF bytes.
 _PDF_STRUCTURE_MARKERS = ("endobj", "endstream", "/FlateDecode", "xref", "trailer")
-_MIN_PDF_MARKER_HITS = 2
+_PDF_MIN_MARKER_HITS = 2
 
 
 def _looks_like_block_page(text: str) -> bool:
-    prefix = text[:_BLOCK_PAGE_CHECK_PREFIX_LEN].lower()
-    return any(marker in prefix for marker in _BLOCK_PAGE_MARKERS)
+    """True when the response opens with a known anti-bot/challenge page."""
+    opening = text[:_BLOCK_PAGE_SCAN_PREFIX].lower()
+    return any(marker in opening for marker in _BLOCK_PAGE_MARKERS)
 
 
 def _looks_like_word_list(text: str) -> bool:
-    if len(text) < _MIN_LENGTH_FOR_WORDLIST_CHECK:
+    """True when a large body has almost no sentence-ending punctuation."""
+    if len(text) < _WORDLIST_MIN_LENGTH:
         return False
-    sentence_endings = sum(1 for ch in text if ch in _SENTENCE_ENDING_CHARS)
-    return (sentence_endings / len(text)) < _MAX_SENTENCE_DENSITY
+    terminators = sum(1 for ch in text if ch in _SENTENCE_TERMINATORS)
+    return (terminators / len(text)) < _WORDLIST_MAX_SENTENCE_DENSITY
 
 
 def _looks_like_unextracted_pdf(text: str) -> bool:
+    """True when the body is raw PDF bytes rather than decoded text."""
     if text.startswith("%PDF-"):
         return True
     hits = sum(1 for marker in _PDF_STRUCTURE_MARKERS if marker in text)
-    return hits >= _MIN_PDF_MARKER_HITS
+    return hits >= _PDF_MIN_MARKER_HITS
 
 
 class PageFetcher:

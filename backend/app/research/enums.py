@@ -1,9 +1,9 @@
 """Enumerations for the research pipeline.
 
-Report shape, source type and writing tone are the three knobs that flow from
-a request into prompt construction and retrieval behaviour. They are plain
-enums (not strings) so that the values used in prompts and branch checks have
-one definition each and cannot drift between modules.
+Three independent axes travel with every request: what shape of report to
+produce, where its evidence may come from, and the voice it is written in.
+Keeping each as a closed enum means a value is spelled once here and nowhere
+else, so a prompt and a branch check can never disagree about it.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from enum import Enum
 
 
 class ReportType(Enum):
-    """The kind of report a run produces."""
+    """The shape of report a run produces."""
 
     ResearchReport = "research_report"
     DetailedReport = "detailed_report"
@@ -19,7 +19,7 @@ class ReportType(Enum):
 
 
 class ReportSource(Enum):
-    """Where a run gathers evidence from."""
+    """The evidence pool a run may draw from."""
 
     Web = "web"
     Local = "local"
@@ -27,6 +27,6 @@ class ReportSource(Enum):
 
 
 class Tone(Enum):
-    """Writing tone applied to the generated report."""
+    """The writing voice applied to the finished report."""
 
     Objective = "Objective (impartial and unbiased presentation of facts and findings)"

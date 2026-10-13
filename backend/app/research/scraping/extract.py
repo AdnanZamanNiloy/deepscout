@@ -1,9 +1,10 @@
 """HTML text extraction.
 
-Cleans a parsed page (removing scripts, styles, nav chrome), then walks the
-document into one line per block element so adjacent inline markup (a link, an
-emphasis) does not split the sentence — and the word — it sat in. Also extracts
-a title and a scored list of candidate images.
+Given a parsed page, this module removes scripts/styles/navigation chrome and
+then converts the remaining DOM into readable text: one line per block-level
+element, with adjacent inline markup (a link, an emphasis) kept inside the line
+it belongs to so sentences — and words — are never split. It also pulls out the
+page title and a ranked shortlist of candidate images.
 """
 from __future__ import annotations
 
@@ -18,65 +19,87 @@ from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
+# Class names that almost always mark a leading/hero image on a page.
+_HERO_CLASS_HINTS = ("header", "featured", "hero", "thumbnail", "main", "content")
+
+# Size thresholds, largest first: the first band a (width, height) pair clears
+# decides the score. Anything below the last band is treated as decoration.
+_SIZE_BANDS = (
+    ((2000, 1000), 3),
+    ((1600, 800), 2),
+    ((800, 500), 1),
+    ((500, 300), 0),
+)
+
+# Chrome that carries no article text.
+_STRIP_TAGS = ("script", "style", "footer", "header", "nav", "menu", "sidebar", "svg")
+_DISALLOWED_CLASSES = frozenset(("nav", "menu", "sidebar", "footer"))
+
+
+def _coerce_int(value) -> Optional[int]:
+    """Best-effort integer from an HTML dimension attribute."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = value[:-2] if value.lower().endswith("px") else value
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+# Public alias kept for callers that reference the parse helper by name.
+def parse_dimension(value) -> Optional[int]:
+    """Parse an HTML width/height value (handling plain numbers and 'px')."""
+    return _coerce_int(value)
+
+
+def _img_classes(img) -> List[str]:
+    classes = img.get("class") or []
+    if isinstance(classes, str):
+        return classes.split()
+    if isinstance(classes, (list, tuple, set)):
+        return list(classes)
+    return []
+
+
+def _score_image(img) -> Optional[int]:
+    """Relevance score for one ``<img>``, or ``None`` to skip it.
+
+    A hero/featured class wins outright; otherwise the declared pixel size
+    decides, and images too small to be meaningful are skipped.
+    """
+    if any(hint in _img_classes(img) for hint in _HERO_CLASS_HINTS):
+        return 4
+    width = _coerce_int(img.get("width"))
+    height = _coerce_int(img.get("height"))
+    if not (width and height):
+        return 0
+    for (min_w, min_h), score in _SIZE_BANDS:
+        if width >= min_w and height >= min_h:
+            return score
+    return None
+
 
 def get_relevant_images(soup: BeautifulSoup, url: str) -> List[dict]:
     """Extract candidate images (url + relevance score), highest score first."""
-    image_urls: List[dict] = []
-    try:
-        if soup is None:
-            return []
-        all_images = soup.find_all("img", src=True)
-        for img in all_images:
-            img_src = urljoin(url, img["src"])
-            if not img_src.startswith(("http://", "https://")):
-                continue
-            score = 0
-            classes = img.get("class") or []
-            if isinstance(classes, str):
-                classes = classes.split()
-            elif not isinstance(classes, (list, tuple, set)):
-                classes = []
-            if any(
-                cls in classes
-                for cls in ["header", "featured", "hero", "thumbnail", "main", "content"]
-            ):
-                score = 4
-            elif img.get("width") and img.get("height"):
-                width = parse_dimension(img["width"])
-                height = parse_dimension(img["height"])
-                if width and height:
-                    if width >= 2000 and height >= 1000:
-                        score = 3
-                    elif width >= 1600 or height >= 800:
-                        score = 2
-                    elif width >= 800 or height >= 500:
-                        score = 1
-                    elif width >= 500 or height >= 300:
-                        score = 0
-                    else:
-                        continue
-            image_urls.append({"url": img_src, "score": score})
-        return sorted(image_urls, key=lambda x: x["score"], reverse=True)[:10]
-    except Exception as e:
-        logger.error("Error in get_relevant_images: %s", e)
+    if soup is None:
         return []
-
-
-def parse_dimension(value) -> Optional[int]:
-    """Parse an HTML width/height value (handling plain numbers and 'px')."""
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        try:
-            return int(float(value))
-        except (ValueError, TypeError):
-            return None
-    if value.lower().endswith("px"):
-        value = value[:-2]
     try:
-        return int(float(value))
-    except (ValueError, TypeError):
-        return None
+        scored: List[dict] = []
+        for img in soup.find_all("img", src=True):
+            src = urljoin(url, img["src"])
+            if not src.startswith(("http://", "https://")):
+                continue
+            score = _score_image(img)
+            if score is None:
+                continue
+            scored.append({"url": src, "score": score})
+        scored.sort(key=lambda item: item["score"], reverse=True)
+        return scored[:10]
+    except Exception as exc:
+        logger.error("Error in get_relevant_images: %s", exc)
+        return []
 
 
 def extract_title(soup: BeautifulSoup) -> str:
@@ -90,34 +113,26 @@ def extract_title(soup: BeautifulSoup) -> str:
 def get_image_hash(image_url: str) -> Optional[str]:
     """Hash of an image's filename + essential query params, for dedup."""
     try:
-        parsed_url = urlparse(image_url)
-        filename = parsed_url.path.split("/")[-1]
-        query_params = parse_qs(parsed_url.query)
-        essential_params = query_params.get("url", [])
-        image_identifier = filename + "".join(essential_params)
-        return hashlib.md5(image_identifier.encode()).hexdigest()
-    except Exception as e:
-        logger.error("Error calculating image hash for %s: %s", image_url, e)
+        parsed = urlparse(image_url)
+        filename = parsed.path.rsplit("/", 1)[-1]
+        cdn_source = parse_qs(parsed.query).get("url", [])
+        return hashlib.md5((filename + "".join(cdn_source)).encode()).hexdigest()
+    except Exception as exc:
+        logger.error("Error calculating image hash for %s: %s", image_url, exc)
         return None
 
 
 def clean_soup(soup: BeautifulSoup) -> BeautifulSoup:
     """Remove scripts, styles and navigation chrome from the soup."""
-    for tag in soup.find_all(
-        ["script", "style", "footer", "header", "nav", "menu", "sidebar", "svg"]
-    ):
+    for tag in soup.find_all(list(_STRIP_TAGS)):
         tag.decompose()
 
-    disallowed_class_set = {"nav", "menu", "sidebar", "footer"}
-
-    def does_tag_have_disallowed_class(elem) -> bool:
+    def _is_chrome(elem) -> bool:
         if not isinstance(elem, bs4.Tag):
             return False
-        return any(
-            cls_name in disallowed_class_set for cls_name in elem.get("class", [])
-        )
+        return bool(_DISALLOWED_CLASSES.intersection(elem.get("class", [])))
 
-    for tag in soup.find_all(does_tag_have_disallowed_class):
+    for tag in soup.find_all(_is_chrome):
         tag.decompose()
 
     return soup
@@ -138,47 +153,49 @@ _BOX_TAGS = frozenset(("button", "select"))
 # Only these characters are whitespace in HTML. A no-break space is content.
 _HTML_WHITESPACE = re.compile(r"[ \t\n\r\f]+")
 
+# Text-bearing node types whose content is real page text. Script, style,
+# template and comment strings are subclasses and are deliberately excluded.
+_TEXT_NODES = (bs4.NavigableString, bs4.CData)
+
 
 def _block_lines(soup: BeautifulSoup) -> List[str]:
     """Return the soup's text as one line per block element."""
     lines: List[str] = []
-    line: List[str] = []
+    buffer: List[str] = []
 
-    def end_line() -> None:
-        text = _HTML_WHITESPACE.sub(" ", "".join(line)).strip(" ")
-        line.clear()
-        if text.strip():
-            lines.append(text)
+    def flush() -> None:
+        joined = _HTML_WHITESPACE.sub(" ", "".join(buffer)).strip(" ")
+        buffer.clear()
+        if joined.strip():
+            lines.append(joined)
 
     # An explicit stack, so deeply nested markup cannot exhaust the recursion limit.
     stack: List[tuple] = [(soup, "visit")]
     while stack:
         node, action = stack.pop()
-        if action == "end_line":
-            end_line()
-        elif action == "space":
-            line.append(" ")
+        if action == "flush":
+            flush()
+        elif action == "gap":
+            buffer.append(" ")
         elif isinstance(node, bs4.Tag):
             if node.name == "br":
-                end_line()
+                flush()
             elif node.name in _PREFORMATTED_TAGS:
-                end_line()
-                text = node.get_text().strip("\n")
-                if text.strip():
-                    lines.append(text)
+                flush()
+                preserved = node.get_text().strip("\n")
+                if preserved.strip():
+                    lines.append(preserved)
             else:
                 if node.name in _BLOCK_TAGS:
-                    end_line()
-                    stack.append((node, "end_line"))
+                    flush()
+                    stack.append((node, "flush"))
                 elif node.name in _BOX_TAGS:
-                    line.append(" ")
-                    stack.append((node, "space"))
+                    buffer.append(" ")
+                    stack.append((node, "gap"))
                 stack.extend((child, "visit") for child in reversed(node.contents))
-        # Script, style, template and comment strings are subclasses and are not
-        # page text, the same filter get_text() applies by default.
-        elif type(node) in (bs4.NavigableString, bs4.CData):
-            line.append(str(node))
-    end_line()
+        elif type(node) in _TEXT_NODES:
+            buffer.append(str(node))
+    flush()
     return lines
 
 

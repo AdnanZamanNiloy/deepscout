@@ -101,8 +101,88 @@ class NarrativeWriter:
                 self.sink,
             )
         layout = await self.write_sections(research_state)
+        if not isinstance(layout, dict):
+            layout = {}
         headers = self.get_headers(research_state)
-        return {**layout, "headers": headers}
+        # Deterministic fallback (AGENTS.md 4.7): a failed/empty writer call must
+        # not drop whole report sections. When the model returns nothing usable
+        # (its JSON call degraded to {}), derive the introduction, table of
+        # contents and conclusion from the section drafts already in state, so
+        # the assembled report keeps every section instead of shipping
+        # "## Introduction\nNone".
+        return {**self._with_fallbacks(research_state, layout), "headers": headers}
+
+    @staticmethod
+    def _with_fallbacks(
+        research_state: Dict[str, Any], layout: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Ensure introduction/table_of_contents/conclusion are never missing.
+
+        The writer is the only source of these three; when it fails, this
+        rebuilds them locally from the section drafts (which are already written
+        and evidence-grounded), using no LLM. A non-empty model value always
+        wins, so a healthy run is untouched.
+        """
+        result = dict(layout)
+
+        def _missing(key: str) -> bool:
+            return not str(result.get(key) or "").strip()
+
+        sections = [
+            str(entry).strip()
+            for entry in (research_state.get("sections") or [])
+            if str(entry or "").strip()
+        ]
+        if not sections:
+            # No planned outline: fall back to the draft keys in research_data.
+            for entry in research_state.get("research_data") or []:
+                if isinstance(entry, dict):
+                    sections.extend(str(k) for k in entry.keys() if str(k or "").strip())
+
+        if _missing("table_of_contents") and sections:
+            result["table_of_contents"] = "\n".join(f"- {s}" for s in sections)
+        if _missing("introduction"):
+            result["introduction"] = NarrativeWriter._fallback_intro(research_state)
+        if _missing("conclusion"):
+            result["conclusion"] = NarrativeWriter._fallback_conclusion(research_state)
+        return result
+
+    @staticmethod
+    def _fallback_intro(research_state: Dict[str, Any]) -> str:
+        """A deterministic, non-fabricated opening for a failed writer run."""
+        query = (
+            (research_state.get("task") or {}).get("query")
+            or research_state.get("title")
+            or "the research question"
+        )
+        sections = [
+            str(s) for s in (research_state.get("sections") or []) if str(s or "").strip()
+        ]
+        if sections:
+            listed = ", ".join(sections)
+            return (
+                f"This report examines {query}. It is organised into the following "
+                f"sections: {listed}. Each section draws on the sources gathered for "
+                f"this research and cites them inline."
+            )
+        return (
+            f"This report examines {query}, drawing on the sources gathered for this "
+            f"research and citing them inline."
+        )
+
+    @staticmethod
+    def _fallback_conclusion(research_state: Dict[str, Any]) -> str:
+        """A deterministic closing when the writer did not produce one."""
+        query = (
+            (research_state.get("task") or {}).get("query")
+            or research_state.get("title")
+            or "the research question"
+        )
+        return (
+            f"The sections above address {query} using the evidence gathered for this "
+            f"report. Where the sources disagreed they are noted in place; the cited "
+            f"references list the material consulted."
+        )
 
 
 class EvidenceAuditor:
@@ -454,22 +534,51 @@ class ReportAssembler:
         # human-readable ("11 October 2026"), so no ambiguous numeric format.
         date_line = f"*{date_value}*\n" if str(date_value).strip() else ""
 
-        return f"""# {title}
-{date_line}
-## {headers.get("introduction")}
-{research_state.get('introduction')}
+        def labeled_section(label_key: str, value) -> str:
+            """Render ``## <label>\\n<body>\\n\\n`` only when the body is present.
 
-## {headers.get("table_of_contents")}
-{research_state.get('table_of_contents')}
+            A missing writer output (its JSON call returned nothing usable) and
+            an empty value are both rendered as an omitted section, never as a
+            literal "## Introduction\\nNone". The template previously
+            interpolated the value unconditionally, so a failed introduction
+            step shipped the word "None" as the section body — a visible defect
+            and a loss of a whole report section.
+            """
+            body = "" if value is None else str(value).strip()
+            if not body:
+                return ""
+            label = headers.get(label_key) or label_key.replace("_", " ").title()
+            return f"## {label}\n{body}\n\n"
 
-{sections_text}
+        def labeled_conclusion(value) -> str:
+            """The conclusion block, followed directly by the diagram slot.
 
-## {headers.get("conclusion")}
-{research_state.get('conclusion')}
-{diagrams_text}
-## {headers.get("references")}
-{references}
-"""
+            Unlike the intro/TOC blocks this one carries a single trailing
+            newline: the diagram text (when present) supplies its own leading
+            blank line, matching the original template's spacing exactly.
+            """
+            body = "" if value is None else str(value).strip()
+            if not body:
+                return ""
+            label = headers.get("conclusion") or "Conclusion"
+            return f"## {label}\n{body}\n"
+
+        # Build the document by concatenating only the blocks that exist, using
+        # the same separators the original (unconditional) template emitted, so a
+        # complete run's markdown is byte-for-byte unchanged.
+        references_block = (
+            f"## {headers.get('references') or 'References'}\n{references}\n"
+        )
+        return (
+            f"# {title}\n"
+            f"{date_line}\n"
+            f"{labeled_section('introduction', research_state.get('introduction'))}"
+            f"{labeled_section('table_of_contents', research_state.get('table_of_contents'))}"
+            f"{sections_text}\n\n"
+            f"{labeled_conclusion(research_state.get('conclusion'))}"
+            f"{diagrams_text}\n"
+            f"{references_block}"
+        )
 
     async def run(self, research_state: Dict[str, Any]) -> Dict[str, Any]:
         if self.sink:
