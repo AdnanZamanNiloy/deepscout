@@ -150,10 +150,18 @@ class PipelineEventAdapter:
             notes = pipeline_event.get("fact_check_notes")
             if notes:
                 # A non-empty fact-check note is the pipeline's revision signal.
+                #
+                # The full note is sent, NOT a 400-character slice. That cap cut
+                # mid-token, so a review ending inside `**Lattice-based` streamed
+                # a dangling `**` that can never pair and therefore rendered as
+                # literal asterisks. It also threw away most of the review, which
+                # is the substance of this step. The UI already clamps long prose
+                # to two lines behind a "Show more" toggle, so the cap was
+                # redundant as well as destructive.
                 frames.append(frame(
                     "critic",
                     iteration=1,
-                    reason=str(notes)[:400],
+                    reason=str(notes),
                     breakdown={},
                 ))
 

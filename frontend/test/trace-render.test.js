@@ -51,6 +51,31 @@ function loadComponent() {
   return modPromise;
 }
 
+/** The shared inline renderer, bundled the same way. */
+let inlinePromise = null;
+function loadInline() {
+  if (inlinePromise) return inlinePromise;
+  inlinePromise = (async () => {
+    const entry = new URL("../src/trace/inline.ts", import.meta.url).pathname;
+    const out = await build({
+      entryPoints: [entry],
+      bundle: true,
+      write: false,
+      format: "esm",
+      jsx: "automatic",
+      target: "node20",
+      external: ["react", "react-dom", "react/jsx-runtime"],
+      logLevel: "silent",
+    });
+    const dir = join(dirname(entry), "..", "..", "node_modules", ".apt-test");
+    await mkdir(dir, { recursive: true });
+    const file = join(dir, "inline.mjs");
+    await writeFile(file, out.outputFiles[0].text);
+    return import(file);
+  })();
+  return inlinePromise;
+}
+
 /** A realistic slice of the live NDJSON stream. */
 function wireEvents() {
   return [
@@ -645,4 +670,272 @@ test("a final report renders with a collapse control when the trace is open", as
     status: "done",
   });
   assert.match(html, /Show report/, "the final row starts collapsed with a Show control");
+});
+
+// ---------------------------------------------------------------------------
+// Inline markdown in the live trace.
+//
+// Regression: the trace had its OWN inline renderer that handled only URLs and
+// quoted spans, so `**bold**`, `*italic*` and `` `code` `` reached the browser
+// as literal asterisks — raw markdown printed in the middle of a streaming run.
+// The answer card had a complete renderer; the trace did not. Both now share
+// one implementation (trace/inline.ts).
+// ---------------------------------------------------------------------------
+
+/** The exact shape that shipped as raw text in the live trace. */
+const RAW_MARKDOWN_STEP = [
+  "**Checks performed:**",
+  "",
+  "1. **698 incidents / 183,420 transcripts / Oct 2025–Mar 2026 window** — consistent throughout (intro, section, conclusion). ✓",
+  "",
+  "2. **4.9x vs 1.7x comparison** — consistent throughout. ✓",
+  "",
+  "3. **Corpus rate ~0.38%** — 698/183,420 = 0",
+].join("\n");
+
+test("inline markdown renders instead of printing its markers", async () => {
+  const { renderInline } = await loadInline();
+  const html = renderToStaticMarkup(
+    createElement("div", null, renderInline("**Checks performed:**"))
+  );
+  assert.match(html, /<strong>Checks performed:<\/strong>/);
+  assert.doesNotMatch(html, /\*\*/, "no raw asterisks may reach the DOM");
+});
+
+test("bold, italic and code all render in one string", async () => {
+  const { renderInline } = await loadInline();
+  const html = renderToStaticMarkup(
+    createElement("div", null, renderInline("the **4.9x vs 1.7x** *ratio* uses `bm25`"))
+  );
+  assert.match(html, /<strong>4\.9x vs 1\.7x<\/strong>/);
+  assert.match(html, /<em>ratio<\/em>/);
+  assert.match(html, /<code>bm25<\/code>/);
+  assert.doesNotMatch(html, /`/);
+});
+
+test("a markdown link becomes an anchor with a safe target", async () => {
+  const { renderInline } = await loadInline();
+  const html = renderToStaticMarkup(
+    createElement("div", null, renderInline("see [the paper](https://arxiv.org/abs/1234.56)"))
+  );
+  assert.match(html, /<a href="https:\/\/arxiv\.org\/abs\/1234\.56"/);
+  assert.match(html, /rel="noreferrer noopener"/);
+});
+
+test("a non-http link target is not linkified", async () => {
+  const { renderInline } = await loadInline();
+  const html = renderToStaticMarkup(
+    createElement("div", null, renderInline("[click](javascript:alert(1))"))
+  );
+  assert.doesNotMatch(html, /<a /, "only http(s) links may become anchors");
+  assert.doesNotMatch(html, /href=/);
+});
+
+test("backend text cannot inject markup", async () => {
+  const { renderInline } = await loadInline();
+  const html = renderToStaticMarkup(
+    createElement("div", null, renderInline("<img src=x onerror=alert(1)> and <b>raw</b>"))
+  );
+  // Rendered as TEXT, never as an element built from the payload. The escaped
+  // string still contains the characters — that is correct; what must not
+  // exist is a real <img> element or an onerror attribute in the output.
+  assert.doesNotMatch(html, /<img/);
+  assert.doesNotMatch(html, /<b>/);
+  assert.match(html, /&lt;img/, "the payload must appear escaped");
+});
+
+test("incomplete markdown stays literal and stable while streaming", async () => {
+  const { renderInline } = await loadInline();
+  // Mid-arrival, the closing marker has not landed. Emitting literal text is
+  // the honest render and — being a pure function of the string — is identical
+  // across re-renders, so the row cannot flicker.
+  const partial = renderToStaticMarkup(
+    createElement("div", null, renderInline("**Checks perfor"))
+  );
+  assert.match(partial, /\*\*Checks perfor/);
+  const again = renderToStaticMarkup(
+    createElement("div", null, renderInline("**Checks perfor"))
+  );
+  assert.equal(partial, again, "an unchanged string must render unchanged");
+
+  // Once the pair completes it becomes bold — the intended convergence.
+  const complete = renderToStaticMarkup(
+    createElement("div", null, renderInline("**Checks performed:**"))
+  );
+  assert.match(complete, /<strong>Checks performed:<\/strong>/);
+});
+
+test("ordered and bulleted prefixes are recognised and stripped", async () => {
+  const { orderedItemIndex, stripOrderedItem, bulletItem, stripBullet } = await loadInline();
+  assert.equal(orderedItemIndex("1. **698 incidents**"), 1);
+  assert.equal(orderedItemIndex("3) also ordered"), 3);
+  assert.equal(stripOrderedItem("2. **4.9x vs 1.7x comparison**"), "**4.9x vs 1.7x comparison**");
+  assert.equal(orderedItemIndex("not a list line"), null);
+
+  assert.equal(bulletItem("- finding"), true);
+  assert.equal(bulletItem("* finding"), true);
+  assert.equal(stripBullet("- finding"), "finding");
+  assert.equal(bulletItem("finding"), false);
+});
+
+test("the whole reported step renders with no raw markdown anywhere", async () => {
+  // The exact content that shipped as visible `**asterisks**` in the live
+  // trace, delivered the way the stream delivers it.
+  const html = await render({
+    events: [
+      {
+        type: "findings",
+        items: RAW_MARKDOWN_STEP.split("\n").map((claim) => ({ claim, verified: true })),
+        __ts: 10,
+      },
+    ],
+    status: "done",
+  });
+  assert.doesNotMatch(html, /\*\*/, "raw bold markers must not reach the DOM");
+  assert.match(html, /<strong>Checks performed:<\/strong>/);
+  assert.match(html, /<ol/, "the numbered lines must become a real list");
+  assert.match(html, /<li>/);
+  assert.doesNotMatch(html, /1\. <strong>/, "the literal 1. prefix must be consumed by <ol>");
+});
+
+test("the trace and the answer card share ONE inline renderer", async () => {
+  // Two renderers for one job means one of them is always behind — which is
+  // exactly how the trace ended up printing raw markdown while the answer card
+  // rendered it correctly. Assert the answer card no longer defines its own.
+  const src = await readFile(new URL("../src/components/AnswerCard.jsx", import.meta.url), "utf8");
+  assert.match(src, /from "\.\.\/trace\/inline"/, "AnswerCard must import the shared renderer");
+  assert.doesNotMatch(src, /function renderInline\(/, "AnswerCard must not redefine the renderer");
+  assert.doesNotMatch(src, /const INLINE_RE/, "the inline regex must live in one module only");
+
+  const traceSrc = await readFile(new URL("../src/trace/AgentPipelineTrace.tsx", import.meta.url), "utf8");
+  assert.match(traceSrc, /from "\.\/inline"/, "the trace must use the shared renderer too");
+});
+
+// ---------------------------------------------------------------------------
+// Block-level markdown in the trace.
+//
+// Regression: the trace grouped lines itself and only knew paragraphs and
+// lists, so `## Heading` printed its markers. A critic's revise notes are full
+// markdown, so "## Critical Errors" reached the browser literally. The block
+// structure now comes from the shared parser (markdown.js), the same one the
+// answer card uses.
+// ---------------------------------------------------------------------------
+
+test("a markdown heading in a step renders as a heading, not literal hashes", async () => {
+  const html = await render({
+    events: [{
+      type: "critic", iteration: 1,
+      reason: "Review round 1. Notes.\n\n## Critical Errors\n\nBody text here.",
+      __ts: 1,
+    }],
+    status: "done",
+  });
+  assert.match(html, /<h[3-6] class="apt-prose apt-heading"/);
+  assert.match(html, />Critical Errors</);
+  assert.doesNotMatch(html, /##\s*Critical/);
+});
+
+test("a critic reason is not double-labelled for its round", async () => {
+  const html = await render({
+    events: [{ type: "critic", iteration: 1, reason: "Review round 1. Found issues.", __ts: 1 }],
+    status: "done",
+  });
+  assert.equal((html.match(/Review round 1\./g) || []).length, 1);
+});
+
+test("a critic reason without a round prefix gets one", async () => {
+  const html = await render({
+    events: [{ type: "critic", iteration: 2, reason: "Found issues.", __ts: 1 }],
+    status: "done",
+  });
+  assert.match(html, /Review round 2\./);
+});
+
+test("a multi-line progress message becomes a list body, not a flattened title", async () => {
+  // The backend used to interpolate the raw Python list, printing
+  // "['A', 'B']". It now sends markdown; this asserts the reducer routes a
+  // bulky message to the BODY so the list renders, keeping a short label.
+  const html = await render({
+    events: [{
+      type: "progress",
+      message: "Researching 3 sections in parallel:\n- First section\n- Second section\n- Third section",
+      __ts: 1,
+    }],
+    status: "running",
+  });
+  // ONE list of three items — not three single-item lists. Counting <li>
+  // globally would also match the trace's own flow <ol>, so scope to the
+  // prose list.
+  const lists = [...html.matchAll(/<ol class="apt-prose apt-list"[^>]*>([\s\S]*?)<\/ol>/g)];
+  assert.equal(lists.length, 1, "consecutive bullet lines must form ONE list");
+  assert.equal((lists[0][1].match(/<li>/g) || []).length, 3);
+  assert.match(html, /Researching 3 sections in parallel:/);
+  assert.doesNotMatch(html, /\[\s*'/, "no raw list repr may reach the DOM");
+});
+
+test("a short progress message stays a one-line label", async () => {
+  const html = await render({
+    events: [{ type: "progress", message: "Searching the web", __ts: 1 }],
+    status: "running",
+  });
+  assert.match(html, /apt-tool-label/);
+  assert.doesNotMatch(html, /apt-list/);
+});
+
+test("markdown block structure comes from the shared parser", async () => {
+  const src = await readFile(new URL("../src/trace/AgentPipelineTrace.tsx", import.meta.url), "utf8");
+  assert.match(src, /import \{ parseBlocks \} from "\.\.\/markdown"/);
+  // The local grouping helpers must be gone, or the two parsers drift again.
+  for (const dead of ["orderedItemIndex", "stripOrderedItem", "bulletItem", "stripBullet"]) {
+    assert.doesNotMatch(src, new RegExp(dead), `${dead} belonged to the local block grouping`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Truncated content must not print dangling markdown markers.
+//
+// Regression: the adapter sliced the critic's notes to 400 characters, cutting
+// mid-token. A review ending inside `**Lattice-based` left an unpaired `**` that
+// can never resolve, so it sat in the UI as literal asterisks. The cap is gone,
+// and a truncated note is now cleaned instead of printed.
+// ---------------------------------------------------------------------------
+
+test("an unpaired marker from truncated text is removed, not printed", async () => {
+  const html = await render({
+    events: [{
+      type: "critic", iteration: 1,
+      reason: "Review round 1. Checking sources:\n  - ESP32 heap figures — consistent. ✓\n  - **Lattice-based sc",
+      __ts: 1,
+    }],
+    status: "done",
+  });
+  assert.doesNotMatch(html, /\*\*/, "an unpaired marker must not reach the DOM");
+  assert.match(html, /Lattice-based sc/, "the visible words must survive");
+});
+
+test("paired markers and literal asterisks are left alone", async () => {
+  const { trimDanglingMarkers } = await loadInline();
+  // Paired spans must survive intact — a naive strip corrupted this.
+  assert.equal(trimDanglingMarkers("**both** and `ok`"), "**both** and `ok`");
+  assert.equal(trimDanglingMarkers("paired **a** and **b**"), "paired **a** and **b**");
+  // A literal asterisk in prose is not a marker and must never be deleted.
+  assert.equal(trimDanglingMarkers("rate is 5*3 per unit"), "rate is 5*3 per unit");
+  assert.equal(trimDanglingMarkers("see note*"), "see note*");
+  // An unpaired opener is stripped.
+  assert.equal(trimDanglingMarkers("- **Lattice-based sc"), "- Lattice-based sc");
+  assert.equal(trimDanglingMarkers("unpaired *only"), "unpaired only");
+});
+
+test("a truncated markdown link does not print its brackets", async () => {
+  const { trimDanglingMarkers } = await loadInline();
+  assert.equal(trimDanglingMarkers("see [the paper](https://arxiv.org/abs"), "see");
+});
+
+test("the critic reason is sent whole, not sliced in the adapter", async () => {
+  // A hard slice is what cut a marker in half in the first place.
+  const { readFile } = await import("node:fs/promises");
+  const src = await readFile(
+    new URL("../../backend/app/runtime/event_adapter.py", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /reason=str\(notes\)\[:\d+\]/,
+    "the critic reason must not be truncated with a character slice");
 });

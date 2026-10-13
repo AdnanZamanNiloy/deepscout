@@ -115,10 +115,16 @@ class ResearchArchitect:
             return {"research_data": []}
 
         if self.sink:
+            # A human-readable progress line. Interpolating the raw list printed
+            # a Python repr ("['A', 'B']") into the trace. Emit markdown: the
+            # trace renders it, so the sections land as a proper list instead of
+            # one long paragraph that the two-line clamp then truncates.
+            listed = "\n".join(f"- {q}" for q in queries)
             await stream_output(
                 "logs",
                 "parallel_research",
-                f"Running research for the following queries: {queries}",
+                f"Researching {len(queries)} section"
+                f"{'s' if len(queries) != 1 else ''} in parallel:\n{listed}",
                 self.sink,
             )
 

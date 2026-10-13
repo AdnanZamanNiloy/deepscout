@@ -297,10 +297,28 @@ export function buildTrace(
           // The pipeline reports stage progress as plain messages ("Search the
           // web", "Planning the outline", …). Each gets the icon of the stage it
           // names so the rail reads at a glance instead of as a wall of bullets.
-          steps.push({
-            id: id("progress"), kind: progressKind(msg), title: msg,
-            content: "", status: "completed", timestamp: ts, minor: true,
-          });
+          //
+          // A SHORT message is the row's label. A long or multi-line one is
+          // body content: it carries structure (a list of sections) that a
+          // single-line title would flatten into an unreadable run-on, and as a
+          // title it also hid the markdown the body renderer would have drawn.
+          const lines = msg.split("\n").filter((l) => l.trim());
+          const bulky = lines.length > 1 || msg.length > 90;
+          if (bulky) {
+            // Keep the first line as the label, the rest as the body.
+            const [head, ...rest] = lines;
+            steps.push({
+              id: id("progress"), kind: progressKind(head),
+              title: head.length > 90 ? `${head.slice(0, 87)}…` : head,
+              content: rest.length ? rest.join("\n") : "",
+              status: "completed", timestamp: ts, minor: true,
+            });
+          } else {
+            steps.push({
+              id: id("progress"), kind: progressKind(msg), title: msg,
+              content: "", status: "completed", timestamp: ts, minor: true,
+            });
+          }
         }
         break;
       }
@@ -484,9 +502,13 @@ export function buildTrace(
       case "critic": {
         const it = num(ev.iteration);
         const reason = str(ev.reason);
+        // The critic's own notes usually open with their round ("Review round
+        // 1. …"), so prefixing one unconditionally printed it twice. Add the
+        // label only when the text does not already say it.
+        const alreadyLabelled = it == null || new RegExp(`review round\\s*${it}\\b`, "i").test(reason);
         steps.push({
           id: id("critic"), kind: "gate", title: "Check the evidence",
-          content: [it != null ? `Review round ${it}.` : "Reviewed the evidence.", reason]
+          content: [alreadyLabelled || it == null ? null : `Review round ${it}.`, reason]
             .filter(Boolean)
             .join(" "),
           status: "completed", timestamp: ts, minor: true,

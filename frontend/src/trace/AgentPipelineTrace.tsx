@@ -18,6 +18,9 @@ import {
   type WireEvent,
 } from "./events";
 
+import { renderInline, trimDanglingMarkers } from "./inline";
+import { parseBlocks } from "../markdown";
+
 export type { TraceStep, WireEvent };
 
 export type AgentPipelineTraceProps = {
@@ -166,12 +169,26 @@ function isProse(kind: StepKind): boolean {
 // Prose rendering
 //
 // The trace's premium quality comes from the text reading like a narrative, so
-// URLs and quoted queries inside a sentence are highlighted inline — the same
-// treatment the reference gives an inline path. Purely presentational: the text
-// is whatever the backend sent.
+// inline markdown is rendered rather than printed: `**bold**` becomes bold,
+// `` `code` `` becomes a chip, a URL becomes a link, and a quoted span keeps its
+// chip treatment. Purely presentational: the text is whatever the backend sent.
+//
+// This uses the SHARED inline renderer (trace/inline.ts) instead of a private
+// one. The private version only knew URLs and quotes, so every other marker
+// reached the browser as literal text — the raw `**bold**` seen in the live
+// trace. One renderer, so the trace and the answer card cannot drift apart
+// again.
 // ---------------------------------------------------------------------------
 
+// Bare URLs are linkified separately: they are common inside a streamed step
+// and are not markdown links, so they need their own pass.
 const URL_RE = /https?:\/\/[^\s<>()[\]"]+/g;
+
+/** A planned render block: a paragraph, or one run of list items. */
+type Block =
+  | { type: "p"; text: string }
+  | { type: "ol"; items: string[]; start: number }
+  | { type: "ul"; items: string[]; start: number };
 
 function Prose({ text }: { text: string }) {
   const nodes: ReactNode[] = [];
@@ -181,7 +198,8 @@ function Prose({ text }: { text: string }) {
   let key = 0;
 
   while ((m = URL_RE.exec(text)) !== null) {
-    if (m.index > last) nodes.push(...highlightQuotes(text.slice(last, m.index), `t${key++}`));
+    // Inline markdown first, so a URL that appears inside bold text is bold.
+    if (m.index > last) nodes.push(...renderInline(text.slice(last, m.index), `t${key++}`));
     const url = m[0];
     nodes.push(
       <a
@@ -196,7 +214,7 @@ function Prose({ text }: { text: string }) {
     );
     last = m.index + url.length;
   }
-  if (last < text.length) nodes.push(...highlightQuotes(text.slice(last), `t${key++}`));
+  if (last < text.length) nodes.push(...renderInline(text.slice(last), `t${key++}`));
 
   return <>{nodes}</>;
 }
@@ -296,7 +314,12 @@ function Row({
     () => {
       if (!step.content) return [];
       if (isFinal) return [step.content];
-      return step.content.split("\n").filter((p) => p.trim());
+      // A truncated note can end inside a marker ("... **Lattice-based"); left
+      // alone it renders the asterisks literally forever, because the marker
+      // can never pair. Drop only a trailing opener.
+      return trimDanglingMarkers(step.content)
+        .split("\n")
+        .filter((p) => p.trim());
     },
     [step.content, isFinal],
   );
@@ -315,6 +338,46 @@ function Row({
   // A toggle appears only when there is genuinely more to read — a bulk batch,
   // or prose too long for the clamp. Two short claims get no toggle.
   const collapsible = bulk || longProse;
+
+  // BLOCK structure comes from the shared markdown parser, not a local one.
+  // The trace used to group lines itself and only knew paragraphs and list
+  // items, so any other markdown block — `## Heading`, `> quote`, a code
+  // fence — printed its markers literally. A critic's revise notes arrive as
+  // full markdown, so `## Critical Errors` reached the browser as "## Critical
+  // Errors". One parser, shared with the answer card.
+  //
+  // The final report keeps its single verbatim block: it is rendered in full by
+  // the answer card, and re-parsing it here would reflow what the reader has
+  // already seen.
+  // Block structure comes from the shared markdown parser (markdown.js), not a
+  // local one. The trace used to group lines itself and only knew paragraphs
+  // and list items, so `## Heading`, `> quote` and fenced code printed their
+  // markers literally — a critic's revise notes arrive as full markdown.
+  //
+  // `visible` entries are ALREADY paragraph units (the reducer joins claims
+  // with a single newline), so each is parsed on its own: feeding them in raw
+  // let the parser glue every claim into one long paragraph. Consecutive
+  // entries that are all list lines are first gathered into one run, because a
+  // block parser needs the whole run to see they are ONE list rather than N
+  // single-item lists.
+  const blocks = useMemo(() => {
+    if (isFinal) return [{ type: "pre", text: visible.join("\n") } as const];
+    const out: ReturnType<typeof parseBlocks> = [];
+    for (let i = 0; i < visible.length; i += 1) {
+      const group = [visible[i]];
+      const isList = (s: string) => /^\s*(?:[-*+]|\d{1,3}[.)])\s+/.test(s);
+      if (isList(visible[i])) {
+        let j = i + 1;
+        while (j < visible.length && isList(visible[j])) {
+          group.push(visible[j]);
+          j += 1;
+        }
+        i = j - 1;
+      }
+      out.push(...parseBlocks(group.join("\n")));
+    }
+    return out;
+  }, [visible, isFinal]);
 
   return (
     <motion.li
@@ -371,20 +434,98 @@ function Row({
           renderContent(step)
         ) : isFinal && !open ? null : paragraphs.length ? (
           <div>
-            {visible.map((p, i) => (
-              <p
-                className={
-                  isFinal
-                    ? "apt-prose apt-pre"
-                    : applyClamp
-                      ? "apt-prose apt-claim"
-                      : "apt-prose"
+            {blocks.map((b, bi) => {
+              const k = `${step.id}-b${bi}`;
+              // A block that is not the final report is a claim/preview line:
+              // it takes the two-line clamp until the row is opened.
+              const proseClass = isFinal
+                ? "apt-prose apt-pre"
+                : applyClamp
+                  ? "apt-prose apt-claim"
+                  : "apt-prose";
+
+              switch (b.type) {
+                case "heading": {
+                  // Rendered as a real heading, but sized down to the rail: a
+                  // critic's "## Critical Errors" is a label inside a step, not
+                  // a page section. Level is preserved for assistive tech.
+                  const Tag = (`h${Math.min(6, Math.max(3, b.level + 2))}`) as
+                    | "h3" | "h4" | "h5" | "h6";
+                  return (
+                    <Tag className="apt-prose apt-heading" key={k} data-level={b.level}>
+                      <Prose text={b.text} />
+                    </Tag>
+                  );
                 }
-                key={`${step.id}-p${i}`}
-              >
-                <Prose text={p} />
-              </p>
-            ))}
+                case "list":
+                  return (
+                    <ol
+                      className="apt-prose apt-list"
+                      key={k}
+                      {...(b.ordered && b.start > 1 ? { start: b.start } : {})}
+                    >
+                      {b.items.map((it, i) => (
+                        <li key={`${k}-${i}`}>
+                          <Prose text={it} />
+                        </li>
+                      ))}
+                    </ol>
+                  );
+                case "quote":
+                  return (
+                    <blockquote className="apt-prose apt-quote" key={k}>
+                      <Prose text={b.text} />
+                    </blockquote>
+                  );
+                case "code":
+                  return (
+                    <pre className="apt-codeblock" key={k}>
+                      <code>{b.text}</code>
+                    </pre>
+                  );
+                case "hr":
+                  return <hr className="apt-hr" key={k} />;
+                case "table": {
+                  // The rail is narrow; a table scrolls inside its own box
+                  // rather than forcing the whole thread wider.
+                  return (
+                    <div className="apt-table-wrap" key={k}>
+                      <table className="apt-table">
+                        <thead>
+                          <tr>
+                            {b.header.map((cell, ci) => (
+                              <th key={ci}><Prose text={cell} /></th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {b.rows.map((row, ri) => (
+                            <tr key={ri}>
+                              {row.map((cell, ci) => (
+                                <td key={ci}><Prose text={cell} /></td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                }
+                case "pre":
+                  return (
+                    <p className="apt-prose apt-pre" key={k}>
+                      <Prose text={b.text} />
+                    </p>
+                  );
+                case "paragraph":
+                default:
+                  return (
+                    <p className={proseClass} key={k}>
+                      <Prose text={b.text} />
+                    </p>
+                  );
+              }
+            })}
             {collapsible || isFinal ? (
               <button
                 type="button"

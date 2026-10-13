@@ -247,6 +247,96 @@
   line-height: 1.75;
   overflow-wrap: anywhere;
 }
+
+/* A markdown list inside a trace row. Same prose colour, line-height and
+   spacing as a paragraph so the rail reads as one system; the browser draws
+   the markers, which is what removes the raw "1." / "-" prefix from the text.
+   `padding-inline-start` is used rather than `list-style-position` so a
+   wrapped item aligns under its own text. */
+.apt-list {
+  margin: 0 0 10px;
+  padding-inline-start: 20px;
+  color: var(--apt-prose);
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+.apt-list > li { margin: 0 0 4px; }
+.apt-list > li:last-child { margin-bottom: 0; }
+.apt-list > li::marker { color: color-mix(in srgb, var(--apt-fg) 46%, transparent); }
+
+/* A heading inside a step (a critic's "## Critical Errors"). Sized as a LABEL,
+   not a page section: the rail is a log, and a document-scale heading in it
+   would shout. The h-level is still real for assistive tech. */
+.apt-heading {
+  font-size: 0.95em;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--apt-fg);
+  margin: 4px 0 6px;
+}
+.apt-heading[data-level="1"],
+.apt-heading[data-level="2"] {
+  font-size: 1em;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--apt-line);
+}
+.apt-quote {
+  margin: 0 0 10px;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--apt-rail);
+  color: var(--apt-dim);
+}
+.apt-codeblock {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--apt-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--apt-fg) 5%, transparent);
+  font-family: var(--mono);
+  font-size: 0.9em;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre;
+}
+.apt-hr {
+  margin: 8px 0 10px;
+  border: 0;
+  border-top: 1px solid var(--apt-line);
+}
+/* A table in a narrow rail scrolls inside its own box rather than stretching
+   the whole thread. */
+.apt-table-wrap { overflow-x: auto; margin: 0 0 10px; }
+.apt-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.94em;
+}
+.apt-table th,
+.apt-table td {
+  border: 1px solid var(--apt-line);
+  padding: 5px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.apt-table th {
+  background: color-mix(in srgb, var(--apt-fg) 6%, transparent);
+  color: var(--apt-fg);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+/* Inline markdown inside a list item must not inherit the paragraph clamp. */
+.apt-list > li > strong { color: var(--apt-fg); font-weight: 650; }
+.apt-list > li > code,
+.apt-inline {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--apt-fg) 8%, transparent);
+  color: var(--apt-fg);
+}
+.apt-list > li > a { color: var(--apt-fg); text-decoration: underline; }
 .apt-row[data-kind="final"] .apt-prose { color: var(--apt-fg); }
 /* Verbatim markdown block: keep the author's line breaks. */
 .apt-pre { white-space: pre-wrap; }

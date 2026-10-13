@@ -1,47 +1,17 @@
 import { parseReport } from "../lib";
 import { parseBlocks } from "../markdown";
+import { renderInline as sharedRenderInline } from "../trace/inline";
 import { IconAlert } from "./icons";
 import ExportMenu from "./ExportMenu";
 import MermaidDiagram from "./MermaidDiagram";
 /* Final report card — renders ONLY backend-produced content:
  * report markdown sections, findings events. */
 
-/* Inline markdown renderer: the report body is markdown, so `**bold**`,
- * `*italic*`, `` `code` ``, and `[text](url)` must render as elements
- * instead of printing their markers literally. Returns an array of nodes so
- * it can nest inside <p>/<li>/<td> without wrapping in a block element.
- * Citation markers like [1] / [12] become small chips so a reader can see the
- * grounding instead of reading raw brackets. */
-function renderInline(text) {
-  // Any stray HTML break left in a single line is a space, not literal text.
-  const src = String(text ?? "").replace(/<br\s*\/?>/gi, " ");
-  if (!src) return src;
-  const nodes = [];
-  // Order matters: links, then bold, then italic, then code, then citations.
-  const re = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))|(\*\*([^*]+)\*\*)|(\*([^*\n]+)\*)|(`([^`]+)`)|(\[(\d{1,3})\])/g;
-  let last = 0;
-  let m;
-  let k = 0;
-  while ((m = re.exec(src)) !== null) {
-    if (m.index > last) nodes.push(src.slice(last, m.index));
-    if (m[2] && m[3]) {
-      nodes.push(
-        <a key={k++} href={m[3]} target="_blank" rel="noreferrer noopener">{m[2]}</a>
-      );
-    } else if (m[5] !== undefined) {
-      nodes.push(<strong key={k++}>{m[5]}</strong>);
-    } else if (m[7] !== undefined) {
-      nodes.push(<em key={k++}>{m[7]}</em>);
-    } else if (m[9] !== undefined) {
-      nodes.push(<code key={k++}>{m[9]}</code>);
-    } else if (m[11] !== undefined) {
-      nodes.push(<sup key={k++} className="cite-ref">{m[11]}</sup>);
-    }
-    last = re.lastIndex;
-  }
-  if (last < src.length) nodes.push(src.slice(last));
-  return nodes;
-}
+/* Inline markdown is rendered by the SHARED renderer (trace/inline.ts). The
+ * answer card and the live trace used to carry separate copies, and the trace's
+ * copy was the incomplete one — so raw `**bold**` reached the browser there
+ * while rendering correctly here. One implementation, no drift. */
+const renderInline = sharedRenderInline;
 
 /* Render a parsed table into a scrollable, aligned <table>. Cell content still
  * goes through renderInline so bold/links/citations inside a table cell work. */
