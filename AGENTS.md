@@ -35,14 +35,15 @@ Agents:          app/agents/ — the LangGraph agent team: orchestrator (graph
 Runtime seam:    app/runtime/ — orchestrator.py (the route's entry point,
                  delegating to app.research.runner.ResearchRunner),
                  event_adapter.py (pipeline events → NDJSON),
+                 plan_review.py (human-in-the-loop approval handshake),
                  __init__.py (configure/runtime handle store). The audit
                  reconstruction lives in app/evidence/audit.py; report markdown
                  normalisation in app/report/formatting.py.
 Answer/audit:    the primary answer (state["final_report"]) NEVER carries
                  process metadata; the audit/trace carries confidence, quality,
                  evidence ledger, conflicts, decisions.
-API:             app/api/routes.py (stream, resume, trace, export, sessions);
-                 app/api/providers_routes.py (providers + chains).
+API:             app/api/routes.py (stream, resume, plan, trace, export,
+                 sessions); app/api/providers_routes.py (providers + chains).
 Common:          app/common/ — the shared leaves every layer may import:
                  config, logging, pure primitives, the semantic engine.
 Core:            app/core/*.py (llm client + response cache, usage ledger,
@@ -182,6 +183,59 @@ These are real bugs found by reading the code, not hypotheticals. Each one below
   fix look broken. Any change to claim shape, cleaning, fields, or
   thresholds MUST bump PROMPT_VERSION, or verification will chase ghosts.
 ```
+
+[FIXED — stranded approval card] app/agents/report.py, app/runtime/
+  plan_review.py, app/runtime/event_adapter.py, frontend/src/App.jsx
+  An interactive run's review window closed on a silent timeout: the gate
+  fell through to the automatic review, research proceeded, and a report was
+  generated with no approval at all — while the live "start research" card
+  stayed pinned above it, still accepting clicks the backend would reject.
+  Three compounding causes: (a) the timeout path emitted nothing on the wire,
+  so a run that continued by itself was indistinguishable from one that
+  ignored the user; (b) the card was cleared ONLY by the client submitting a
+  decision, so every other exit (expiry, error, abort, stream end) stranded
+  it; (c) the deadline was never communicated, making a 5-minute wait read as
+  a hang. Fixed: the request frame carries the server's `deadline_ts` and the
+  gate emits an `expired` frame when the window closes; the card closes on
+  expiry, on error, on abort, and in `launch`'s `finally` as a catch-all; it
+  counts down to the real deadline and disables itself once it passes.
+  Corollary found while fixing it: a RE-request (the user sent the plan back
+  for revision) reuses the run id, so per-run state in the card survived the
+  outline it belonged to — cards now key on the frame's per-request id.
+  Rule: ANY fallback that continues a run without the user (timeout, default,
+  degradation) MUST emit the event the client needs to withdraw whatever it is
+  showing for that step. An affordance must never outlive the pause it belongs
+  to, and the client must never be the only thing that can close it.
+
+[FIXED — rail desynced from the live trace] app/agents/team.py,
+  app/runtime/event_adapter.py, app/api/routes.py,
+  frontend/src/App.jsx, frontend/src/components/IntelligencePanel.jsx
+  The right-hand Research Workflow rail showed all eight agents "Queued" and
+  "0 agents working" while the trace beside it streamed live lines — the two
+  views of one run disagreed by construction. Three compounding causes:
+  (a) the wire only ever reported node COMPLETIONS (LangGraph's
+      `stream_mode="updates"` yields after a node finishes), so the client had
+      no way to know a stage had started; before the first artifact landed the
+      rail read `reached = 0` and nothing could be "working";
+  (b) `deriveAgents` inferred status from finished artifacts (sources → plan →
+      claims → reviews → done) instead of from progress, so it could not
+      represent "running", and it treated the plan-review gate as instantly
+      passed even while the user was being asked to approve;
+  (c) the stage key collapsed `pathfinder` and `scout_swarm` onto `retrieval`,
+      so the two could never be distinguished on the ladder.
+  Fixed: every graph node is wrapped to announce its start AND end on the sink
+  (`ResearchTeam._staged`, end signalled from `finally` so a raising node cannot
+  leave the rail spinning); the adapter maps that to a `stage` frame keyed on
+  the NODE; the route persists the lifecycle to `agent_events` using the frame's
+  own timestamp, so a restored run rebuilds the ladder it streamed. The rail now
+  reads that lifecycle, with the artifact ladder kept only as a fallback for
+  runs restored from before stage frames existed. Rule: two views of the same
+  run MUST be driven by one signal — when a UI re-derives state that the wire
+  already knows, it will eventually contradict the authoritative view. Corollary
+  found while fixing it: `stage_frame` and the retrieval notes both dedupe on
+  node names, so a single shared set made whichever ran first silence the other;
+  and a `pipeline_stage` signal must be handled BEFORE any gate that reads
+  `stage` with a fallback to `node`, or the signal never passes it.
 
 [FIXED — provider-timeout trap] app/core/llm.py (retries vs research budget)
   Every provider call retried 4x in tenacity plus 3x in generate_json, each

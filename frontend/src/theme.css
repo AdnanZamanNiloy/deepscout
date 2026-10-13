@@ -56,7 +56,6 @@
   /* --- action: warm amber (the one "do this" hue) --- */
   --deepscout: #f0824d;
   --deepscout-soft: #f09c72;
-  --deepscout-deep: #b85c38;
   --deepscout-glow: rgba(240, 130, 77, 0.28);
   --deepscout-wash: rgba(240, 130, 77, 0.09);
   --ink-on-accent: #1c1009;
@@ -75,11 +74,9 @@
   --green-wash: rgba(134, 184, 159, 0.1);
   --amber-wash: rgba(224, 179, 78, 0.12);
   --red-wash: rgba(232, 122, 108, 0.11);
-  --blue-wash: rgba(122, 167, 232, 0.12);
 
   /* --- legacy aliases kept so no component breaks --- */
   --danger: var(--red);
-  --danger-tint: var(--red-wash);
   --accent: var(--amber);
   --dot-idle: #555555;
   --probe-ok: var(--mint);
@@ -112,8 +109,6 @@
 
   /* --- elevated/inset surfaces previously hardcoded per component --- */
   --inset: #242424;
-  --inset-line: #303030;
-  --inset-2: #262626;
   --chip: #262626;
   --menu: #222222;
   --menu-hover: #262626;
@@ -135,17 +130,14 @@
 
   --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
-  /* Headings: bold sans-serif (Arial/Inter-like). Body reading: an editorial
-   * serif (Georgia-first), used for report/answer prose. Shared by BOTH themes
-   * so day and light render identically in size, weight and family. */
+  /* Headings: bold sans-serif (Arial/Inter-like). Shared by BOTH themes so
+   * day and light render identically in size, weight and family. */
   --font-heading: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
-    Palatino, "Times New Roman", serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo,
     Consolas, monospace;
 
-  /* --- type scale: a real modular ramp, not twelve ad-hoc px values ---
+  /* --- type scale: a real modular ramp, not a dozen ad-hoc px values ---
    * Ratio ≈1.14 from a 13px base. Every size in the app maps to one of
    * these; nothing invents an in-between value. 2xs/xs are the meta tier
    * (labels, timestamps, eyebrow), sm/base/md the reading tier, lg/xl/2xl
@@ -154,17 +146,11 @@
   --fs-xs: 11px;
   --fs-sm: 12px;
   --fs-base: 13px;
-  --fs-md: 14px;
   --fs-lg: 16px;
-  --fs-xl: 20px;
-  --fs-2xl: 26px;
-  --fs-3xl: 34px;
 
   /* line-heights paired to the tiers */
   --lh-tight: 1.25;
-  --lh-snug: 1.4;
   --lh-base: 1.55;
-  --lh-loose: 1.7;
 
   /* --- spacing scale: 4px base grid ---
    * Every padding/gap in the app resolves to a step. This is what makes a
@@ -178,40 +164,21 @@
   --sp-7: 14px;
   --sp-8: 16px;
   --sp-10: 20px;
-  --sp-12: 24px;
-  --sp-16: 32px;
-  --sp-20: 40px;
-  --sp-24: 48px;
 
-  /* --- elevation: 0=flush, 1=recessed, 2=raised, 3=overlay ---
-   * Shadow is plane separation, never decoration. Tints let a surface lift
-   * without a shadow (better inside dense rails). */
-  --elev-0: none;
-  --elev-1: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  /* --- elevation: 2=raised, 3=overlay ---
+   * Shadow is plane separation, never decoration. */
   --elev-2: 0 1px 2px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.22);
   --elev-3: 0 18px 46px rgba(0, 0, 0, 0.55);
-  --tint-lift: rgba(255, 255, 255, 0.035);
-  --tint-sink: rgba(0, 0, 0, 0.22);
 
-  /* --- z-index scale: one ladder, no magic numbers per component --- */
+  /* --- z-index ladder --- */
   --z-base: 1;
   --z-sticky: 20;
-  --z-rail: 30;
-  --z-scrim: 35;
-  --z-drawer: 40;
-  --z-menu: 60;
   --z-toast: 80;
 
   /* --- motion: durations + easing as tokens --- */
   --dur-fast: 0.12s;
   --dur-base: 0.18s;
-  --dur-slow: 0.28s;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-
-  /* --- dense control heights (console-grade, not consumer) --- */
-  --h-control: 30px;
-  --h-control-lg: 34px;
 }
 
 /* ============================================================
@@ -243,7 +210,6 @@
      white --ink-on-accent (5.77:1). */
   --deepscout: #ad4517;
   --deepscout-soft: #96400f;
-  --deepscout-deep: #7d3410;
   --deepscout-glow: rgba(173, 69, 23, 0.22);
   --deepscout-wash: rgba(173, 69, 23, 0.08);
   --ink-on-accent: #ffffff;
@@ -256,7 +222,6 @@
   --green-wash: rgba(31, 122, 83, 0.1);
   --amber-wash: rgba(138, 94, 8, 0.1);
   --red-wash: rgba(176, 58, 44, 0.09);
-  --blue-wash: rgba(44, 91, 158, 0.1);
 
   --dot-idle: #a09a93;
 
@@ -272,8 +237,6 @@
   --shadow-pop: 0 18px 46px rgba(40, 30, 20, 0.16);
 
   --inset: #f6f4ef;
-  --inset-line: #e4dfd6;
-  --inset-2: #f6f4ef;
   --chip: #f3f0ea;
   --menu: #ffffff;
   --menu-hover: #f3f0ea;
@@ -289,11 +252,8 @@
 
   /* Elevation on light paper: shadows are warmer and softer so raised cards
      separate without ringing. */
-  --elev-1: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   --elev-2: 0 1px 2px rgba(40, 30, 20, 0.06), 0 2px 8px rgba(40, 30, 20, 0.05);
   --elev-3: 0 18px 46px rgba(40, 30, 20, 0.16);
-  --tint-lift: rgba(255, 255, 255, 0.6);
-  --tint-sink: rgba(40, 30, 20, 0.03);
 }
 
 /* ============================================================
@@ -559,11 +519,6 @@ select:focus-visible {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.42; }
 }
-@keyframes spin { to { transform: rotate(360deg); } }
-@keyframes shimmer {
-  from { background-position: 200% 0; }
-  to { background-position: -200% 0; }
-}
 @keyframes draw-in {
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
@@ -617,15 +572,6 @@ select:focus-visible {
 }
 .skip-link:focus-visible { transform: none; outline-offset: 3px; }
 
-/* Section header used inside cards and rails. */
-
-/* A labelled metric — the console's unit of quantitative status. */
-
-/* Skeleton: the loading state for anything whose shape is known ahead of
-   time. A shimmer sweep, reduced-motion safe (falls back to a static block). */
-
-/* Segmented control: mutually exclusive compact toggle. */
-
 /* Key/value meta row — dense, aligned, used in rails and detail headers. */
 .kv {
   display: flex;
@@ -656,7 +602,6 @@ select:focus-visible {
   .msg-actions,
   .user-actions,
   .skip-link,
-  .scroll-top-btn,
   .landing-nav,
   .landing-footer { display: none !important; }
 

@@ -155,15 +155,13 @@
 .pv-view-head{flex-direction:column}
 .pv-summary{width:100%}
 .pv-summary-item{flex:1}
-.pv-section{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:16px 18px;margin-bottom:16px}
 .pv-form{margin:0}
 
 /* Model card / form primitives. Moved here from components.css so the Model
    Controls page has ONE stylesheet (model-controls.css) — the duplicated rules in
    components.css were overriding the sidebar-matched theme. */
-.pv-section{background:var(--side);border:1px solid var(--line-soft);border-radius:12px;padding:16px 18px;margin-bottom:16px}
 .pv-form{margin:0}
-.pv-col-2,.pv-span-2{grid-column:1 / -1}
+.pv-span-2{grid-column:1 / -1}
 .pv-model-list {display:grid;grid-template-columns:repeat(auto-fill,var(--pv-tile-w));gap:18px 24px;justify-content:space-between;--pv-tile-w:240px}
 .pv-model-card {display:flex;flex-direction:column;justify-content:space-between;gap:10px;align-items:stretch;min-height:188px;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
 .pv-model-card.active{border-color:color-mix(in srgb,var(--deepscout) 45%,transparent)}

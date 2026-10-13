@@ -400,10 +400,6 @@ a.apt-inline:hover { background: color-mix(in srgb, var(--apt-fg) 12%, transpare
 
 /* --- motion -------------------------------------------------------------- */
 
-@keyframes apt-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
 @keyframes apt-breathe {
   0%, 100% { opacity: 0.45; }
   50% { opacity: 1; }
