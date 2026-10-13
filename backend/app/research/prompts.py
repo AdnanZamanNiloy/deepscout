@@ -1,138 +1,170 @@
 """Prompt construction for every stage of a research run.
 
-The prompts are the single largest lever on report quality, so the text here is
-a faithful reproduction of the wording the pipeline shipped with — claim
-citation discipline, source-quality guidance, date handling and the
-anti-duplication instructions all matter and must not drift.
+This module is the single place where the instructions sent to the model are
+written. Prompts dominate report quality, so the guidance here is deliberate and
+must not drift silently: citation discipline, source-quality rules, date
+handling, cross-section uniqueness and scope limits are all encoded as explicit
+constraints, not left to the model to infer.
 
-:class:`PromptFamily` exposes two groups of methods:
+Two kinds of prompt live here:
 
-* **generators** keyed by report type, reached through
-  :func:`get_prompt_by_report_type`;
-* **situation methods** called directly by the skills (search queries, the
-  introduction/conclusion, source curation, document formatting).
+* **report builders**, chosen by report type through
+  :func:`builder_for` — the whole-report body and a single section;
+* **stage prompts**, called directly by the skills: search-query planning, the
+  introduction and conclusion, source curation, and the document renderer.
 
-Only the default family is implemented; the model-specific families were not
-used by the live path.
+The wording is original to this project. The problem it solves — turning
+gathered sources into a cited, non-repetitive, well-scoped report — is a shared
+one; the constraints below were written for this pipeline's quality bar.
 """
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from typing import Any, Dict, List
 
-from app.research.enums import ReportSource, ReportType, Tone
+from app.research.enums import EvidenceScope, ReportKind, Tone
 from app.common.models import Document
 
 
-class PromptFamily:
-    """Default prompt set.
+def _as_of_date() -> str:
+    """The run date, phrased as an explicit anchor the model can cite."""
+    return datetime.now(timezone.utc).strftime("%B %d, %Y")
 
-    All methods are usable as ``PromptFamily.method(...)`` (static) so a caller
-    never needs an instance; the ``__init__`` accepting a config is retained for
-    call sites that construct one.
+
+class PromptKit:
+    """The instruction set used by every research run.
+
+    Every method is a ``@staticmethod`` so callers use ``PromptKit.method(...)``
+    without holding an instance. ``__init__`` still accepts a config because a
+    few call sites construct one, but no method depends on it.
     """
 
     def __init__(self, config: Any = None):
         self.cfg = config
 
+    # --- evidence gathering -------------------------------------------------
+
     @staticmethod
     def generate_search_queries_prompt(
         question: str,
         parent_query: str,
-        report_type: str,
+        report_kind: str,
         max_iterations: int = 3,
         context: List[Dict[str, Any]] = [],
     ) -> str:
-        """Prompt asking for ``max_iterations`` plain-language search queries."""
-        if report_type in (
-            ReportType.DetailedReport.value,
-            ReportType.SubtopicReport.value,
-        ):
-            task = f"{parent_query} - {question}"
+        """Ask for ``max_iterations`` plain-language search queries."""
+        subject = (
+            f"{parent_query} — {question}"
+            if report_kind
+            in (ReportKind.Expanded.value, ReportKind.Section.value)
+            else question
+        )
+
+        if context:
+            grounding = (
+                f"\nWhat is already known about \"{subject}\":\n{context}\n\n"
+                "Use those findings to aim the queries more precisely: build on "
+                "what they cover and reach for the specifics they leave open — "
+                "named figures, dates, events or organisations worth pinning down.\n"
+            )
         else:
-            task = question
+            grounding = ""
 
-        context_prompt = f"""
-You are a seasoned research assistant tasked with generating search queries to find relevant information for the following task: "{task}".
-Context: {context}
+        example = ", ".join(f'"query {i + 1}"' for i in range(max_iterations))
 
-Use this context to inform and refine your search queries. The context provides real-time web information that can help you generate more specific and relevant queries. Consider any current events, recent developments, or specific details mentioned in the context that could enhance the search queries.
-""" if context else ""
+        return (
+            f'Produce {max_iterations} web-search queries that together cover the '
+            f'research task: "{subject}".\n'
+            f"{grounding}\n"
+            "Write each query as ordinary descriptive language, the way a person "
+            "would type it. Do not use search-engine operators — no site:, "
+            "filetype:, inurl:, intitle:, and no OR / AND / NOT — because many "
+            "backends ignore or misread them and return nothing.\n\n"
+            f"If the task is time-sensitive, treat {_as_of_date()} as the current "
+            "date.\n\n"
+            "Answer with a bare list of strings and nothing else, in exactly this "
+            f"shape: [{example}]\n"
+        )
 
-        dynamic_example = ", ".join([f'"query {i+1}"' for i in range(max_iterations)])
-
-        return f"""Write {max_iterations} search queries to research the following task: "{task}"
-
-Each query must be a plain natural language phrase. Do not use search operator syntax
-such as site:, filetype:, inurl:, intitle:, OR, AND, or NOT — these operators are
-not universally supported and will return empty results on many search backends.
-
-Assume the current date is {datetime.now(timezone.utc).strftime('%B %d, %Y')} if required.
-
-{context_prompt}
-You must respond with a list of strings in the following format: [{dynamic_example}].
-The response should contain ONLY the list.
-"""
+    # --- report bodies ------------------------------------------------------
 
     @staticmethod
     def generate_report_prompt(
         question: str,
         context,
-        report_source: str,
+        evidence_scope: str,
         report_format="apa",
-        total_words=1000,
+        target_words=1000,
         tone=None,
         language="english",
     ) -> str:
-        """Main report-generation prompt (the research_report type)."""
-        if report_source == ReportSource.Web.value:
-            reference_prompt = """
-You MUST list every source you used at the end of the report under a "## References" heading: one entry per source, no duplicates.
-Every reference entry MUST identify the SPECIFIC publication or page and link to it, in this form:
+        """Instruction for the full research report (the deep-dive kind)."""
+        if evidence_scope == EvidenceScope.Web.value:
+            citation_rules = """
+End the report with a "## References" heading. List each source exactly once —
+no repeats.
+
+Every entry must point at the specific work you used, naming it and linking to it:
 
     - Title of the specific work (Year). Publisher or site. [link text](full URL)
 
-Rules for references (these are mandatory):
-- The title is the real title of the specific article, paper, report or page you actually used — read it from the source. NEVER write a placeholder such as "Author not specified", "Author not specified in provided metadata", "Untitled", or leave the author slot blank.
-- NEVER cite a database, repository, or search page as the reference: no "Europe PMC", "Semantic Scholar PDF", "IEEE", "arXiv:2011.00001", "Google Scholar", "PubMed" or a bare DOI/PMID landing page with no title. Cite the named work behind it, with its title and the URL of the specific page.
-- If a source has a known author, include it before the year ("Smith, J. (2024). Title. Site."). If the author is genuinely not recoverable from the source, OMIT the author field entirely — do not invent one and do not write a placeholder.
-- Link text must be the work's title or site name, never a raw URL pasted as the link text.
+Cite these rules literally:
+- Use the work's real title, taken from the source itself. Never substitute a
+  placeholder — no "Author not specified", no "Untitled", no blank author slot.
+- Never list an aggregator, repository, index or search page as a reference
+  ("Europe PMC", "Semantic Scholar", "Google Scholar", "PubMed", "arXiv:1234",
+  or a bare DOI/PMID page with no title). Name the work behind it and link to
+  its specific page.
+- If an author is named, put them before the year ("Smith, J. (2024). Title.
+  Site."). If no author is recoverable, drop the author field entirely rather
+  than inventing or placeholder-filling one.
+- The visible link text is the title or the site name — never a raw URL.
 """
         else:
-            reference_prompt = """
-You MUST write all used source document names at the end of the report as references, and make sure to not add duplicated sources, but only one reference for each.
+            citation_rules = """
+End the report with a references list naming every document you drew on. Include
+each source once only — no duplicates.
 """
 
-        tone_prompt = f"Write the report in a {tone.value} tone." if tone else ""
+        tone_line = f"Write the whole report in a {tone.value} tone." if tone else ""
 
         return f"""
-Information: "{context}"
+Source material:
+"{context}"
 ---
-Using the above information, answer the following query or task: "{question}" in a detailed report --
-The report should focus on the answer to the query, should be well structured, informative,
-in-depth, and comprehensive, with facts and numbers if available and at least {total_words} words.
-You should strive to write the report as long as you can using all relevant and necessary information provided.
 
-Please follow all of the following guidelines in your report:
-- You MUST determine your own concrete and valid opinion based on the given information. Do NOT defer to general and meaningless conclusions.
-- You MUST write the report with markdown syntax and {report_format} format.
-- Structure your report with clear markdown headers: use # for the main title, ## for major sections, and ### for subsections.
-- Use markdown tables when presenting structured data or comparisons to enhance readability.
-- You MUST prioritize the relevance, reliability, and significance of the sources you use. Choose trusted sources over less reliable ones.
-- You must also prioritize new articles over older articles if the source can be trusted.
-- You MUST NOT include a table of contents, but DO include proper markdown headers (# ## ###) to structure your report clearly.
-- Use in-text citation references in {report_format} format and make it with markdown hyperlink placed at the end of the sentence or paragraph that references them like this: ([in-text citation](url)).
-- Every substantive claim, figure or quote MUST carry an in-text citation to the source it came from. Do NOT cite sources that do not appear in the provided information.
-- Don't forget to add a reference list at the end of the report in {report_format} format.
-- Every claim must be supported; where the evidence only shows research potential rather than established fact (a method, a prototype, a dataset), say so — do not present it as demonstrated employer demand or real-world outcome.
-- {reference_prompt}
-- {tone_prompt}
-You MUST write the report in the following language: {language}.
-Assume that the current date is {date.today().strftime('%d %B %Y')}.
+Write a detailed report answering: "{question}"
+
+Make it structured, substantial and specific — include concrete facts and numbers
+wherever the sources provide them, and aim for at least {target_words} words. Use
+all the relevant material available rather than padding.
+
+Hold to every one of these rules:
+- Form your own concrete reading of the evidence. Do not retreat into vague,
+  content-free conclusions.
+- Write in markdown, formatted to {report_format}.
+- Structure with markdown headers — a single # title, ## for major sections, ###
+  for subsections.
+- Present comparisons and structured data as markdown tables.
+- Prefer reliable, authoritative sources over weak ones, and recent reporting
+  over stale reporting when the source is trustworthy.
+- Do not include a table of contents. Headers alone provide the structure.
+- Cite in {report_format} form using markdown links placed right after the
+  claim they support, like this: ([in-text citation](url)).
+- Every substantive claim, figure or quotation must carry an inline citation to
+  a source that actually appears above. Never cite a source that is not present.
+- Close with the reference list in {report_format} form.
+- Match each claim's strength to its evidence. If something is a method, a
+  prototype or a dataset rather than a demonstrated real-world result, say so —
+  do not present it as established fact or proven demand.
+- {citation_rules}
+- {tone_line}
+Write the report in {language}.
+Treat {date.today().strftime('%d %B %Y')} as today's date.
 """
 
     @staticmethod
-    def generate_subtopic_report_prompt(
+    def generate_section_prompt(
         current_subtopic,
         existing_headers: list,
         relevant_written_contents: list,
@@ -140,89 +172,121 @@ Assume that the current date is {date.today().strftime('%d %B %Y')}.
         context,
         report_format: str = "apa",
         max_subsections=5,
-        total_words=800,
+        target_words=800,
         tone: Tone = Tone.Objective,
         language: str = "english",
     ) -> str:
-        """Per-section prompt: one section of the larger report, no intro/conclusion."""
+        """Instruction for one section of a larger report (no intro or conclusion)."""
         return f"""
 Context:
 "{context}"
 
-Main Topic and Subtopic:
-Using the latest information available, construct a detailed report on the subtopic: {current_subtopic} under the main topic: {main_topic}.
-You must limit the number of subsections to a maximum of {max_subsections}.
+You are writing one section of a larger report.
+Main topic: {main_topic}
+Your subtopic: {current_subtopic}
 
-Content Focus:
-- The report should focus on answering the question, be well-structured, informative, in-depth, and include facts and numbers if available.
-- Use markdown syntax and follow the {report_format.upper()} format.
-- When presenting data, comparisons, or structured information, use markdown tables to enhance readability.
-- Source quality: prefer primary, authoritative sources (government, statistical agencies, peer-reviewed studies, official reports) over secondary summaries and blog posts. Never state a figure, statistic or incident claim that lacks a citation to a source in the provided context; if the only support for a claim is an indirect or low-quality source, attribute it explicitly ("according to X, a secondary source") or omit it.
-- Citation discipline: every sentence carrying a number, date, or factual assertion MUST end with an inline citation to the exact source it came from. Do not reuse one citation for claims drawn from different sources, and do not cite a source for a claim it does not contain.
+Using the freshest evidence available, write this subtopic in depth. Use at most
+{max_subsections} subsections.
 
-IMPORTANT:Content and Sections Uniqueness:
-- This part of the instructions is crucial to ensure the content is unique and does not overlap with existing reports.
-- Carefully review the existing headers and existing written contents provided below before writing any new subsections.
-- Prevent any content that is already covered in the existing written contents.
-- Do not use any of the existing headers as the new subsection headers.
-- Do not repeat any information already covered in the existing written contents or closely related variations to avoid duplicates.
-- Do not restate the same statistic, example or argument in more than one paragraph — state it once, with its citation, and build on it rather than repeating it.
-- If you have nested subsections, ensure they are unique and not covered in the existing written contents.
-- Ensure that your content is entirely new and does not overlap with any information already covered in the previous subtopic reports.
-- The "Existing written contents" below are sections of THIS SAME report that are already written. Treat them as already-spoken: reference them in passing if needed ("as the previous section established…"), but do NOT redevelop their arguments, restate their figures, or re-cite their sources for the same claim.
+What to cover:
+- Answer the subtopic directly, in a structured, informative way, with the facts
+  and figures the sources support.
+- Write in markdown following the {report_format.upper()} format.
+- Use markdown tables for comparisons and structured data.
+- Prefer primary, authoritative sources (government bodies, statistics agencies,
+  peer-reviewed work, official reports) over secondhand summaries and blog posts.
+  Never state a number, statistic or incident without citing a source above; if
+  the only backing is weak or secondhand, say so plainly ("according to X, a
+  secondary source") or leave it out.
+- Any sentence carrying a number, a date or a factual assertion ends with an
+  inline citation to the exact source behind it. Do not stretch one citation
+  across claims from different sources, and do not cite a source for something
+  it does not say.
 
-Scope Discipline:
-- Write ONLY about this subtopic: "{current_subtopic}". Every paragraph must serve that subtopic directly.
-- Do not drift into adjacent subjects, sector case studies, or regional examples that do not bear directly on this subtopic — a loosely-related example belongs in the section whose subtopic it actually serves, and dilutes both. If a finding is only weakly connected, omit it or state plainly why the connection matters.
+Do not repeat the rest of the report:
+- This matters: your section must add new material, not restate what is already
+  written.
+- Read the existing headers and written content below before you begin.
+- Do not reuse an existing header as a subsection header.
+- Do not reproduce facts, examples or arguments already present, in any wording.
+- State each statistic, example or argument once, cite it, then build on it —
+  never re-state it in a later paragraph.
+- If you add nested subsections, make sure they too are new.
+- The "Existing written content" below is part of THIS report. Refer back to it in
+  passing if useful ("as the previous section showed…"), but do not redevelop its
+  arguments, repeat its figures, or re-cite its sources for the same point.
 
-Argument Quality (comparisons and rankings):
-- When the subtopic involves a comparison, ranking, or a claim that one item is "most/most important/best", you MUST state the criteria explicitly and apply the SAME criteria to every item you compare. A claim that X is the most demanding must be supported by evidence that measures X and its alternatives against the same yardstick; naming X without comparable evidence for the alternatives is not support.
+Stay on your subtopic:
+- Write only about "{current_subtopic}". Every paragraph should serve it.
+- Do not wander into adjacent subjects, unrelated sector examples or regions that
+  do not bear on this subtopic. A weakly-related finding belongs elsewhere or is
+  best omitted — if you keep it, say in one line why it matters.
+
+Comparisons and rankings:
+- If the subtopic compares items, ranks them, or claims something is
+  "most/most important/best", state the criteria up front and judge every item by
+  the same criteria. Claiming X is the most demanding requires evidence measuring
+  X against its alternatives on the same scale — naming X alone is not evidence.
 
 Readability:
-- Keep paragraphs short: at most 4-5 sentences each. One idea per paragraph.
-- Prefer plain language. If a technical term is unavoidable, define it once in plain words; do not stack jargon.
-- Lead each subsection with its point, then the evidence — do not bury the finding under setup.
+- Keep paragraphs to 4-5 sentences at most; one idea each.
+- Prefer plain language. Define an unavoidable technical term once, in plain
+  words, and do not stack jargon.
+- Lead each subsection with its point, then the support — do not bury the finding.
 
-"Existing Subtopic Reports":
-- Existing subtopic reports and their section headers:
+"Existing subtopic reports" — headers already used:
 
     {existing_headers}
 
-- Existing written contents from previous subtopic reports:
+"Existing subtopic reports" — content already written:
 
     {relevant_written_contents}
 
-"Structure and Formatting":
-- As this sub-report will be part of a larger report, include only the main body divided into suitable subtopics without any introduction or conclusion section.
+Formatting:
+- This is one part of a larger report: include only the body, split into suitable
+  subsections. Add no introduction and no conclusion.
 
-- You MUST include markdown hyperlinks to relevant source URLs wherever referenced in the report, for example:
+- Link to source URLs inline wherever you reference them, e.g.:
 
-    ### Section Header
+    ### Section heading
 
-    This is a sample text ([in-text citation](url)).
+    This is sample prose ([in-text citation](url)).
 
-- Use H2 for the main subtopic header (##) and H3 for subsections (###).
-- Use smaller Markdown headers (e.g., H2 or H3) for content structure, avoiding the largest header (H1) as it will be used for the larger report's heading.
-- Organize your content into distinct sections that complement but do not overlap with existing reports.
-- If a new subsection is similar to one already covered, title it with the ACTUAL subject it discusses and note the distinction in its own words. Never write a literal placeholder heading like "New header" or "similar to existing header".
+- Use ## for your subtopic heading and ### for subsections.
+- Do not use the largest heading (H1) — that belongs to the whole report.
+- Organise the content so it complements, rather than overlaps, the existing
+  sections.
+- If a new subsection is close to one already written, give it the real name of
+  what it covers and note the difference in your own words. Never emit a
+  placeholder heading like "New header" or "similar to existing header".
 
 Citations:
-- Every in-text link MUST point to a specific publication or page — its title, author/site, and URL — not to a bare database, search page, or repository home (never cite "Google Scholar", a search results page, or a DOI landing page with no title).
-- If you cannot identify the specific work behind a figure, attribute it to the source that reports it ("according to <named source>") or omit the figure. Never present an unattributed number.
+- Every inline link must point at a specific publication or page — its title,
+  author/site and URL — not a database, a search page or a repository home.
+  Never cite "Google Scholar", a results page, or a title-less DOI page.
+- If you cannot identify the specific work behind a figure, attribute it to the
+  source reporting it ("according to <named source>") or omit it. Never leave a
+  number unattributed.
 
-"Date":
-Assume the current date is {datetime.now(timezone.utc).strftime('%B %d, %Y')} if required. Date every time-sensitive statement with an explicit as-of date drawn from the evidence ("as of March 2026"), never with a vague "currently" or "today". Never describe a future state or an event you cannot date as if it has already happened.
+Dates:
+- Treat {_as_of_date()} as the current date if needed. Give every time-sensitive
+  statement an explicit as-of date drawn from the evidence ("as of March 2026"),
+  never a vague "currently" or "today". Never describe a future state or an
+  undated event as though it has already occurred.
 
-"IMPORTANT!":
-- You MUST write the report in the following language: {language}.
-- The focus MUST be on the main topic! You MUST Leave out any information un-related to it!
-- Must NOT have any introduction, conclusion, summary or reference section.
-- You MUST use in-text citation references in {report_format.upper()} format and make it with markdown hyperlink placed at the end of the sentence or paragraph that references them like this: ([in-text citation](url)).
-- Where a subsection overlaps thematically with earlier reports, give it a concrete subject title and state the distinction in prose. Do NOT emit placeholder headings such as "New header" or "similar to existing header".
-- The report should have a minimum length of {total_words} words.
-- Use an {tone.value} tone throughout the report.
+Finally:
+- Write in {language}.
+- Keep the focus on the main topic; exclude anything unrelated to it.
+- Include no introduction, conclusion, summary or reference section.
+- Cite in {report_format.upper()} form using markdown links placed right after
+  the claim, like this: ([in-text citation](url)).
+- Where a subsection overlaps an earlier one, title it with its real subject and
+  explain the distinction in prose — do not write "New header" or "similar to
+  existing header".
+- Minimum length {target_words} words.
+- Keep the tone {tone.value} throughout.
 
-Do NOT add a conclusion section.
+Do not add a conclusion section.
 """
 
     @staticmethod
@@ -232,16 +296,22 @@ Do NOT add a conclusion section.
         language: str = "english",
         report_format: str = "apa",
     ) -> str:
-        return f"""{research_summary}\n
-Using the above latest information, Prepare a detailed report introduction on the topic -- {question}.
-- The introduction should be succinct, well-structured, informative with markdown syntax.
-- As this introduction will be part of a larger report, do NOT include any other sections, which are generally present in a report.
-- The introduction should be preceded by an H1 heading with a suitable topic for the entire report.
-- You must use in-text citation references in {report_format.upper()} format and make it with markdown hyperlink placed at the end of the sentence or paragraph that references them like this: ([in-text citation](url)).
-- Length: 2-3 short paragraphs. State the question, why it matters, and what the report covers — then stop. Do not summarise the findings (the body does that) and do not preview statistics.
-- Do not begin with a heading line beyond the H1 title; do not repeat the H1 as an "## Introduction" heading (the report template already adds it).
-Assume that the current date is {datetime.now(timezone.utc).strftime('%B %d, %Y')} if required.
-- The output must be in {language} language.
+        return f"""{research_summary}
+
+Using the material above, write the introduction to a report on: {question}.
+- Keep it short, clear and structured, in markdown.
+- It becomes part of a larger report, so include nothing else a report would
+  normally contain.
+- Start with an H1 heading naming the whole report's subject.
+- Cite in {report_format.upper()} form using markdown links placed right after
+  the claim, like this: ([in-text citation](url)).
+- Length: 2-3 short paragraphs. Say what the question is, why it matters and what
+  the report covers — then stop. Do not summarise findings (the body does that)
+  and do not preview numbers.
+- Do not repeat the H1 as an "## Introduction" heading — the report template adds
+  that itself.
+Treat {_as_of_date()} as the current date if needed.
+Write in {language}.
 """
 
     @staticmethod
@@ -252,97 +322,113 @@ Assume that the current date is {datetime.now(timezone.utc).strftime('%B %d, %Y'
         report_format: str = "apa",
     ) -> str:
         return f"""
-    Based on the research report below and research task, please write a concise conclusion that summarizes the main findings and their implications:
+The research task was: {query}
 
-    Research task: {query}
+The report body so far:
 
-    Research Report: {report_content}
+{report_content}
 
-    Your conclusion should:
-    1. Recap the main points of the research
-    2. Highlight the most important findings
-    3. Discuss any implications or next steps
-    4. Be approximately 2-3 paragraphs long
+Write a short conclusion drawing out what the findings mean.
 
-    Requirements:
-    - Synthesise, do not repeat. Do not re-list statistics or re-state arguments already made in the body — refer to them in a phrase and draw the implication instead.
-    - Do not restate the introduction. The conclusion answers "so what?", it does not re-answer "what?".
-    - Do not emit an "## Introduction" heading; do not repeat the "## Conclusion" heading (the report template already adds it).
+The conclusion should:
+1. Revisit the report's main thrust.
+2. Bring out the single most important findings.
+3. Say what follows from them — implications, open questions, or next steps.
+4. Run about 2-3 paragraphs.
 
-    If there is no "## Conclusion" section title written at the end of the report, please add it to the top of your conclusion.
-    You must use in-text citation references in {report_format.upper()} format and make it with markdown hyperlink placed at the end of the sentence or paragraph that references them like this: ([in-text citation](url)).
+Requirements:
+- Synthesise; do not re-list. Do not repeat statistics or arguments already made
+  in the body — gesture at them and draw the implication instead.
+- Do not restate the introduction. The conclusion answers "so what?", not "what?".
+- Do not emit a "## Introduction" heading, and do not repeat a "## Conclusion"
+  heading — the template adds it.
 
-    IMPORTANT: The entire conclusion MUST be written in {language} language.
+If the body has no "## Conclusion" title at its end, put one at the top of your
+output.
+Cite in {report_format.upper()} form using markdown links placed right after the
+claim, like this: ([in-text citation](url)).
 
-    Write the conclusion:
-    """
+Write the conclusion entirely in {language}.
+
+Conclusion:
+"""
+
+    # --- curation and rendering ---------------------------------------------
 
     @staticmethod
-    def curate_sources(query, sources, max_results=10) -> str:
-        """Prompt asking the model to rank/curate retrieved sources by quality."""
-        return f"""Your goal is to evaluate and curate the provided scraped content for the research task: "{query}"
-    while prioritizing the inclusion of relevant and high-quality information, especially sources containing statistics, numbers, or concrete data.
+    def rank_sources(query, sources, max_results=10) -> str:
+        """Ask the model to rank and prune the retrieved sources."""
+        return f"""Select the strongest sources for this research task: "{query}"
 
-The final curated list will be used as context for creating a research report, so prioritize:
-- Retaining as much original information as possible, with extra emphasis on sources featuring quantitative data or unique insights
-- Including a wide range of perspectives and insights
-- Filtering out only clearly irrelevant or unusable content
+Keep the sources that carry relevant, high-quality information — above all ones
+with statistics, numbers or hard data.
 
-EVALUATION GUIDELINES:
-1. Assess each source based on:
-   - Relevance: Include sources directly or partially connected to the research query. Err on the side of inclusion.
-   - Credibility: Favor authoritative sources but retain others unless clearly untrustworthy.
-   - Currency: Prefer recent information unless older data is essential or valuable.
-   - Objectivity: Retain sources with bias if they provide a unique or complementary perspective.
-   - Quantitative Value: Give higher priority to sources with statistics, numbers, or other concrete data.
-2. Source Selection:
-   - Include as many relevant sources as possible, up to {max_results}, focusing on broad coverage and diversity.
-   - Prioritize sources with statistics, numerical data, or verifiable facts.
-   - Overlapping content is acceptable if it adds depth, especially when data is involved.
-   - Exclude sources only if they are entirely irrelevant, severely outdated, or unusable due to poor content quality.
-3. Content Retention:
-   - DO NOT rewrite, summarize, or condense any source content.
-   - Retain all usable information, cleaning up only clear garbage or formatting issues.
-   - Keep marginally relevant or incomplete sources if they contain valuable data or insights.
+The kept list becomes the context for a research report, so weigh sources this
+way:
+- Preserve as much original detail as possible, favouring sources with
+  quantitative data or unusual insight.
+- Include a range of viewpoints and perspectives.
+- Drop only what is clearly irrelevant or unusable.
 
-SOURCES LIST TO EVALUATE:
+How to judge each source:
+1. Relevance — keep sources connected to the task directly or partly; when in
+   doubt, keep.
+   Credibility — favour authoritative sources, but keep others unless they are
+   plainly untrustworthy.
+   Recency — prefer recent material unless older data is essential.
+   Objectivity — keep biased sources if they add a distinct angle.
+   Data — rank sources with statistics or concrete figures highest.
+2. Choosing:
+   - Return as many useful sources as you can, up to {max_results}, for breadth
+     and variety.
+   - Prefer sources with statistics, numbers or checkable facts.
+   - Overlap is fine if it adds depth, especially where data is involved.
+   - Drop a source only if it is entirely irrelevant, badly outdated, or too
+     poor to use.
+3. Preserving content:
+   - Do NOT rewrite, summarise or shorten any source content.
+   - Keep all usable information; clean up only obvious noise or broken
+     formatting.
+   - Keep borderline or partial sources if they hold valuable data.
+
+SOURCES TO EVALUATE:
 {sources}
 
-You MUST return your response in the EXACT sources JSON list format as the original sources.
-The response MUST not contain any markdown format or additional text (like ```json), just the JSON list!
+Reply with the sources in the EXACT same JSON list shape you received. No
+markdown, no surrounding prose, no ```json fences — just the JSON list.
 """
 
     @staticmethod
-    def auto_agent_instructions() -> str:
-        """Instruction set for the agent/role selection call."""
+    def persona_instructions() -> str:
+        """Instruction for the agent-role selection call."""
         return """
-This task involves researching a given topic, regardless of its complexity or the availability of a definitive answer. The research is conducted by a specific server, defined by its type and role, with each server requiring distinct instructions.
-Agent
-The server is determined by the field of the topic and the specific name of the server that could be utilized to research the topic provided. Agents are categorized by their area of expertise, and each server type is associated with a corresponding emoji.
+You are choosing a reporting persona for a research task, whatever its topic or
+difficulty. Pick a named expert role suited to the task's field, and describe it
+in one sentence.
 
-examples:
-task: "should I invest in apple stocks?"
-response:
+Reply with JSON only, in this shape:
+{
+    "server": "<an emoji and a short role name, e.g. '💰 Finance Agent'>",
+    "agent_role_prompt": "<one sentence describing how this expert writes reports>"
+}
+
+Examples of the mapping:
 {
     "server": "💰 Finance Agent",
-    "agent_role_prompt": "You are a seasoned finance analyst AI assistant. Your primary goal is to compose comprehensive, astute, impartial, and methodically arranged financial reports based on provided data and trends."
+    "agent_role_prompt": "You are a veteran financial analyst writing rigorous, even-handed, well-organised reports grounded in the supplied data and market trends."
 }
-task: "could reselling sneakers become profitable?"
-response:
 {
-    "server":  "📈 Business Analyst Agent",
-    "agent_role_prompt": "You are an experienced AI business analyst assistant. Your main objective is to produce comprehensive, insightful, impartial, and systematically structured business reports based on provided business data, market trends, and strategic analysis."
+    "server": "📈 Business Analyst Agent",
+    "agent_role_prompt": "You are an experienced business analyst producing thorough, balanced, clearly structured reports grounded in the supplied business data, market trends and strategic context."
 }
-task: "what are the most interesting sites in Tel Aviv?"
-response:
 {
-    "server":  "🌍 Travel Agent",
-    "agent_role_prompt": "You are a world-travelled AI tour guide assistant. Your main purpose is to draft engaging, insightful, unbiased, and well-structured travel reports on given locations, including history, attractions, and cultural insights."
+    "server": "🌍 Travel Agent",
+    "agent_role_prompt": "You are a widely travelled guide writing engaging, balanced, well-structured accounts of places, covering their history, sights and culture."
 }
 """
 
     @staticmethod
-    def pretty_print_docs(docs: list[Document], top_n: int | None = None) -> str:
+    def render_documents(docs: list[Document], top_n: int | None = None) -> str:
         """Render documents as the context block the model reads."""
         return "\n".join(
             f"Source: {d.metadata.get('source')}\n"
@@ -353,28 +439,28 @@ response:
         )
 
     @staticmethod
-    def join_local_web_documents(docs_context: str, web_context: str) -> str:
-        """Join local-document context with web context (hybrid source mode)."""
+    def merge_scopes(docs_context: str, web_context: str) -> str:
+        """Join local-document context with web context (mixed evidence scope)."""
         return f"Context from local documents: {docs_context}\n\nContext from web sources: {web_context}"
 
 
-# Report type -> the PromptFamily method that generates its prompt.
-_REPORT_TYPE_METHOD = {
-    ReportType.ResearchReport.value: "generate_report_prompt",
-    ReportType.SubtopicReport.value: "generate_subtopic_report_prompt",
+# Report kind -> the PromptKit method that builds its prompt.
+_KIND_BUILDER = {
+    ReportKind.DeepDive.value: "generate_report_prompt",
+    ReportKind.Section.value: "generate_section_prompt",
 }
 
 
-def get_prompt_by_report_type(
-    report_type: str,
-    prompt_family: type[PromptFamily] | PromptFamily = PromptFamily,
+def builder_for(
+    report_kind: str,
+    prompt_family: type[PromptKit] | PromptKit = PromptKit,
 ):
-    """Return the prompt-generator callable for ``report_type``.
+    """Return the report-building callable for ``report_kind``.
 
-    Unknown types fall back to the research-report generator, which is a valid
-    default for any query.
+    Unknown kinds resolve to the deep-dive builder, which is a safe default for
+    any query.
     """
-    method_name = _REPORT_TYPE_METHOD.get(report_type) or _REPORT_TYPE_METHOD[
-        ReportType.ResearchReport.value
+    method_name = _KIND_BUILDER.get(report_kind) or _KIND_BUILDER[
+        ReportKind.DeepDive.value
     ]
     return getattr(prompt_family, method_name)

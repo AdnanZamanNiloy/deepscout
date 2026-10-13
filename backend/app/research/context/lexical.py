@@ -15,7 +15,7 @@ from typing import List
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.common.models import Document
-from app.research.prompts import PromptFamily
+from app.research.prompts import PromptKit
 
 _TOKEN = re.compile(r"\w+", re.UNICODE)
 _STOPWORDS = frozenset(
@@ -87,7 +87,7 @@ class LexicalContextCompressor:
         documents: List[Document],
         relative_threshold: float = 0.0,
         chunk_size: int = 1000,
-        prompt_family: type[PromptFamily] | PromptFamily = PromptFamily,
+        prompt_family: type[PromptKit] | PromptKit = PromptKit,
         **kwargs,
     ):
         self.documents = documents
@@ -125,7 +125,7 @@ class LexicalContextCompressor:
     async def async_get_context(
         self, query: str, max_results: int = 10, cost_callback=None
     ) -> str:
-        return self.prompt_family.pretty_print_docs(self.select(query, max_results), max_results)
+        return self.prompt_family.render_documents(self.select(query, max_results), max_results)
 
 
 def rank_written_sections(

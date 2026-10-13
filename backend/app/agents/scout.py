@@ -71,9 +71,9 @@ class Scout:
 
         researcher = self.researcher_factory(
             query=topic,
-            report_type="subtopic_report",
+            report_kind="section",
             parent_query=(parent_query if not plan_direction else f"{parent_query}. Focus: {plan_direction}"),
-            report_source=source,
+            evidence_scope=source,
             tone=self.tone,
         )
         try:

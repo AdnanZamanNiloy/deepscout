@@ -1,4 +1,4 @@
-"""Report generation skill.
+"""Report-writing skill.
 
 Writes the whole-report body, the introduction and the conclusion, and produces
 per-section draft titles. Context comes from the researcher's accumulated
@@ -8,12 +8,12 @@ than fabricating a confident, sourced-looking report.
 from __future__ import annotations
 
 
-from app.research.prompts import get_prompt_by_report_type
+from app.research.prompts import builder_for
 from app.common.streaming import stream_output
 
 
-class ReportGenerator:
-    """Generate report text for the owning researcher."""
+class ReportWriter:
+    """Write report text for the owning researcher."""
 
     def __init__(self, researcher):
         self.researcher = researcher
@@ -47,8 +47,8 @@ class ReportGenerator:
             )
 
         cfg = self.researcher.cfg
-        if self.researcher.report_type == "subtopic_report":
-            prompt_method = get_prompt_by_report_type("subtopic_report", self.researcher.prompt_family)
+        if self.researcher.report_kind == "section":
+            prompt_method = builder_for("section", self.researcher.prompt_family)
             content = prompt_method(
                 self.researcher.query,
                 existing_headers,
@@ -57,20 +57,20 @@ class ReportGenerator:
                 context,
                 report_format=cfg.report_format,
                 tone=self.researcher.tone,
-                total_words=cfg.total_words,
+                target_words=cfg.target_words,
                 language=cfg.language,
             )
         elif custom_prompt:
             content = f"{custom_prompt}\n\nContext: {context}"
         else:
-            prompt_method = get_prompt_by_report_type(self.researcher.report_type, self.researcher.prompt_family)
+            prompt_method = builder_for(self.researcher.report_kind, self.researcher.prompt_family)
             content = prompt_method(
                 self.researcher.query,
                 context,
-                self.researcher.report_source,
+                self.researcher.evidence_scope,
                 report_format=cfg.report_format,
                 tone=self.researcher.tone,
-                total_words=cfg.total_words,
+                target_words=cfg.target_words,
                 language=cfg.language,
             )
 

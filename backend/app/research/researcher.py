@@ -22,14 +22,14 @@ import json_repair
 from app.core.llm import LLMClient
 from app.common.logging import get_logger
 from app.research.config import ResearchConfig
-from app.research.enums import ReportSource, ReportType, Tone
+from app.research.enums import EvidenceScope, ReportKind, Tone
 from app.research.llm import LLMFunnel
-from app.research.prompts import PromptFamily
-from app.research.skills.browser import BrowserManager
+from app.research.prompts import PromptKit
+from app.research.skills.browser import PageScraper
 from app.research.skills.context import ContextManager
-from app.research.skills.curator import SourceCurator
-from app.research.skills.researcher import ResearchConductor
-from app.research.skills.writer import ReportGenerator
+from app.research.skills.curator import SourceRanker
+from app.research.skills.researcher import EvidenceGatherer
+from app.research.skills.writer import ReportWriter
 from app.common.streaming import EventSink
 
 logger = get_logger(__name__)
@@ -51,24 +51,24 @@ class Researcher:
         cfg: ResearchConfig,
         retrievers: List[type],
         sink: Optional[EventSink] = None,
-        report_type: str = ReportType.ResearchReport.value,
-        report_source: str = ReportSource.Web.value,
+        report_kind: str = ReportKind.DeepDive.value,
+        evidence_scope: str = EvidenceScope.Web.value,
         tone: Tone = Tone.Objective,
         parent_query: str = "",
         source_urls: Optional[list] = None,
         document_urls: Optional[list] = None,
         visited_urls: Optional[set] = None,
         verbose: bool = False,
-        max_subtopics: int = 5,
-        prompt_family: Optional[type[PromptFamily]] = None,
+        max_sections: int = 5,
+        prompt_family: Optional[type[PromptKit]] = None,
     ):
         self.query = query
         self.llm = LLMFunnel(llm)
         self.cfg = cfg
         self.retrievers = retrievers
         self.sink = sink
-        self.report_type = report_type
-        self.report_source = report_source or ReportSource.Web.value
+        self.report_kind = report_kind
+        self.evidence_scope = evidence_scope or EvidenceScope.Web.value
         self.tone = tone if isinstance(tone, Tone) else Tone.Objective
         self.parent_query = parent_query
         self.source_urls = source_urls
@@ -76,8 +76,8 @@ class Researcher:
         self.query_domains: List[str] = []
         self.visited_urls = visited_urls if visited_urls is not None else set()
         self.verbose = verbose
-        self.max_subtopics = max_subtopics
-        self.prompt_family = (prompt_family or PromptFamily)(self.cfg)
+        self.max_sections = max_sections
+        self.prompt_family = (prompt_family or PromptKit)(self.cfg)
 
         # Agent identity, resolved lazily by choose_agent().
         self.agent: Optional[str] = None
@@ -90,10 +90,10 @@ class Researcher:
 
         # Skills.
         self.context_manager = ContextManager(self)
-        self.scraper_manager = BrowserManager(self)
-        self.source_curator = SourceCurator(self)
-        self.research_conductor = ResearchConductor(self)
-        self.report_generator = ReportGenerator(self)
+        self.scraper_manager = PageScraper(self)
+        self.source_ranker = SourceRanker(self)
+        self.research_conductor = EvidenceGatherer(self)
+        self.report_generator = ReportWriter(self)
 
     # --- agent identity -----------------------------------------------------
 
@@ -104,7 +104,7 @@ class Researcher:
         query = f"{self.parent_query} - {self.query}" if self.parent_query else self.query
         response = await self.llm.create_chat_completion(
             messages=[
-                {"role": "system", "content": self.prompt_family.auto_agent_instructions()},
+                {"role": "system", "content": self.prompt_family.persona_instructions()},
                 {"role": "user", "content": f"task: {query}"},
             ],
             temperature=0.15,

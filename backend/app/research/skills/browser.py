@@ -1,4 +1,4 @@
-"""Browsing skill.
+"""Page-scraping skill.
 
 Scrapes URLs the retrieval layer did not already pre-fetch, records the resulting
 pages and images on the researcher, and selects the top images by score with
@@ -14,7 +14,7 @@ from app.common.streaming import stream_output
 from app.research.workers import WorkerPool
 
 
-class BrowserManager:
+class PageScraper:
     """Scrape content for the owning researcher."""
 
     def __init__(self, researcher):

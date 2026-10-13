@@ -32,10 +32,10 @@ class ResearchConfig:
     """
 
     # Report shape.
-    total_words: int = 1200
+    target_words: int = 1200
     report_format: str = "APA"
     language: str = "english"
-    report_source: str = "web"
+    evidence_scope: str = "web"
 
     # Token budgets handed to the model per call site. The client clamps these
     # against the selected provider's limits, so they are upper bounds, not
@@ -70,11 +70,11 @@ class ResearchConfig:
     # model-specific prompt sets.
     prompt_family: str = "default"
 
-    # Local-source mode: directory to walk when report_source is local/hybrid.
+    # Local-source mode: directory to walk when evidence_scope is local/mixed.
     doc_path: str = "./my-docs"
 
-    # Whether to run the model-based source-curation pass before writing.
-    curate_sources: bool = False
+    # Whether to run the model-based source-ranking pass before writing.
+    rank_sources: bool = False
 
     # Optional explicit agent role; None lets the pipeline pick one.
     agent_role: Optional[str] = None
@@ -93,10 +93,10 @@ def load_config(**overrides) -> ResearchConfig:
 
     s = get_settings()
     base = {
-        "total_words": s.research_total_words,
+        "target_words": s.research_total_words,
         "report_format": s.research_report_format,
         "language": s.research_language,
-        "report_source": s.research_report_source,
+        "evidence_scope": s.research_report_source,
         "smart_token_limit": s.research_smart_token_limit,
         "strategic_token_limit": s.research_strategic_token_limit,
         "max_search_results_per_query": s.research_max_results_per_query,
@@ -110,7 +110,7 @@ def load_config(**overrides) -> ResearchConfig:
         "scraper_rate_limit_delay": s.research_scraper_rate_limit_delay,
         "max_parallel_agents": s.max_parallel_agents,
         "doc_path": s.research_doc_path,
-        "curate_sources": s.research_curate_sources,
+        "rank_sources": s.research_curate_sources,
         "prompt_family": "default",
         "agent_role": None,
     }

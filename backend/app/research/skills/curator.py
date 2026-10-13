@@ -1,8 +1,8 @@
-"""Source curation skill.
+"""Source-ranking skill.
 
 Optionally asks the model to rank the gathered sources by credibility and
 relevance before they become report context. Off by default; when enabled it
-degrades to the uncurated sources on any failure so a curation error never
+degrades to the unranked sources on any failure so a ranking error never
 empties the context.
 """
 from __future__ import annotations
@@ -34,13 +34,13 @@ def _parse_json_list(text: str):
     return parsed if isinstance(parsed, list) else None
 
 
-class SourceCurator:
-    """Rank and curate sources for the owning researcher."""
+class SourceRanker:
+    """Rank and prune sources for the owning researcher."""
 
     def __init__(self, researcher):
         self.researcher = researcher
 
-    async def curate_sources(self, source_data: List, max_results: int = 10) -> List:
+    async def rank_sources(self, source_data: List, max_results: int = 10) -> List:
         """Return sources ranked by credibility/relevance, or the input on failure."""
         logger.debug("Curating %s sources", len(source_data))
         if self.researcher.verbose:
@@ -58,7 +58,7 @@ class SourceCurator:
                     {"role": "system", "content": f"{self.researcher.role}"},
                     {
                         "role": "user",
-                        "content": self.researcher.prompt_family.curate_sources(
+                        "content": self.researcher.prompt_family.rank_sources(
                             self.researcher.query, source_data, max_results
                         ),
                     },
@@ -80,7 +80,7 @@ class SourceCurator:
                 )
             return curated
         except Exception as e:
-            logger.error("Error in curate_sources: %s", e)
+            logger.error("Error in rank_sources: %s", e)
             if self.researcher.verbose:
                 await stream_output(
                     "logs",

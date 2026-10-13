@@ -175,7 +175,7 @@ class Pathfinder:
         query = task.get("query")
         source = task.get("source", "web")
         researcher = self.researcher_factory(
-            query=query, report_source=source, tone=self.tone
+            query=query, evidence_scope=source, tone=self.tone
         )
         initial = await researcher.conduct_research()
         report = await researcher.write_report(ext_context=initial)

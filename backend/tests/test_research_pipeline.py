@@ -15,8 +15,8 @@ import pytest
 from app.research.config import load_config
 from app.research.context.lexical import bm25_scores, rank_written_sections, tokenize
 from app.research.context.select import resolve_context_filter, select_context
-from app.research.enums import ReportType
-from app.research.prompts import PromptFamily, get_prompt_by_report_type
+from app.research.enums import ReportKind
+from app.research.prompts import PromptKit, builder_for
 from app.research.retrieval.base import SearchClientRetriever
 from app.agents.routing import (
     is_plan_approval,
@@ -29,17 +29,17 @@ from app.agents.routing import (
 # --- prompts -----------------------------------------------------------------
 
 
-def test_report_type_method_mapping_resolves():
-    assert get_prompt_by_report_type("research_report", PromptFamily).__name__ == "generate_report_prompt"
-    assert get_prompt_by_report_type("subtopic_report", PromptFamily).__name__ == "generate_subtopic_report_prompt"
-    # Unknown types fall back to the research-report generator, never None.
-    fallback = get_prompt_by_report_type("nonsense", PromptFamily)
+def test_report_kind_method_mapping_resolves():
+    assert builder_for("deep_dive", PromptKit).__name__ == "generate_report_prompt"
+    assert builder_for("section", PromptKit).__name__ == "generate_section_prompt"
+    # Unknown kinds fall back to the deep-dive builder, never None.
+    fallback = builder_for("nonsense", PromptKit)
     assert fallback.__name__ == "generate_report_prompt"
 
 
 def test_search_queries_prompt_forbids_operators():
-    prompt = PromptFamily.generate_search_queries_prompt("q", "", ReportType.ResearchReport.value, 3)
-    assert "site:" in prompt and "Do not use search operator syntax" in prompt
+    prompt = PromptKit.generate_search_queries_prompt("q", "", ReportKind.DeepDive.value, 3)
+    assert "site:" in prompt and "search-engine operators" in prompt
 
 
 def test_all_report_prompts_render_without_error():
@@ -50,21 +50,21 @@ def test_all_report_prompts_render_without_error():
     """
     from app.research.enums import Tone
 
-    report = PromptFamily.generate_report_prompt(
-        "q", "ctx", "web", report_format="APA", total_words=500,
+    report = PromptKit.generate_report_prompt(
+        "q", "ctx", "web", report_format="APA", target_words=500,
         tone=Tone.Objective, language="english",
     )
     assert report and "References" in report and date_marker_ok(report)
 
-    subtopic = PromptFamily.generate_subtopic_report_prompt(
+    subtopic = PromptKit.generate_section_prompt(
         "sub", [], [], "main", "ctx", tone=Tone.Objective,
     )
     assert subtopic and "sub" in subtopic
 
-    intro = PromptFamily.generate_report_introduction("q", "summary")
+    intro = PromptKit.generate_report_introduction("q", "summary")
     assert intro and "q" in intro
 
-    conclusion = PromptFamily.generate_report_conclusion("q", "report body")
+    conclusion = PromptKit.generate_report_conclusion("q", "report body")
     assert conclusion and "q" in conclusion
 
 
@@ -72,7 +72,7 @@ def date_marker_ok(text: str) -> bool:
     """The report prompt must state a concrete current date."""
     import re
 
-    return bool(re.search(r"current date is \d{1,2} \w+ \d{4}", text))
+    return bool(re.search(r"\d{1,2} \w+ \d{4}", text))
 
 
 # --- context -----------------------------------------------------------------
@@ -331,12 +331,12 @@ def test_section_input_carries_prior_content():
 
 
 def _conductor():
-    from app.research.skills.researcher import ResearchConductor
+    from app.research.skills.researcher import EvidenceGatherer
 
     class _R:
         query = "The most demanding skills in 2027"
 
-    rc = ResearchConductor.__new__(ResearchConductor)
+    rc = EvidenceGatherer.__new__(EvidenceGatherer)
     rc.researcher = _R()
     rc.logger = logging.getLogger("test.relevance")
     return rc

@@ -1,11 +1,11 @@
-"""Research conductor skill.
+"""Evidence-gathering skill.
 
-Drives a single researcher's evidence gathering: initial search, sub-query
-planning, per-sub-query retrieval and page fetching, context filtering, and
-optional source curation. This is the web path the product uses; local and
-hybrid source modes are supported in reduced form (no embedding vector store).
-MCP, Azure and vector-store retrieval are not carried — the product's retrieval
-is the unified search client.
+Drives one researcher's evidence gathering: initial search, sub-query planning,
+per-sub-query retrieval and page fetching, context filtering, and optional
+source ranking. This is the web path the product uses; local and hybrid source
+modes are supported in reduced form (no embedding vector store). MCP, Azure and
+vector-store retrieval are not carried — the product's retrieval is the unified
+search client.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import re
 import json_repair
 
 from app.research.documents import DocumentLoader, OnlineDocumentLoader
-from app.research.enums import ReportSource
+from app.research.enums import EvidenceScope
 from app.common.streaming import stream_output
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ def _normalize_sub_queries(parsed, fallback_query: str) -> list[str]:
     return queries
 
 
-class ResearchConductor:
+class EvidenceGatherer:
     """Gather evidence for the owning researcher."""
 
     def __init__(self, researcher):
@@ -120,18 +120,18 @@ class ResearchConductor:
                     "Unable to find relevant context in the provided sources...",
                     self.researcher.sink,
                 )
-        elif self.researcher.report_source == ReportSource.Web.value:
+        elif self.researcher.evidence_scope == EvidenceScope.Web.value:
             self.logger.info("Using web search")
             research_data = await self._get_context_by_web_search(
                 self.researcher.query, [], self.researcher.query_domains
             )
-        elif self.researcher.report_source == ReportSource.Local.value:
+        elif self.researcher.evidence_scope == EvidenceScope.Local.value:
             self.logger.info("Using local search")
             document_data = await DocumentLoader(self.researcher.cfg.doc_path).load()
             research_data = await self._get_context_by_web_search(
                 self.researcher.query, document_data, self.researcher.query_domains
             )
-        elif self.researcher.report_source == ReportSource.Hybrid.value:
+        elif self.researcher.evidence_scope == EvidenceScope.Mixed.value:
             if self.researcher.document_urls:
                 document_data = await OnlineDocumentLoader(self.researcher.document_urls).load()
             else:
@@ -144,15 +144,15 @@ class ResearchConductor:
                     self.researcher.query, [], self.researcher.query_domains
                 ),
             )
-            research_data = self.researcher.prompt_family.join_local_web_documents(
+            research_data = self.researcher.prompt_family.merge_scopes(
                 docs_context, web_context
             )
 
         self.researcher.context = research_data
 
-        if self.researcher.cfg.curate_sources:
-            self.logger.info("Curating sources")
-            curated = await self.researcher.source_curator.curate_sources(research_data)
+        if self.researcher.cfg.rank_sources:
+            self.logger.info("Ranking sources")
+            curated = await self.researcher.source_ranker.rank_sources(research_data)
             if isinstance(curated, list):
                 self.researcher.context = "\n\n".join(
                     "Title: {title}\nContent: {content}\nSource: {source}".format(
@@ -203,7 +203,7 @@ class ResearchConductor:
         )
         self.logger.info("Generated sub-queries: %s", sub_queries)
 
-        if self.researcher.report_type != "subtopic_report":
+        if self.researcher.report_kind != "section":
             sub_queries.append(query)
 
         if self.researcher.verbose:
@@ -463,7 +463,7 @@ class ResearchConductor:
         prompt = self.researcher.prompt_family.generate_search_queries_prompt(
             query,
             self.researcher.parent_query,
-            self.researcher.report_type,
+            self.researcher.report_kind,
             max_iterations=self.researcher.cfg.max_iterations,
             context=search_results,
         )

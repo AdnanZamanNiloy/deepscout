@@ -19,7 +19,7 @@ from typing import Callable, List
 from app.research.config import ResearchConfig
 from app.research.context.documents import pages_to_documents
 from app.research.context.lexical import LexicalContextCompressor
-from app.research.prompts import PromptFamily
+from app.research.prompts import PromptKit
 
 CONTEXT_FILTERS = ("auto", "keyword", "none")
 
@@ -40,21 +40,21 @@ async def select_context(
     cfg: ResearchConfig,
     *,
     max_results: int = 10,
-    prompt_family: type[PromptFamily] | PromptFamily = PromptFamily,
+    prompt_family: type[PromptKit] | PromptKit = PromptKit,
     cost_callback: Callable[[float], None] | None = None,
 ) -> str:
     """Context for ``query`` from ``pages`` (dicts with raw_content/url/title)."""
     mode = resolve_context_filter(getattr(cfg, "context_filter", None))
-    prompt_family = prompt_family or PromptFamily
+    prompt_family = prompt_family or PromptKit
     documents = pages_to_documents(pages)
 
     if mode == "none":
-        return prompt_family.pretty_print_docs(documents[:max_results], max_results)
+        return prompt_family.render_documents(documents[:max_results], max_results)
 
     # Little content needs no filtering, whatever the mode.
     total_chars = sum(len(str(p.get("raw_content") or p.get("content") or "")) for p in pages)
     if total_chars < int(getattr(cfg, "compression_threshold", 8000)) and len(pages) <= max_results:
-        return prompt_family.pretty_print_docs(documents[:max_results], max_results)
+        return prompt_family.render_documents(documents[:max_results], max_results)
 
     return await LexicalContextCompressor(
         documents=documents,

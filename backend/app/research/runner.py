@@ -22,7 +22,7 @@ from app.common.config import get_settings
 from app.common.logging import get_logger
 from app.agents.team import build_research_team
 from app.research.config import ResearchConfig, load_config
-from app.research.enums import ReportType, Tone
+from app.research.enums import ReportKind, Tone
 from app.research.llm import LLMFunnel
 from app.research.researcher import Researcher
 from app.research.retrieval.factory import build_retriever_class
@@ -175,9 +175,9 @@ class ResearchRunner:
         def make(
             *,
             query: str,
-            report_type: str = ReportType.ResearchReport.value,
+            report_kind: str = ReportKind.DeepDive.value,
             parent_query: str = "",
-            report_source: str = "web",
+            evidence_scope: str = "web",
             tone=None,
         ) -> Researcher:
             return Researcher(
@@ -186,9 +186,9 @@ class ResearchRunner:
                 cfg=cfg,
                 retrievers=retrievers,
                 sink=sink,
-                report_type=report_type,
+                report_kind=report_kind,
                 parent_query=parent_query,
-                report_source=report_source,
+                evidence_scope=evidence_scope,
                 tone=tone or Tone.Objective,
                 verbose=cfg.verbose,
             )

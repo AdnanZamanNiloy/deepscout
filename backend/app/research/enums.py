@@ -1,29 +1,29 @@
 """Enumerations for the research pipeline.
 
-Three independent axes travel with every request: what shape of report to
+Three independent axes travel with every request: the shape of report to
 produce, where its evidence may come from, and the voice it is written in.
-Keeping each as a closed enum means a value is spelled once here and nowhere
-else, so a prompt and a branch check can never disagree about it.
+Each is a closed enum so a value is spelled once, here, and nowhere else — a
+prompt and a branch check can never disagree about it.
 """
 from __future__ import annotations
 
 from enum import Enum
 
 
-class ReportType(Enum):
+class ReportKind(Enum):
     """The shape of report a run produces."""
 
-    ResearchReport = "research_report"
-    DetailedReport = "detailed_report"
-    SubtopicReport = "subtopic_report"
+    DeepDive = "deep_dive"
+    Expanded = "expanded"
+    Section = "section"
 
 
-class ReportSource(Enum):
+class EvidenceScope(Enum):
     """The evidence pool a run may draw from."""
 
     Web = "web"
     Local = "local"
-    Hybrid = "hybrid"
+    Mixed = "mixed"
 
 
 class Tone(Enum):
