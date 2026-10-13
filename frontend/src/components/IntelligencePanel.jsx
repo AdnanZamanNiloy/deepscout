@@ -75,6 +75,11 @@ export default function IntelligencePanel({
                 <><strong>Session replay</strong> · figures from the stored trace</>
               ) : run.done ? (
                 <><strong>Run complete</strong> · figures from the finished trace</>
+              ) : run.planReview ? (
+                /* The run is blocked on the user, not working. Saying
+                   "streaming live" here is the same class of lie as the
+                   all-Queued rail: the stream is open, but no agent is running. */
+                <><strong>Waiting for your plan approval</strong> · run paused</>
               ) : (
                 <><strong>{working} agent{working === 1 ? "" : "s"} working</strong> · streaming live</>
               )
@@ -226,44 +231,56 @@ function CitationHealthRow({ health }) {
 }
 
 /* ---------- agent state ----------
- * Status is decided by which artifacts exist — the same monotonic ladder the
- * live pipeline strip uses — and each stage gets ONE honest descriptor drawn
- * from real counts. No estimated per-agent percentages.
+ * Status comes from the LIVE stage lifecycle (`run.stages`), which the backend
+ * emits as each node starts and finishes. That is the same signal the trace
+ * below is drawn from, so the rail and the trace cannot disagree.
  *
- * The ladder is remapped to the REAL eight-stage pipeline:
- *   browser(1) → planner(2) → human(3) → researcher(4) → writer(5) →
- *   fact_checker(6) → visualizer(7) → publisher(8)
- * `reached` is how far the run has actually got, so stage i is done when
- * reached > i and active when reached === i. */
+ * It used to be inferred from finished artifacts instead (sources → plan →
+ * claims → reviews → done). That ladder has no way to say "working": before the
+ * first artifact landed it read `reached = 0`, so a run that had been streaming
+ * for a minute showed all eight agents "Queued" and the header read "0 agents
+ * working" while the trace was visibly working. It also could not tell
+ * Pathfinder from Scout Swarm, and treated the plan-review gate as instantly
+ * passed — untrue while the user is being asked to approve.
+ *
+ * The artifact ladder is still used as a FLOOR for runs with no stage frames
+ * (a restored session whose lifecycle predates them), so a replayed run still
+ * shows its work instead of an empty rail. */
 export function deriveAgents(run) {
   const planned = run.plan.length;
   const sources = run.snippets || 0;
   const claims = run.findings.length;
-  const verified = run.verifiedCount || 0;
   const reviews = run.critiques.length;
   const done = !!run.done;
   const live = !done && !run.error;
+  const stages = run.stages || {};
+  const stageKeys = Object.keys(stages);
 
-  // How far along the pipeline the run has actually reached (0..9).
-  // Stage i (1-based) is done when reached > i, so a FULLY delivered run must
-  // reach 9 to mark the eighth stage (publisher) done — reaching 8 left the
-  // last stage stuck on "Queued" after the report shipped.
+  // The stage-review gate is genuinely running whenever the user is being asked
+  // to approve, which is a state the old ladder had no way to express.
+  const awaitingReview = !!run.planReview;
+
+  // Fallback ladder, only consulted when no lifecycle frames exist at all.
   let reached = 0;
   if (sources) reached = 1;
   if (planned) reached = 2;
-  if (planned) reached = 3; // the plan-review gate auto-accepts in API mode
+  if (planned) reached = 3;
   if (claims) reached = 4;
-  // A critic/review pass means the fact checker ran; a finished run has
-  // published, which also implies the writer and visualizer completed.
   if (reviews) reached = 6;
   if (done) reached = 9;
+
+  const hasLifecycle = stageKeys.length > 0 || awaitingReview;
 
   const desc = {
     pathfinder: sources ? `${sources} source${sources === 1 ? "" : "s"} scoped` : "running the first research pass",
     architect: planned ? `${planned} section${planned === 1 ? "" : "s"} planned` : "deriving the outline",
-    review_gate: reached >= 3 ? "outline accepted" : "awaiting plan review",
+    review_gate: awaitingReview
+      ? "awaiting plan review"
+      : (stages.review_gate?.status === "done" || reached >= 4 || done
+        ? "outline accepted"
+        : "checking the outline"),
     scout_swarm: claims ? `${claims} claim${claims === 1 ? "" : "s"} extracted` : "researching each section",
-    narrative_writer: verified ? "intro and conclusion written" : "writing the report body",
+    narrative_writer: verified(run) ? "intro and conclusion written" : "writing the report body",
     evidence_auditor: reviews ? `${reviews} review pass${reviews === 1 ? "" : "es"}` : "checking the draft",
     diagram_designer: done ? "diagram generated" : "generating visuals",
     report_assembler: done ? "report delivered" : "assembling the report",
@@ -271,16 +288,34 @@ export function deriveAgents(run) {
 
   return PIPELINE.map((stage, i) => {
     const index = i + 1;
-    const isDone = reached > index;
-    const isActive = reached === index && live;
+    const live_status = stages[stage.key]?.status;
+
+    let status;
+    if (live_status === "running") {
+      status = live ? "active" : "done"; // a stream that died mid-stage finished nothing
+    } else if (live_status === "done") {
+      status = "done";
+    } else if (awaitingReview && stage.key === "review_gate") {
+      status = "active";
+    } else if (hasLifecycle) {
+      // The lifecycle is authoritative once present: a stage with no frame has
+      // not started, so it is queued — not "done because a later artifact exists".
+      status = "waiting";
+    } else {
+      const isDone = reached > index;
+      status = isDone ? "done" : reached === index && live ? "active" : "waiting";
+    }
+
     return {
       icon: stage.icon,
       name: stage.name,
-      status: isDone ? "done" : isActive ? "active" : "waiting",
+      status,
       desc: desc[stage.key],
     };
   });
 }
+
+const verified = (run) => (run.verifiedCount || 0) > 0;
 
 function deriveHealth(run) {
   const verified = run.findings.filter((f) => f.verified === true).length;

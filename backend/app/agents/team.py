@@ -29,7 +29,10 @@ from app.agents.routing import (
     route_evidence_audit,
     route_review_gate,
 )
+from app.common.logging import get_logger
 from app.common.models import ResearchState
+
+logger = get_logger(__name__)
 
 
 class ResearchTeam:
@@ -69,19 +72,56 @@ class ResearchTeam:
             "review_gate": ReviewGate(self.llm, self.cfg, sink=self.sink),
         }
 
+    def _staged(self, node: str, fn):
+        """Wrap a node so the wire sees it START, not only when it ends.
+
+        LangGraph's ``stream_mode="updates"`` only yields once a node has
+        finished, so before this existed the client learned about a stage only
+        in hindsight: a run streaming for a minute could show every agent as
+        "Queued" while the trace below it was visibly working. The stage
+        lifecycle is what lets the live pipeline rail and the live trace agree.
+
+        The end signal is emitted from ``finally`` so a node that raises cannot
+        leave the rail spinning on a stage that will never finish.
+        """
+        async def staged_node(state: ResearchState) -> Dict[str, Any]:
+            await self._announce_stage(node, "start")
+            try:
+                result = await fn(state)
+            finally:
+                await self._announce_stage(node, "end")
+            return result
+
+        staged_node.__name__ = f"staged_{node}"
+        return staged_node
+
+    async def _announce_stage(self, node: str, phase: str) -> None:
+        """Report a stage transition on the run's sink (best effort)."""
+        if self.sink is None:
+            return
+        try:
+            await self.sink.emit(
+                "pipeline_stage",
+                phase,
+                "",
+                {"node": node, "phase": phase},
+            )
+        except Exception as exc:  # a transport failure must not stop research
+            logger.warning("[team] stage signal failed for %s/%s", node, phase, exc_info=exc)
+
     def build_graph(self) -> StateGraph:
         """Construct (uncompiled) the team graph."""
         agents = self._initialize_agents()
         workflow = StateGraph(ResearchState)
 
-        workflow.add_node("pathfinder", agents["pathfinder"].run_initial_research)
-        workflow.add_node("architect", agents["architect"].plan_research)
-        workflow.add_node("scout_swarm", agents["architect"].run_parallel_research)
-        workflow.add_node("narrative_writer", agents["narrative_writer"].run)
-        workflow.add_node("evidence_auditor", agents["evidence_auditor"].run)
-        workflow.add_node("diagram_designer", agents["diagram_designer"].run)
-        workflow.add_node("report_assembler", agents["report_assembler"].run)
-        workflow.add_node("review_gate", agents["review_gate"].review_plan)
+        workflow.add_node("pathfinder", self._staged("pathfinder", agents["pathfinder"].run_initial_research))
+        workflow.add_node("architect", self._staged("architect", agents["architect"].plan_research))
+        workflow.add_node("scout_swarm", self._staged("scout_swarm", agents["architect"].run_parallel_research))
+        workflow.add_node("narrative_writer", self._staged("narrative_writer", agents["narrative_writer"].run))
+        workflow.add_node("evidence_auditor", self._staged("evidence_auditor", agents["evidence_auditor"].run))
+        workflow.add_node("diagram_designer", self._staged("diagram_designer", agents["diagram_designer"].run))
+        workflow.add_node("report_assembler", self._staged("report_assembler", agents["report_assembler"].run))
+        workflow.add_node("review_gate", self._staged("review_gate", agents["review_gate"].review_plan))
 
         workflow.add_edge("pathfinder", "architect")
         workflow.add_edge("architect", "review_gate")

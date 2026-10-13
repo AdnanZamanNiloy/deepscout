@@ -7,12 +7,15 @@ single diagram, and the publisher assembles the final markdown document.
 """
 from __future__ import annotations
 
+import time
 from datetime import datetime
-from typing import Any, Dict
-
+from typing import Any, Dict, List
 
 from app.agents.routing import is_none_accept_response
+from app.common.logging import get_logger
 from app.common.streaming import stream_output
+
+logger = get_logger(__name__)
 
 _SAMPLE_LAYOUT = """
 {
@@ -190,7 +193,21 @@ class DiagramDesigner:
 
 
 class ReviewGate:
-    """Plan-review gate. In an API context this auto-accepts (no human input)."""
+    """Plan-review gate.
+
+    Two modes:
+
+    * **Interactive (human-in-the-loop)** — when the task sets ``hitl`` and a
+      ``run_id``, the gate streams the proposed outlines to the UI and *pauses*
+      until the user approves (optionally with edited sections and a free-text
+      direction) or sends it back for revision. The run waits on the approval
+      registry (:mod:`app.runtime.plan_review`); on timeout or no answer it
+      falls back to the automatic review below so a run never hangs.
+    * **Automatic** — the default for API/headless callers. The gate runs a
+      deterministic review of the outline (non-empty, within the mode cap,
+      distinct, grounded) and either accepts or sends concrete feedback back to
+      the Research Architect.
+    """
 
     def __init__(self, llm, cfg, sink=None):
         self.llm = llm
@@ -199,23 +216,191 @@ class ReviewGate:
 
     async def review_plan(self, research_state: Dict[str, Any]) -> Dict[str, Any]:
         task = research_state.get("task") or {}
-        # No interactive channel is wired in the API context: unless a caller
-        # explicitly opts into human feedback, the plan is accepted immediately.
-        user_feedback = None
-        if task.get("include_human_feedback") and self.sink is not None:
+        sections = [str(s).strip() for s in (research_state.get("sections") or []) if str(s).strip()]
+        plan_revision_count = research_state.get("plan_revision_count", 0)
+
+        # The outline lives under whatever key the planner actually populated.
+        # `sections` is the documented one, but a re-plan or an alternate
+        # planner payload can land the outline under `plan_alternatives`
+        # instead. Reading only `sections` made the gate report "the outline is
+        # empty" on EVERY run and spend a pointless planner round-trip (in deep
+        # mode, enough of them fail the run with MaxPlanRevisionsExceededError).
+        if not sections:
+            alts = research_state.get("plan_alternatives") or []
+            if isinstance(alts, list) and alts and isinstance(alts[0], (list, tuple)):
+                sections = [str(s).strip() for s in alts[0] if str(s).strip()]
+
+        if task.get("hitl"):
+            decision = await self._interactive_review(research_state)
+            if decision is not None:
+                if decision.action == "revise":
+                    plan_revision_count += 1
+                    return {
+                        "human_feedback": decision.feedback or "the user asked for a different outline",
+                        "plan_revision_count": plan_revision_count,
+                    }
+                # Approved: adopt the user's outline (edited or chosen) and their
+                # free-text direction, which flows into section research.
+                approved = [s for s in (decision.sections or []) if str(s).strip()]
+                out: Dict[str, Any] = {
+                    "human_feedback": None,
+                    "plan_revision_count": plan_revision_count,
+                }
+                if approved:
+                    out["sections"] = approved
+                if decision.feedback:
+                    out["plan_direction"] = decision.feedback
+                return out
+            # No answer (timeout): fall through to the automatic review.
+
+        # An EMPTY outline here is a planner failure, not a reviewable plan:
+        # the architect already has a deterministic fallback for a failed or
+        # empty LLM response (AGENTS.md 4.7), so re-planning from the gate just
+        # spends another slow round-trip per run. Only flag a plan that EXISTS
+        # and is structurally wrong (e.g. the same section twice).
+        issues = _review_outline_issues(sections) if sections else []
+
+        if issues and self.sink is not None:
             await stream_output(
-                "human_feedback",
-                "request",
-                f"Any feedback on this plan of topics to research? {research_state.get('sections')}?",
+                "plan_review", "revise",
+                "Plan review found issues: " + "; ".join(issues),
                 self.sink,
             )
-        plan_revision_count = research_state.get("plan_revision_count", 0)
-        if user_feedback:
+        elif self.sink is not None:
+            await stream_output(
+                "plan_review", "accept",
+                f"Plan accepted: {len(sections)} distinct section"
+                f"{'s' if len(sections) != 1 else ''}.",
+                self.sink,
+            )
+
+        if issues:
             plan_revision_count += 1
+            # A non-None human_feedback is the routing signal to revise; the
+            # architect consumes it as the feedback instruction on re-plan.
+            return {
+                "human_feedback": "; ".join(issues),
+                "plan_revision_count": plan_revision_count,
+            }
         return {
-            "human_feedback": user_feedback,
+            "human_feedback": None,
             "plan_revision_count": plan_revision_count,
         }
+
+    async def _interactive_review(self, research_state: Dict[str, Any]):
+        """Pause the run and wait for the user's plan decision.
+
+        Streams the proposed outlines to the UI, registers the wait, and blocks
+        until the approval endpoint delivers a decision or the timeout expires.
+        Returns the :class:`PlanDecision`, or ``None`` on timeout / no channel.
+
+        The expiry is announced on the wire. A run that quietly resumes after the
+        window closes is indistinguishable from a run that ignored the user, so
+        the client is told both that the window closed and what happens next.
+        """
+        from app.runtime import plan_review as pr
+
+        task = research_state.get("task") or {}
+        run_id = str(task.get("run_id") or "")
+        if not run_id:
+            return None
+
+        alternatives = research_state.get("plan_alternatives") or []
+        if not alternatives and research_state.get("sections"):
+            alternatives = [research_state["sections"]]
+
+        timeout = task.get("plan_review_timeout_sec")
+        deadline_ts = time.time() + float(timeout) if timeout else None
+        # Register the wait BEFORE announcing the request, so a fast client
+        # cannot deliver its decision before the run is listening (which would
+        # drop the answer).
+        pr.register_plan_wait(run_id)
+        try:
+            # Stream the outline(s) so the UI can render the review UI. The
+            # deadline travels with it so the client can show the real countdown
+            # rather than guessing from its own mount time.
+            if self.sink is not None:
+                await stream_output(
+                    "plan_review",
+                    "request",
+                    "Review the proposed research outline before research begins.",
+                    self.sink,
+                    metadata={
+                        "run_id": run_id,
+                        "title": research_state.get("title") or "",
+                        "alternatives": alternatives,
+                        "deadline_ts": deadline_ts,
+                    },
+                )
+            decision = await pr.await_plan_decision(run_id, timeout)
+            if decision is None and self.sink is not None:
+                waited = f"{int(timeout)}s" if timeout else "the review window"
+                await stream_output(
+                    "plan_review",
+                    "expired",
+                    "No plan review decision in time — continuing with the "
+                    "automatic review.",
+                    self.sink,
+                    metadata={"run_id": run_id, "waited_sec": timeout},
+                )
+                logger.info("[plan_review] run %s: no decision after %s", run_id, waited)
+            return decision
+        finally:
+            pr.clear_plan_decision(run_id)
+
+
+# Two section headings this similar are treated as covering the same ground.
+_SECTION_DUPLICATE_JACCARD = 0.6
+
+
+def _review_outline_issues(sections: List[str]) -> List[str]:
+    """Deterministic, unambiguous problems with ``sections``.
+
+    Deliberately narrow. This gate runs on the AUTOMATIC path, where nobody is
+    watching, and every issue it reports sends the whole plan back through
+    another planner round-trip — so a false positive costs latency AND risks a
+    worse outline (the re-plan can drop sections), and in deep mode enough of
+    them raise ``MaxPlanRevisionsExceededError`` and fail the run outright.
+
+    All but one of the checks were removed after measuring them against real
+    outlines:
+
+    * the section COUNT is no longer checked here. It is enforced by truncation
+      in ``ResearchArchitect.plan_research``, which is free and keeps the
+      outline ordered by importance; a re-plan to shave a section off the end
+      was pure cost.
+    * the section GROUNDING check is gone entirely, not merely loosened. Its
+      premise — that a heading's words should appear in the initial research —
+      is wrong for a HEADING: even a zero-overlap rule flags the abstract,
+      forward-looking titles a strong planner writes ("Future Directions and
+      Open Problems" shares no content word with a research blob about RAG
+      implementation). Headings are meant to reason beyond the scraped text;
+      what must be grounded is the prose beneath them, which the relevance gate
+      and evidence grading already police.
+
+    What remains is genuinely broken rather than merely imperfect: an empty
+    outline, or two headings that are the same section twice.
+    """
+    from app.common.primitives import jaccard
+    from app.evidence.text import _tokenize
+
+    if not sections:
+        return ["the outline is empty"]
+
+    issues: List[str] = []
+
+    section_tokens = [_tokenize(s) for s in sections]
+    for i in range(len(sections)):
+        for j in range(i + 1, len(sections)):
+            if section_tokens[i] and section_tokens[j] and (
+                jaccard(section_tokens[i], section_tokens[j]) >= _SECTION_DUPLICATE_JACCARD
+            ):
+                issues.append(
+                    f"sections {i + 1} and {j + 1} overlap: "
+                    f"\"{sections[i]}\" vs \"{sections[j]}\""
+                )
+
+    return issues
 
 
 class ReportAssembler:

@@ -93,13 +93,29 @@ async function streamNDJSON(url, { method = "POST", body, signal, onEvent, onHtt
   }
 }
 
-export function startResearch({ query, mode, sessionId, signal, onEvent }) {
+export function startResearch({ query, mode, sessionId, signal, onEvent, hitl }) {
   return streamNDJSON("/api/research/stream", {
     method: "POST",
-    body: { query, mode, session_id: sessionId || null },
+    body: { query, mode, session_id: sessionId || null, hitl: hitl ?? null },
     signal,
     onEvent,
   });
+}
+
+/* Deliver a human-in-the-loop plan-review decision to a paused run. */
+export async function submitPlanDecision(runId, { action = "approve", sections = [], feedback = "" } = {}) {
+  const response = await fetch(`/api/research/${encodeURIComponent(runId)}/plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, sections, feedback }),
+  });
+  if (!response.ok) {
+    const detail = await describeDetail(response, "Could not submit the plan decision");
+    const error = new Error(detail);
+    error.status = response.status;
+    throw error;
+  }
+  return response.json();
 }
 
 export function resumeResearch({ runId, signal, onEvent }) {

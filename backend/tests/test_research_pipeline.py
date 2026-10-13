@@ -226,7 +226,7 @@ def test_graph_runs_end_to_end_with_fakes():
 
     cfg = load_config()
     chief = build_research_team(
-        task={"query": "q", "max_sections": 2, "include_human_feedback": False},
+        task={"query": "q", "max_sections": 2},
         llm=LLMFunnel(_FakeLLM()),
         cfg=cfg,
         researcher_factory=lambda **kw: _FakeResearcher(**kw),
@@ -235,7 +235,7 @@ def test_graph_runs_end_to_end_with_fakes():
 
     async def _run():
         return await graph.ainvoke(
-            {"task": {"query": "q", "max_sections": 2, "include_human_feedback": False}}
+            {"task": {"query": "q", "max_sections": 2}}
         )
 
     result = asyncio.run(_run())

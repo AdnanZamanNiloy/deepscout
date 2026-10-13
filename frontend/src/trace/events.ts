@@ -97,6 +97,31 @@ export type PlanEvent = Base & {
   waves?: unknown[];
 };
 
+/**
+ * A pipeline stage announcing that it STARTED or FINISHED.
+ *
+ * The live trace and the pipeline rail are two views of one run, so they have
+ * to be driven by the same signal. Node completions alone could not do that:
+ * a run streaming for a minute showed every agent as "Queued" while its trace
+ * was visibly working, because nothing had completed yet.
+ */
+export type StageEvent = Base & {
+  type: "stage";
+  /** The graph node: pathfinder, architect, review_gate, scout_swarm, ... */
+  node?: string;
+  status?: "running" | "done";
+  label?: string;
+};
+
+/** Human-in-the-loop: the run paused for the user to approve the outline. */
+export type PlanReviewEvent = Base & {
+  type: "plan_review";
+  run_id?: string;
+  title?: string;
+  alternatives?: string[][];
+  message?: string;
+};
+
 export type SearchProgressEvent = Base & {
   type: "search_progress";
   snippets?: number;
@@ -146,6 +171,8 @@ export type WireEvent =
   | RouteEvent
   | DirectAnswerEvent
   | PlanEvent
+  | StageEvent
+  | PlanReviewEvent
   | SearchProgressEvent
   | SearchQueryEvent
   | FindingsEvent
@@ -168,6 +195,8 @@ const KNOWN: ReadonlySet<string> = new Set<WireEvent["type"]>([
   "route",
   "direct_answer",
   "plan",
+  "stage",
+  "plan_review",
   "search_progress",
   "search_query",
   "findings",

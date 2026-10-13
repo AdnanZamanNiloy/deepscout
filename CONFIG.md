@@ -89,6 +89,9 @@ exist for headless/CI setups or to seed a provider before the UI is reachable.
 | Variable | Default | Description |
 |---|---|---|
 | `RESEARCH_TIMEOUT_SEC` | `1000.0` | Hard ceiling on one research request. |
+| `PLAN_REVIEW_INTERACTIVE` | `false` | When true, a run pauses after planning and waits for the user to approve/edit the outline before section research. The UI can also opt in per request (`hitl`). |
+| `PLAN_REVIEW_TIMEOUT_SEC` | `300.0` | How long a paused run waits for the user before falling back to automatic approval. The deadline is sent with the review frame, so the UI shows a live countdown and closes the card when the window expires. |
+| `PLAN_REVIEW_ALTERNATIVES` | `3` | Number of alternative outlines the planner proposes for interactive review (1 disables alternatives). |
 | `RATE_LIMIT` | `5/minute` | Per-client request rate limit. |
 | `DATABASE_URL` | `./research.db` | SQLite path. `file:` / `sqlite://` forms are accepted and the schema is created automatically. |
 

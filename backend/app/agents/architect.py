@@ -35,24 +35,63 @@ class ResearchArchitect:
         self.tone = tone
 
     async def plan_research(self, research_state: Dict[str, Any]) -> Dict[str, Any]:
-        """Plan the report outline from the initial research text."""
+        """Plan the report outline from the initial research text.
+
+        Returns the primary outline under ``sections`` (used by the automatic
+        path) plus, when the run asks for alternatives, a list of candidate
+        outlines under ``plan_alternatives`` for interactive review to choose
+        from. Each candidate shares the plan's ``title``.
+        """
         initial_research = research_state.get("initial_research")
         task = research_state.get("task") or {}
-        include_human_feedback = task.get("include_human_feedback")
         human_feedback = research_state.get("human_feedback")
         max_sections = task.get("max_sections")
+        alternatives = int(task.get("plan_alternatives") or 1)
 
         prompt = self._planning_messages(
-            initial_research, include_human_feedback, human_feedback, max_sections
+            initial_research, human_feedback, max_sections, alternatives
         )
         plan = await self.llm.call_model_json(prompt)
+        title = plan.get("title")
+
+        # The mode's section budget is enforced HERE, by keeping the first N.
+        # The prompt asks for "maximum N" and models routinely overshoot; the
+        # outline is ordered by importance, so an overshoot is a formatting
+        # slip, not a planning failure. Bouncing it back through the review gate
+        # cost a whole extra planner round-trip and — because the re-plan prompt
+        # says "fix exactly these issues" — reliably came back with sections
+        # DROPPED. Truncating is free and loses nothing from the final list.
+        cap = int(max_sections or 0)
+
+        def _cap(secs: List[str]) -> List[str]:
+            secs = [s for s in secs if s]
+            return secs[:cap] if cap and len(secs) > cap else secs
+
+        # Collect candidate outlines. The prompt asks for `alternatives` of
+        # them under "alternatives"; tolerate a single-outline response too.
+        candidates: List[List[str]] = []
+        raw_alts = plan.get("alternatives")
+        if isinstance(raw_alts, list):
+            for alt in raw_alts:
+                secs = _cap([str(s).strip() for s in (alt or [])])
+                if secs:
+                    candidates.append(secs)
+        primary = _cap([str(s).strip() for s in (plan.get("sections") or [])])
+        if not candidates and primary:
+            candidates = [primary]
+        if primary:
+            # Ensure the model's primary outline is the first candidate.
+            if not candidates or candidates[0] != primary:
+                candidates.insert(0, primary)
+
         return {
-            "title": plan.get("title"),
+            "title": title,
             # The run's actual date, not the model's guess: a model date is
             # often ambiguous (11/10/2026) or wrong, and the report should be
             # dated when it was produced.
             "date": datetime.now().strftime("%d %B %Y"),
-            "sections": plan.get("sections"),
+            "sections": primary or (candidates[0] if candidates else []),
+            "plan_alternatives": candidates,
         }
 
     async def run_parallel_research(
@@ -143,16 +182,47 @@ class ResearchArchitect:
     def _planning_messages(
         self,
         initial_research: str,
-        include_human_feedback: bool,
         human_feedback: Optional[str],
         max_sections: int,
+        alternatives: int = 1,
     ) -> List[Dict[str, str]]:
         today = datetime.now().strftime("%d/%m/%Y")
+        # `human_feedback` here is revision feedback on a prior outline (from
+        # the interactive review or the automated gate). It is applied whenever
+        # present; the `"no"` sentinel means approval and carries no instruction.
+        #
+        # The instruction stays NEUTRAL on purpose ("address the feedback"), not
+        # "fix exactly these issues and change nothing else": the narrow phrasing
+        # made the model treat the feedback as the whole brief and return a
+        # SHORTER outline, which is how report sections went missing. The
+        # feedback text already names what was wrong; the plan must still be a
+        # full outline for the section count the mode allows.
         feedback_instruction = (
-            f"Human feedback: {human_feedback}. You must plan the sections based on the human feedback."
-            if include_human_feedback and human_feedback and human_feedback != "no"
+            f"Your previous outline was rejected by the plan review for this "
+            f"reason: {human_feedback}. Plan the sections again so that reason no "
+            f"longer applies, while still covering the subject as fully as before."
+            if human_feedback and human_feedback != "no"
             else ""
         )
+        if alternatives > 1:
+            shape = (
+                f"You must return nothing but a JSON with the fields 'title' (str) and "
+                f"'sections' (the PRIMARY outline, maximum {max_sections} section headers) and "
+                f"'alternatives' (a list of {alternatives} DISTINCT candidate outlines, each a list "
+                f"of section headers). The alternatives must each take a genuinely different angle "
+                f"on the subject (e.g. by depth, by stakeholder, by time horizon) — not rewordings "
+                f"of one another. The first alternative should equal 'sections'.\n"
+                f"Structure: '{{title: string, date: today's date, "
+                f"sections: ['header 1', 'header 2', ...], "
+                f"alternatives: [['header 1', 'header 2', ...], [...], [...]]}}'."
+            )
+        else:
+            shape = (
+                f"You must return nothing but a JSON with the fields 'title' (str) and "
+                f"'sections' (maximum {max_sections} section headers) with the following structure:\n"
+                f"'{{title: string research title, date: today's date, "
+                f"sections: ['section header 1', 'section header 2', 'section header 3' ...]}}'."
+            )
         return [
             {
                 "role": "system",
@@ -171,10 +241,7 @@ class ResearchArchitect:
                    You must focus ONLY on related research topics for subheaders and do NOT include introduction, conclusion and references.
                    The 'title' must be a plain, specific title that names the actual subject of the report. Do NOT use empty booster words like "A Comprehensive Analysis of", "An In-Depth Look at", or "A Structured Framework for" — they promise breadth the report may not deliver. Name the subject; do not advertise it.
                    The section headers must be distinct from one another: each must own a clearly different part of the subject, with no two headers covering the same ground.
-                   You must return nothing but a JSON with the fields 'title' (str) and 
-                   'sections' (maximum {max_sections} section headers) with the following structure:
-                   '{{title: string research title, date: today's date, 
-                   sections: ['section header 1', 'section header 2', 'section header 3' ...]}}'.""",
+                   {shape}""",
             },
         ]
 
@@ -220,6 +287,9 @@ class ResearchArchitect:
             "task": research_state.get("task"),
             "topic": query,
             "title": title,
+            # Free-text direction the user gave at plan review ("focus on costs
+            # and policy"), threaded to the section researcher/writer.
+            "plan_direction": research_state.get("plan_direction") or "",
             # Every sibling section title, so a writer knows the report's shape.
             "sibling_sections": [s for s in (sections or []) if s != query],
             # Content of sections already completed this run (empty for the

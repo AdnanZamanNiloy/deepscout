@@ -1,43 +1,6 @@
 /* DeepScout components — thread, answer, intel widgets, composer, views, landing. */
 
 /* ============================================================
-   PLANET — CSS art, themeable via tokens
-   ============================================================ */
-
-.planet {
-  position: relative;
-  flex: none;
-  border-radius: 50%;
-  background:
-    radial-gradient(ellipse 20% 14% at 62% 30%, rgba(70, 20, 8, 0.55), transparent 70%),
-    radial-gradient(ellipse 24% 16% at 42% 66%, rgba(70, 20, 8, 0.5), transparent 70%),
-    radial-gradient(ellipse 13% 10% at 72% 60%, rgba(70, 20, 8, 0.45), transparent 70%),
-    radial-gradient(ellipse 30% 24% at 38% 34%, rgba(255, 196, 156, 0.22), transparent 70%),
-    radial-gradient(circle at 35% 30%, #f0a276 0%, var(--deepscout) 22%, #c05a35 45%, #8f3f27 66%, #5c291b 85%, #3a1911 100%);
-  box-shadow:
-    inset -8px -11px 22px rgba(0, 0, 0, 0.62),
-    inset 4px 5px 12px rgba(255, 200, 160, 0.16),
-    0 3px 12px rgba(0, 0, 0, 0.42);
-}
-.planet::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.16), transparent 46%);
-}
-.planet-ring {
-  position: absolute;
-  inset: -5px;
-  border-radius: 50%;
-  border: 1.5px solid color-mix(in srgb, var(--deepscout) 45%, transparent);
-  border-top-color: transparent;
-  border-left-color: transparent;
-  transform: rotate(-24deg);
-  animation: spin 16s linear infinite;
-}
-
-/* ============================================================
    THREAD
    ============================================================ */
 
@@ -331,37 +294,6 @@
 }
 .src-link { color: var(--t3); font-size: 12px; text-decoration: none; border-bottom: 1px dotted var(--dash); }
 .src-link:hover { color: var(--deepscout); border-bottom-color: var(--deepscout); }
-
-
-.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
-.stat {
-  display: flex;
-  gap: 11px;
-  align-items: flex-start;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: 12px 13px;
-  transition: border-color 0.15s;
-}
-.stat:hover { border-color: var(--line-hover); }
-.stat-ic {
-  width: 32px; height: 32px; flex: none;
-  border-radius: var(--r-sm);
-  background: var(--inset);
-  border: 1px solid var(--inset-line);
-  display: flex; align-items: center; justify-content: center;
-}
-.stat b {
-  display: block;
-  font-size: 17px;
-  font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
-  color: var(--t1);
-}
-.stat .sub2 { font-size: 10.5px; color: var(--t3); margin-top: 2px; }
 
 .tone-good { color: var(--mint); }
 .tone-bad { color: var(--red); }
@@ -663,22 +595,6 @@
   font-size: 11.5px;
   color: var(--t3);
 }
-.mission-card .meta .sep { color: var(--line-hover); }
-
-/* Filter/stat strip above list views. */
-
-/* ============================================================
-   PROVIDERS
-   ============================================================ */
-
-
-/* ============================================================
-   FALLBACK CHAINS
-   ============================================================ */
-
-
-/* Member picker: a button list, not a <select>. The previous
-   `.chain-add-member select` rules styled a control the DOM never contained. */
 
 /* Inline destructive confirm (replaces window.confirm). */
 .confirm-btn { display: inline-flex; }
@@ -726,10 +642,6 @@
 /* ============================================================
    RESPONSIVE
    ============================================================ */
-
-@media (max-width: 900px) {
-  .stat-grid { grid-template-columns: repeat(2, 1fr); }
-}
 
 @media (max-width: 620px) {
   .bubble { max-width: 88%; }
@@ -1400,35 +1312,295 @@
   background: var(--red-wash); border-radius: var(--r-xs);
 }
 
+/* ---- Human-in-the-loop plan review ----------------------------------------
+ * A step card, not a form: the question sits in the header with outline
+ * navigation on the right, the proposed sections are checkbox rows separated
+ * by hairlines, and the footer carries the selection count plus the two
+ * outcomes (Skip / go). Full-bleed row hover means the row is the hit target,
+ * which is what makes ticking feel immediate on a long outline. */
 
-
-
-.serving-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.serving-card {
-  background: var(--bg-soft); border: 1px solid var(--line);
-  border-radius: var(--r-md); padding: 13px 14px;
-}
-.serving-card.active { border-color: var(--deepscout-deep); background: var(--card-2); }
-.serving-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-.serving-title { font-size: 13.5px; font-weight: 680; color: var(--t1); }
-.serving-desc { font-size: 12px; color: var(--t3); margin: 0 0 10px; line-height: 1.55; }
-.serving-picker { display: flex; flex-direction: column; gap: 6px; }
-.serving-option {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  width: 100%; padding: 8px 11px; text-align: left;
-  background: var(--card); border: 1px solid var(--line); border-radius: 8px;
-  color: var(--t2); font-size: 12.5px; cursor: pointer;
-  transition: border-color 0.14s, background 0.14s, color 0.14s;
-}
-.serving-option:hover:not(:disabled) { border-color: color-mix(in srgb, var(--deepscout) 45%, transparent); color: var(--t1); }
-.serving-option.picked { border-color: var(--deepscout); background: var(--deepscout-wash); color: var(--t1); }
-.serving-option:disabled { opacity: 0.55; cursor: not-allowed; }
-.serving-option-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.serving-option-meta { flex: none; font-size: 11px; color: var(--t3); }
-.serving-default-row { display: flex; align-items: center; gap: 12px; margin-top: 13px; }
-.serving-hint { font-size: 11.5px; color: var(--t4); }
-
-@media (max-width: 720px) {
-  .serving-modes { grid-template-columns: 1fr; }
+.plan-review {
+  margin: var(--sp-5) 0 var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  box-shadow: var(--elev-2);
+  overflow: hidden;
 }
 
+/* --- header: question on the left, navigation on the right --- */
+.pr-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-8);
+  padding: var(--sp-8) var(--sp-10);
+}
+.pr-head-text { min-width: 0; }
+.pr-question {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--fs-lg);
+  font-weight: 550;
+  line-height: var(--lh-tight);
+  color: var(--t1);
+}
+.pr-subject {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--t4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The review window's deadline. Stated plainly because the run really does
+ * continue without an answer — a hidden five-minute timeout is what makes an
+ * auto-started report look like the user's approval was ignored. */
+.pr-deadline {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--t4);
+  font-variant-numeric: tabular-nums;
+}
+.pr-deadline[data-closed="true"] { color: var(--amber); }
+.pr-nav { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
+.pr-step {
+  font-size: var(--fs-sm);
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: center;
+}
+.pr-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--t3);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.pr-icon:hover:not(:disabled) { background: var(--row-hover); color: var(--t1); }
+.pr-icon:disabled { opacity: 0.32; cursor: not-allowed; }
+
+/* --- option rows --- */
+.pr-options { border-top: 1px solid var(--line-soft); }
+.pr-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-7) var(--sp-10);
+  border-bottom: 1px solid var(--line-soft);
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.pr-row:hover { background: var(--row-hover); }
+/* The user's own additions start a new group, so the break is visible rather
+ * than pretending to be part of the proposed outline. */
+.pr-row[data-extra="true"],
+.pr-row-group { border-top: 1px solid var(--line); }
+/* The text rows must land on the same label column as the checkbox rows, so
+ * they use the label's 14px gap rather than the row's 8px one. */
+.pr-row-group { gap: var(--sp-7); }
+.pr-row[data-extra="true"]:hover,
+.pr-row-group:hover { background: transparent; }
+
+.pr-opt {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-7);
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+/* The native input stays in the accessibility tree and keeps keyboard
+ * behaviour; only its painting is replaced by .pr-box. */
+.pr-opt input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.pr-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--deepscout);
+  transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+.pr-box-empty { border-color: transparent; }
+/* Selected is an accent edge + a faint wash, not a colour flood: a long
+ * outline with every section ticked must not read as a wall of amber, and
+ * accent-filled boxes would compete with the primary commit button. */
+.pr-opt input:checked + .pr-box {
+  border-color: var(--deepscout);
+  background: var(--deepscout-wash);
+}
+.pr-opt input:focus-visible + .pr-box {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.pr-opt input:disabled + .pr-box { opacity: 0.45; }
+.pr-opt-text {
+  font-size: var(--fs-base);
+  color: var(--t2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--t4);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.pr-row:hover .pr-remove, .pr-remove:focus-visible { opacity: 1; }
+.pr-remove:hover:not(:disabled) { color: var(--red); background: var(--red-wash); }
+.pr-remove:disabled { cursor: not-allowed; }
+
+/* --- inline text rows (own section / direction) --- */
+.pr-add {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--t2);
+  font: inherit;
+  font-size: var(--fs-base);
+  padding: 0;
+}
+.pr-add::placeholder { color: var(--t4); }
+.pr-add:focus { outline: none; color: var(--t1); }
+
+/* --- bulk editor --- */
+.pr-bulk {
+  padding: var(--sp-8) var(--sp-10);
+  border-top: 1px solid var(--line-soft);
+  background: var(--bg-soft);
+}
+.pr-bulk-label {
+  display: block;
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--t4);
+  margin-bottom: var(--sp-4);
+}
+.pr-sections {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--t1);
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+  padding: var(--sp-5) var(--sp-6);
+  resize: vertical;
+}
+.pr-sections:focus-visible { border-color: var(--deepscout); }
+.pr-bulk-actions { display: flex; justify-content: flex-end; gap: var(--sp-4); margin-top: var(--sp-6); }
+
+.pr-error {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-10);
+  border-top: 1px solid color-mix(in srgb, var(--red) 30%, transparent);
+  background: var(--red-wash);
+  color: var(--red);
+  font-size: var(--fs-sm);
+}
+
+/* --- footer: count on the left, the two outcomes on the right --- */
+.pr-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-8);
+  padding: var(--sp-6) var(--sp-8) var(--sp-6) var(--sp-10);
+}
+.pr-count {
+  font-size: var(--fs-sm);
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}
+.pr-foot-actions { display: flex; align-items: center; gap: var(--sp-5); }
+.pr-skip {
+  min-height: 30px;
+  padding: 0 var(--sp-7);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--t2);
+  font: inherit;
+  font-size: var(--fs-base);
+  font-weight: 550;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.pr-skip:hover:not(:disabled) { background: var(--row-hover); color: var(--t1); }
+.pr-skip:disabled { opacity: 0.4; cursor: not-allowed; }
+.pr-go {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  min-height: 34px;
+  min-width: 34px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--deepscout) 70%, #000 30%);
+  border-radius: var(--r-sm);
+  background: var(--deepscout);
+  color: var(--ink-on-accent);
+  font: inherit;
+  font-size: var(--fs-base);
+  font-weight: 650;
+  cursor: pointer;
+  transition: filter var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.pr-go:hover:not(:disabled) { filter: brightness(1.07); }
+.pr-go:active:not(:disabled) { transform: translateY(1px); }
+.pr-go:disabled { opacity: 0.4; cursor: not-allowed; }
+/* On the final step the arrow commits the outline, so it has to say so. */
+.pr-go-wide { padding: 0 var(--sp-8); }
+
+/* Composer toggle. It sits next to the research-mode pill, so it has to BE
+ * that control — same height, radius, surface and type — or it reads as a
+ * bolt-on. Only the on state differs, and it uses the chip's selection
+ * language (accent edge + faint wash) instead of a flood of colour. */
+.hitl-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  flex: none;
+  color: var(--deepscout);
+}
+/* Kept in the layout at zero opacity so enabling the switch does not shift
+   the mode pill and the send button. */
+.hitl-toggle[aria-checked="false"] .hitl-mark { opacity: 0; }
+.hitl-toggle[aria-checked="true"] {
+  color: var(--t1);
+  border-color: color-mix(in srgb, var(--deepscout) 50%, transparent);
+  background: var(--deepscout-wash);
+}

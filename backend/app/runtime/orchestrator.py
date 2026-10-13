@@ -30,6 +30,8 @@ class PipelineRunner:
         query: str,
         mode: str = "standard",
         headers: Dict[str, str] | None = None,
+        run_id: str | None = None,
+        hitl: bool | None = None,
     ):
         self._runner = ResearchRunner(
             llm=llm,
@@ -37,6 +39,8 @@ class PipelineRunner:
             query=query,
             mode=mode,
             headers=headers or {},
+            run_id=run_id,
+            hitl=hitl,
         )
 
     async def run(self):

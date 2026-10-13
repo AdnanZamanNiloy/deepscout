@@ -221,6 +221,18 @@ class Settings(BaseSettings):
     # this budget.
     research_timeout_sec: float = 1000.0
 
+    # Human-in-the-loop plan review. When enabled, a run pauses after planning
+    # and waits for the user to approve or edit the proposed outline before
+    # section research begins. Off by default so API/headless callers keep the
+    # automatic approval; the UI opts in per request.
+    plan_review_interactive: bool = False
+    # How long a paused run waits for the user before falling back to automatic
+    # approval. A run must never hang on an absent user.
+    plan_review_timeout_sec: float = 300.0
+    # How many alternative outlines the planner proposes for the user to choose
+    # from (1 disables alternatives).
+    plan_review_alternatives: int = 3
+
     # Cache (Phase 1.4)
     cache_size_limit_bytes: int = 250_000_000  # 250MB, diskcache size cap
     cache_ttl_sec: int = 3600  # 1 hour (search results)

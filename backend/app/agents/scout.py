@@ -45,6 +45,9 @@ class Scout:
         parent_query = task.get("query")
         source = task.get("source", "web")
         sibling_sections = draft_state.get("sibling_sections") or []
+        # Free-text direction the user gave at plan review; it steers what this
+        # section's research emphasises.
+        plan_direction = str(draft_state.get("plan_direction") or "").strip()
 
         if self.sink:
             await stream_output(
@@ -69,7 +72,7 @@ class Scout:
         researcher = self.researcher_factory(
             query=topic,
             report_type="subtopic_report",
-            parent_query=parent_query,
+            parent_query=(parent_query if not plan_direction else f"{parent_query}. Focus: {plan_direction}"),
             report_source=source,
             tone=self.tone,
         )

@@ -103,7 +103,8 @@ structure is the same, and the section outline is derived from the question.
 | Module | Responsibility |
 |---|---|
 | `app/runtime/orchestrator.py` | `PipelineRunner`, the route's entry point; delegates to `app/research/runner.py`. |
-| `app/runtime/event_adapter.py` | Maps pipeline node events onto the frontend's NDJSON vocabulary and builds the terminal `final_report` frame. |
+| `app/runtime/event_adapter.py` | Maps pipeline node events onto the frontend's NDJSON vocabulary — including the `stage` lifecycle — and builds the terminal `final_report` frame. |
+| `app/runtime/plan_review.py` | Human-in-the-loop approval handshake: the paused run waits on an `asyncio.Event`; `POST /research/{run_id}/plan` releases it. |
 | `app/runtime/__init__.py` | Publishes the runtime handles (`LLMClient`, `SearchClient`) the routes read per request. |
 
 ### Retained analysis & support
@@ -147,15 +148,21 @@ structure is the same, and the section outline is derived from the question.
 
 | Event | Payload highlights |
 |---|---|
-| `progress` | `request_id`, `session_id`, `message` (per-stage progress labels) |
+| `progress` | `request_id`, `session_id`, `message` (a live activity line) |
+| `stage` | `node` (graph node), `status` (`running` / `done`), `label`. The pipeline stage lifecycle: emitted when a node STARTS and when it finishes. The live Research Workflow rail reads this, so the rail and the live trace are driven by one signal instead of the rail re-deriving progress from finished artifacts. |
 | `plan` | `items` (the planned section outline) |
+| `plan_review` | `run_id`, `status` (`awaiting` / `expired`), `alternatives`, `deadline_ts`. Human-in-the-loop: opens the approval card, and closes it when the review window runs out. |
+| `findings` | extracted claims, with verification flags |
+| `search_progress` / `search_query` | retrieval progress, never a fabricated source count |
 | `critic` | `iteration`, `reason` (fact-checker revision notes) |
 | `final_report` | `report` (the primary answer), `confidence`, `confidence_breakdown`, `quality`, `contradictions`, `answer_support`, `degraded`, `degraded_reasons`, `source_count` |
 | `error` | `message` (actionable: key / quota / timeout causes) |
 
-These five are the only types emitted. Anything the pipeline has no genuine
-signal for is deliberately not fabricated; the frontend treats every event type
-as optional, so a clean pipeline renders without inventing one.
+Anything the pipeline has no genuine signal for is deliberately not
+fabricated; the frontend treats every event type as optional, so a clean
+pipeline renders without inventing one. Every backend event type has a
+matching `case` in `App.jsx` — the switch has a `default: break`, so a type
+added here without one is silently dropped rather than raising.
 
 ---
 

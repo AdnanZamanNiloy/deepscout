@@ -2,6 +2,7 @@ import asyncio
 import uuid
 import json
 import time
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict
 
 from fastapi import APIRouter, HTTPException, Request
@@ -49,6 +50,11 @@ from app.api.research_support import (  # noqa: E402
     _persist_report,
     _with_trace_capture,
     ResearchRequest,
+    PlanDecisionRequest,
+)
+from app.runtime.plan_review import (  # noqa: E402
+    PlanDecision,
+    submit_plan_decision as _submit_plan_decision,
 )
 
 # Provider + provider-chain endpoints live in their own module; including the
@@ -61,6 +67,22 @@ logger = get_logger(__name__)
 
 # Applied to the expensive research stream only; other routes stay open.
 limiter = Limiter(key_func=get_remote_address)
+
+
+def _ts_to_iso(ts: Any) -> str:
+    """Wire epoch-milliseconds to the ISO stamp ``agent_events`` stores.
+
+    A stage frame carries the moment it was emitted; recording that verbatim
+    (rather than "now", when the row happens to be written) is what makes the
+    audit trail show a stage's real span instead of a zero-length one.
+    """
+    try:
+        ms = float(ts)
+    except (TypeError, ValueError):
+        return ""
+    if ms <= 0:
+        return ""
+    return datetime.fromtimestamp(ms / 1000.0, tz=timezone.utc).isoformat()
 
 
 def _final_frame_from_state(
@@ -297,17 +319,34 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                 query=payload.query,
                 mode=str(payload.mode or "standard"),
                 headers={},
+                run_id=request_id,
+                hitl=payload.hitl,
             )
             adapter = PipelineEventAdapter(payload.query)
 
             try:
                 async with asyncio.timeout(settings.research_timeout_sec):
                     async for pipeline_event in runner.run():
-                        for stage_frame in (adapter.stage_frame(pipeline_event.get("stage")),):
+                        for stage_frame in (adapter.stage_frame(pipeline_event.get("node")),):
                             if stage_frame is not None:
                                 yield frame_line(stage_frame)
                         for wire_frame in adapter.to_frames(pipeline_event):
                             yield frame_line(wire_frame)
+                            # Stage lifecycle rows for the audit trail, persisted
+                            # from the frames themselves so the recorded
+                            # timestamps are the real ones and a restored run
+                            # rebuilds the same ladder the live rail showed.
+                            if wire_frame.get("type") == "stage":
+                                running = wire_frame.get("status") == "running"
+                                stamp = _ts_to_iso(wire_frame.get("ts"))
+                                await _persist(record_event(
+                                    settings.database_url, request_id,
+                                    str(wire_frame.get("node") or "engine"),
+                                    "start" if running else "end",
+                                    payload=json.dumps({"stage": wire_frame.get("node")}),
+                                    started_at="" if running else stamp,
+                                    ended_at=stamp if running else "",
+                                ))
                         # Node-level trail for the trace/audit (best effort).
                         await _persist(record_event(
                             settings.database_url, request_id,
@@ -436,6 +475,36 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
     )
 
 
+@router.post("/research/{run_id}/plan")
+async def submit_plan(run_id: str, request: Request, payload: PlanDecisionRequest) -> Dict[str, Any]:
+    """Deliver a human-in-the-loop plan-review decision to a waiting run.
+
+    When a run is started with interactive review (``hitl``), it pauses after
+    planning and streams a ``plan_review`` frame carrying the proposed outlines,
+    then blocks. This endpoint releases it: the user's chosen (or edited)
+    outline and free-text direction are handed to the paused run, or the plan is
+    sent back for revision.
+
+    Returns 404 when no run with that id is currently waiting — either the run
+    already proceeded (auto-approved on timeout) or the id is unknown.
+    """
+    action = str(payload.action or "approve").strip().lower()
+    if action not in ("approve", "revise"):
+        raise HTTPException(status_code=422, detail="action must be 'approve' or 'revise'")
+
+    decision = PlanDecision(
+        action=action,
+        sections=[str(s).strip() for s in (payload.sections or []) if str(s).strip()],
+        feedback=str(payload.feedback or "").strip(),
+    )
+    if not _submit_plan_decision(run_id, decision):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Run {run_id} is not waiting for a plan decision",
+        )
+    return {"status": "ok", "action": action}
+
+
 @router.post("/research/{run_id}/resume")
 @limiter.limit(get_settings().rate_limit)
 async def resume_research(run_id: str, request: Request) -> StreamingResponse:
@@ -526,11 +595,22 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
             try:
                 async with asyncio.timeout(settings.research_timeout_sec):
                     async for pipeline_event in runner.run():
-                        stage_frame = adapter.stage_frame(pipeline_event.get("stage"))
+                        stage_frame = adapter.stage_frame(pipeline_event.get("node"))
                         if stage_frame is not None:
                             yield frame_line(stage_frame)
                         for wire_frame in adapter.to_frames(pipeline_event):
                             yield frame_line(wire_frame)
+                            if wire_frame.get("type") == "stage":
+                                running = wire_frame.get("status") == "running"
+                                stamp = _ts_to_iso(wire_frame.get("ts"))
+                                await _persist(record_event(
+                                    settings.database_url, request_id,
+                                    str(wire_frame.get("node") or "engine"),
+                                    "start" if running else "end",
+                                    payload=json.dumps({"stage": wire_frame.get("node")}),
+                                    started_at="" if running else stamp,
+                                    ended_at=stamp if running else "",
+                                ))
             except TimeoutError:
                 await _finish("timeout", 0.0)
                 yield event_line("error", message="Resumed run timed out. Try again or raise RESEARCH_TIMEOUT_SEC.")

@@ -52,9 +52,14 @@ function run(overrides = {}) {
     done: false,
     error: "",
     modeLabel: "Standard",
+    stages: {},
+    planReview: null,
     ...overrides,
   };
 }
+
+const statusOf = (agents, name) => agents.find((a) => a.name === name).status;
+const working = (agents) => agents.filter((a) => a.status === "active").length;
 
 test("a fully delivered run marks every stage done (no stage left Queued)", async () => {
   const { deriveAgents } = await loadPanel();
@@ -91,4 +96,121 @@ test("an empty run leaves every stage queued", async () => {
   const { deriveAgents } = await loadPanel();
   const agents = deriveAgents(run());
   for (const a of agents) assert.equal(a.status, "waiting");
+});
+
+/* ---------------------------------------------------------------------------
+ * Live stage lifecycle.
+ *
+ * Regression (the reported bug): a run that had been streaming for a minute
+ * showed all eight agents "Queued" and the header read "0 agents working"
+ * while its trace was visibly working. Status was inferred from FINISHED
+ * artifacts only, so before the first artifact landed every stage was queued
+ * and no stage could ever be "working". The backend now announces each node's
+ * start and finish, and that is what the rail reads.
+ * ------------------------------------------------------------------------- */
+
+test("a stage that has started shows as working before any artifact exists", async () => {
+  const { deriveAgents } = await loadPanel();
+  const agents = deriveAgents(run({
+    stages: { pathfinder: { status: "running", startedAt: 1000, endedAt: null } },
+  }));
+  assert.equal(statusOf(agents, "Pathfinder"), "active");
+  // Nothing else may claim to be working, and nothing may claim to be done.
+  assert.equal(working(agents), 1);
+  for (const a of agents.slice(1)) assert.equal(a.status, "waiting", `${a.name} should be queued`);
+});
+
+test("the rail advances as stages finish and the next one starts", async () => {
+  const { deriveAgents } = await loadPanel();
+  const agents = deriveAgents(run({
+    stages: {
+      pathfinder: { status: "done", startedAt: 1, endedAt: 900 },
+      architect: { status: "running", startedAt: 900, endedAt: null },
+    },
+  }));
+  assert.equal(statusOf(agents, "Pathfinder"), "done");
+  assert.equal(statusOf(agents, "Research Architect"), "active");
+  assert.equal(working(agents), 1);
+});
+
+test("Pathfinder and Scout Swarm are separate stages, not one retrieval stage", async () => {
+  const { deriveAgents } = await loadPanel();
+  // The backend maps both nodes onto the `retrieval` STAGE; the wire keys on
+  // the node, so the two must never collapse into one row here.
+  const agents = deriveAgents(run({
+    stages: {
+      pathfinder: { status: "done", startedAt: 1, endedAt: 900 },
+      architect: { status: "done", startedAt: 900, endedAt: 1500 },
+      review_gate: { status: "done", startedAt: 1500, endedAt: 1600 },
+      scout_swarm: { status: "running", startedAt: 1600, endedAt: null },
+    },
+  }));
+  assert.equal(statusOf(agents, "Pathfinder"), "done");
+  assert.equal(statusOf(agents, "Scout Swarm"), "active");
+  assert.equal(working(agents), 1);
+});
+
+test("a paused plan review shows the Review Gate as the working stage", async () => {
+  const { deriveAgents } = await loadPanel();
+  const agents = deriveAgents(run({
+    plan: ["A", "B"],
+    stages: {
+      pathfinder: { status: "done", startedAt: 1, endedAt: 900 },
+      architect: { status: "done", startedAt: 900, endedAt: 1500 },
+      review_gate: { status: "running", startedAt: 1500, endedAt: null },
+    },
+    planReview: { runId: "r1", alternatives: [["A"]] },
+  }));
+  assert.equal(statusOf(agents, "Review Gate"), "active");
+  assert.equal(agents.find((a) => a.name === "Review Gate").desc, "awaiting plan review");
+});
+
+test("the lifecycle wins over artifact inference: an unstarted stage stays queued", async () => {
+  const { deriveAgents } = await loadPanel();
+  // Findings exist, but no stage frame claims the writer or assembler ran.
+  // Inferring "done" from a later artifact is exactly what made the rail
+  // disagree with the trace it is supposed to summarise.
+  const agents = deriveAgents(run({
+    findings: [{ claim: "c", verified: false }],
+    stages: { pathfinder: { status: "done", startedAt: 1, endedAt: 900 } },
+  }));
+  assert.equal(statusOf(agents, "Scout Swarm"), "waiting");
+  assert.equal(statusOf(agents, "Narrative Writer"), "waiting");
+  assert.equal(statusOf(agents, "Report Assembler"), "waiting");
+});
+
+test("a run whose lifecycle all completed shows every stage done", async () => {
+  const { deriveAgents } = await loadPanel();
+  const stages = Object.fromEntries(
+    ["pathfinder", "architect", "review_gate", "scout_swarm", "narrative_writer",
+     "evidence_auditor", "diagram_designer", "report_assembler"]
+      .map((n) => [n, { status: "done", startedAt: 1, endedAt: 2 }]),
+  );
+  const agents = deriveAgents(run({ stages, done: true, snippets: 12, plan: ["A"] }));
+  for (const a of agents) assert.equal(a.status, "done", `${a.name} should be done`);
+  assert.equal(working(agents), 0);
+});
+
+test("a stream that dies mid-stage does not leave that stage working forever", async () => {
+  const { deriveAgents } = await loadPanel();
+  const agents = deriveAgents(run({
+    error: "Research workflow failed: boom",
+    stages: { pathfinder: { status: "running", startedAt: 1, endedAt: null } },
+  }));
+  assert.notEqual(statusOf(agents, "Pathfinder"), "active");
+  assert.equal(working(agents), 0);
+});
+
+test("a restored run with no lifecycle frames still falls back to artifacts", async () => {
+  const { deriveAgents } = await loadPanel();
+  // Sessions persisted before stage frames existed must still show their work
+  // rather than an all-queued rail.
+  const agents = deriveAgents(run({
+    stages: {},
+    snippets: 42,
+    plan: ["A", "B"],
+    findings: [{ claim: "c", verified: false }],
+  }));
+  assert.equal(statusOf(agents, "Pathfinder"), "done");
+  assert.notEqual(statusOf(agents, "Report Assembler"), "done");
 });

@@ -37,6 +37,23 @@ class ResearchRequest(BaseModel):
     # appends them to one session instead of minting a session per question.
     # Optional for backward compatibility — absent means "generate one".
     session_id: str | None = Field(default=None, max_length=120)
+    # Opt in to human-in-the-loop plan review for this run: pause after planning
+    # and wait for the user to approve or edit the proposed outline. Absent
+    # falls back to the deployment default (PLAN_REVIEW_INTERACTIVE).
+    hitl: bool | None = Field(default=None)
+
+
+class PlanDecisionRequest(BaseModel):
+    """The user's answer to an interactive plan review."""
+
+    # "approve" (possibly with edited sections / direction) or "revise" (send
+    # the planner back with feedback).
+    action: str = Field(default="approve", max_length=20)
+    # The outline the user approved. When empty on approve, the run keeps its
+    # originally-proposed outline.
+    sections: list[str] = Field(default_factory=list)
+    # Free-text direction ("focus on costs and policy implications").
+    feedback: str = Field(default="", max_length=2000)
 
 
 def _with_trace_capture(

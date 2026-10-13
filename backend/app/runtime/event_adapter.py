@@ -25,9 +25,10 @@ from typing import Any, Dict, Iterable, List, Optional
 
 # Pipeline stage -> the display name the trace shows for that node.
 _STAGE_LABELS = {
-    "retrieval": "Searching the web",
+    "pathfinder": "Searching the web",
     "architect": "Planning the outline",
     "review_gate": "Reviewing the plan",
+    "scout_swarm": "Researching each section",
     "narrative_writer": "Writing the report",
     "evidence_auditor": "Checking the facts",
     "diagram_designer": "Generating visuals",
@@ -52,13 +53,69 @@ class PipelineEventAdapter:
     def __init__(self, query: str):
         self.query = query
         self._emitted_plan = False
+        # Two dedupe sets on purpose: `stage_frame` claims a node name when it
+        # announces the stage, and the retrieval notes below claim the SAME node
+        # names for their own one-shot lines. Sharing one set made whichever ran
+        # first silence the other.
         self._emitted_stages: set = set()
+        self._emitted_notes: set = set()
 
     def to_frames(self, pipeline_event: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Map one orchestrator event dict to zero or more wire frames."""
         node = str(pipeline_event.get("node") or "")
         stage = str(pipeline_event.get("stage") or node)
         frames: List[Dict[str, Any]] = []
+
+        # Agent activity (stream_output): a real, live progress line. Surface it
+        # as a progress frame so the trace shows what the agents are doing,
+        # including the Review Gate's accept/revise verdict. A plan-review
+        # *request* carries structured alternatives and becomes its own frame so
+        # the UI can render the interactive approval control.
+        activity = str(pipeline_event.get("activity") or "")
+        # A stage LIFECYCLE signal: the node announcing that it started or
+        # finished. Handled before the `activity and not stage` gate below,
+        # because that gate reads `stage` with a fallback to `node` — and these
+        # events always carry a node, so they would never pass it.
+        #
+        # Keyed on the NODE, not the stage: `_NODE_STAGE` maps both `pathfinder`
+        # and `scout_swarm` onto `retrieval`, so a stage key cannot tell the two
+        # apart on the client's live ladder.
+        if str(pipeline_event.get("activity") or "") == "pipeline_stage":
+            phase = str(pipeline_event.get("action") or "")
+            lifecycle_node = str(pipeline_event.get("node") or "")
+            if lifecycle_node and phase in {"start", "end"}:
+                frames.append(frame(
+                    "stage",
+                    node=lifecycle_node,
+                    status="running" if phase == "start" else "done",
+                    label=_STAGE_LABELS.get(lifecycle_node, lifecycle_node),
+                ))
+            return frames
+
+        if activity and not stage:
+            # A plan-review REQUEST opens the interactive window; an EXPIRED
+            # notice closes it. Both are their own frame (not progress text)
+            # because the client must open AND close the approval card from
+            # them — a card left open over a finished report is the bug this
+            # mapping exists to prevent.
+            if activity == "plan_review" and pipeline_event.get("action") in {"request", "expired"}:
+                expired = pipeline_event.get("action") == "expired"
+                deadline = pipeline_event.get("deadline_ts")
+                frames.append(frame(
+                    "plan_review",
+                    status="expired" if expired else "awaiting",
+                    run_id=str(pipeline_event.get("run_id") or ""),
+                    title=str(pipeline_event.get("title") or ""),
+                    alternatives=[] if expired else list(pipeline_event.get("alternatives") or []),
+                    message=str(pipeline_event.get("message") or ""),
+                    # Epoch seconds, or None when no window was configured.
+                    deadline_ts=float(deadline) if isinstance(deadline, (int, float)) else None,
+                ))
+                return frames
+            message = str(pipeline_event.get("message") or "").strip()
+            if message:
+                frames.append(frame("progress", message=message))
+            return frames
 
         if stage == "architect" and pipeline_event.get("sections") and not self._emitted_plan:
             self._emitted_plan = True
@@ -74,16 +131,16 @@ class PipelineEventAdapter:
             # source total. Surface them as honest progress messages instead.
             if node == "pathfinder":
                 chars = int(pipeline_event.get("initial_research_chars") or 0)
-                if chars and "pathfinder" not in self._emitted_stages:
-                    self._emitted_stages.add("pathfinder")
+                if chars and "pathfinder" not in self._emitted_notes:
+                    self._emitted_notes.add("pathfinder")
                     frames.append(frame(
                         "progress",
                         message=f"Gathered ~{chars:,} characters of initial research",
                     ))
             elif node == "scout_swarm":
                 sections = int(pipeline_event.get("research_sections") or 0)
-                if sections and "scout_swarm" not in self._emitted_stages:
-                    self._emitted_stages.add("scout_swarm")
+                if sections and "scout_swarm" not in self._emitted_notes:
+                    self._emitted_notes.add("scout_swarm")
                     frames.append(frame(
                         "progress",
                         message=f"Researched {sections} section{'s' if sections != 1 else ''}",
@@ -102,12 +159,17 @@ class PipelineEventAdapter:
 
         return frames
 
-    def stage_frame(self, stage: str) -> Optional[Dict[str, Any]]:
-        """A lightweight per-stage progress frame, emitted at most once each."""
-        if stage in self._emitted_stages:
+    def stage_frame(self, node: str) -> Optional[Dict[str, Any]]:
+        """A lightweight per-node progress line, emitted at most once each.
+
+        Keyed on the NODE so Pathfinder ("Searching the web") and Scout Swarm
+        ("Researching each section") read differently — both map onto the
+        ``retrieval`` stage, which made the old stage-keyed label ambiguous.
+        """
+        if not node or node in self._emitted_stages:
             return None
-        self._emitted_stages.add(stage)
-        label = _STAGE_LABELS.get(stage, stage)
+        self._emitted_stages.add(node)
+        label = _STAGE_LABELS.get(node, node)
         return frame("progress", message=label)
 
 

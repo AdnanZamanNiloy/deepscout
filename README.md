@@ -56,6 +56,7 @@ handling, and calibrated confidence. Measured results are in
 | Capability | What it does | Where |
 |---|---|---|
 | **Multi-agent research team** | A LangGraph team (browser → editor/planner → researcher → writer → fact checker → visualizer → publisher) conducts the research and assembles the report. | `app/agents/`, `app/runtime/orchestrator.py` |
+| **Human-in-the-loop plan review** | Opt-in: a run pauses after planning, proposes alternative outlines, and waits for the user to approve or edit them before section research. Defaults to automatic approval when disabled. | `app/runtime/plan_review.py`, `app/agents/report.py` |
 | **Wave-based section research** | Report sections are researched in bounded waves, each running a research → review → revise loop; each wave sees the sections already written so writers do not repeat them. | `app/agents/` |
 | **Multi-provider search** | Self-hosted SearXNG metasearch plus Wikipedia, arXiv and Crossref — no search API key — with canonical-URL dedup, domain diversity, circuit breakers, and a bounded disk cache. | `app/retrieval/client.py` |
 | **Provider control** | The Model Control Center selects a single OpenAI-compatible provider or an ordered fallback chain; pipeline generation is routed through it, with breakers, response cache and usage ledger. | `app/core/providers.py`, `app/research/llm.py` |
@@ -198,6 +199,7 @@ Base path `/api`. The research stream is rate-limited (`RATE_LIMIT`, default
 |---|---|---|
 | `GET` | `/health` | Liveness probe |
 | `POST` | `/research/stream` | Run research; streams NDJSON events |
+| `POST` | `/research/{run_id}/plan` | Deliver a human-in-the-loop plan-review decision to a paused run (`approve`/`revise`, edited sections, direction) |
 | `POST` | `/research/{run_id}/resume` | Re-run a failed/timeout run |
 | `GET` | `/research/{run_id}/trace` | Full persisted run reconstruction |
 | `GET` | `/research/{run_id}/export/{fmt}` | Export a run's report as `md`, `docx` or `pdf` |
@@ -418,13 +420,14 @@ backend/
                           scraping, context, prompts, config
   app/agents/             the LangGraph agent team (orchestrator, editor,
                           research unit, report agents)
-  app/runtime/            runtime seam: route entry point + NDJSON event adapter
+  app/runtime/            runtime seam: route entry point, NDJSON adapter,
+                          human-in-the-loop plan-review handshake
   app/retrieval/          multi-provider search client + searchkit internals
   app/evidence/           claim hygiene, source intelligence, audit reconstruction
   app/quality/            report/answer quality metrics
   app/infra/              run limits, retry/breaker primitives, retrieval health
   app/report/             markdown normalisation shared by pipeline + export
-  app/api/routes.py       stream, resume, trace, export, sessions
+  app/api/routes.py       stream, resume, plan, trace, export, sessions
   app/api/providers_routes.py  providers + fallback chains (Model Control Center)
   app/common/             shared leaves: config, logging, primitives,
                           semantic engine

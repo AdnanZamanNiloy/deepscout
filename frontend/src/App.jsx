@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchSession, fetchTrace, listSessions, resumeResearch, startResearch } from "./api";
+import { fetchSession, fetchTrace, listSessions, resumeResearch, startResearch, submitPlanDecision as apiSubmitPlanDecision } from "./api";
 import { MODE_META, isNoProviderError, loadActiveSessionId, loadKnowledge, loadMissions, newSessionId, removeMission, saveActiveSessionId, saveKnowledgeItem, shouldAutoScroll, truncateFromMessage, updateMission, upsertMission } from "./lib";
 import Sidebar from "./components/Sidebar";
 import Composer from "./components/Composer";
@@ -8,6 +8,7 @@ import AgentPipelineTrace from "./trace/AgentPipelineTrace";
 import "./trace/trace.css";
 import AnswerCard, { ReplayAnswerCard } from "./components/AnswerCard";
 import ClaimDrawer from "./components/ClaimDrawer";
+import PlanReviewCard from "./components/PlanReviewCard";
 import ErrorBoundary from "./components/ErrorBoundary";
 import IntelligencePanel from "./components/IntelligencePanel";
 import MissionsView from "./components/MissionsView";
@@ -116,6 +117,11 @@ function blankRun(query, mode) {
     resumable: false,
     resuming: false,
     aborted: false,
+    planReview: null,
+    // Live stage lifecycle, keyed by graph node. Populated by `stage` frames as
+    // nodes start and finish; this is what the pipeline rail reads so it tracks
+    // the trace instead of inferring progress from finished artifacts.
+    stages: {},
   };
 }
 
@@ -214,6 +220,9 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [composer, setComposer] = useState("");
   const [mode, setMode] = useState("standard");
+  // Human-in-the-loop: when on, a run pauses after planning for the user to
+  // approve/edit the outline before research begins. Off by default.
+  const [hitl, setHitl] = useState(false);
   const [running, setRunning] = useState(false);
   const [selectedFinding, setSelectedFinding] = useState(null);
   const [intelCollapsed, setIntelCollapsed] = useState(true);
@@ -411,7 +420,11 @@ export default function App() {
 
   const patchRun = useCallback((tempId, patch) => {
     applyToOwner(tempId, (prev) =>
-      prev.map((m) => (m.kind === "run" && m.run.tempId === tempId ? { ...m, run: { ...m.run, ...patch } } : m))
+      prev.map((m) =>
+        m.kind === "run" && m.run.tempId === tempId
+          ? { ...m, run: { ...m.run, ...(typeof patch === "function" ? patch(m.run) : patch) } }
+          : m
+      )
     );
   }, [applyToOwner]);
 
@@ -455,6 +468,56 @@ export default function App() {
       case "plan":
         patchRun(tempId, {
           plan: Array.isArray(evt.items) ? evt.items : [],
+        });
+        break;
+      case "stage": {
+        // A pipeline node announcing it started or finished. Stored keyed by
+        // node so the live rail and the live trace are driven by ONE signal —
+        // otherwise the rail can only infer progress from finished artifacts and
+        // shows "Queued" for everything while the trace is visibly working.
+        const node = typeof evt.node === "string" ? evt.node : null;
+        if (!node) break;
+        const running = evt.status === "running";
+        patchRun(tempId, (run) => ({
+          ...run,
+          stages: {
+            ...(run.stages || {}),
+            [node]: {
+              status: running ? "running" : "done",
+              startedAt: running ? evt.ts : (run.stages?.[node]?.startedAt ?? null),
+              endedAt: running ? null : evt.ts,
+            },
+          },
+        }));
+        break;
+      }
+      case "plan_review":
+        // Human-in-the-loop: the run has paused and is waiting for the user to
+        // approve or edit the proposed outline. Store it so the review UI shows.
+        // The same frame type also CLOSES the window (`status: "expired"`), when
+        // the run continued on its own — handling only the open case is what
+        // leaves a live approval card stacked on top of a finished report.
+        if (evt.status === "expired") {
+          patchRun(tempId, { planReview: null });
+          break;
+        }
+        patchRun(tempId, {
+          planReview: {
+            runId: typeof evt.run_id === "string" ? evt.run_id : null,
+            // Identity of THIS request. A revised plan re-requests review under
+            // the same run_id, so the card keys on this to discard the picks
+            // the user made for an outline that no longer exists.
+            requestId: typeof evt.ts === "number" ? evt.ts : null,
+            // Epoch seconds, so the countdown reflects the server's deadline
+            // rather than when the card happened to mount.
+            deadlineTs: typeof evt.deadline_ts === "number" ? evt.deadline_ts : null,
+            title: typeof evt.title === "string" ? evt.title : "",
+            alternatives: Array.isArray(evt.alternatives)
+              ? evt.alternatives.filter((a) => Array.isArray(a) && a.length)
+              : [],
+            submitting: false,
+            error: "",
+          },
         });
         break;
       case "critic":
@@ -520,7 +583,7 @@ export default function App() {
         const resumable = !noKey && /timed out|failed/i.test(message);
         setMessages((prev) => prev.map((m) => {
           if (m.kind !== "run" || m.run.tempId !== tempId) return m;
-          const run = { ...m.run, error: message, resuming: false, resumable };
+          const run = { ...m.run, error: message, resuming: false, resumable, planReview: null };
           if (run.runId) {
             saveRunMission(run, { status: resumable ? "resumable" : "failed" });
           }
@@ -578,7 +641,7 @@ export default function App() {
       if (resumeRun) {
         await resumeResearch({ runId: resumeRun.runId, signal: controller.signal, onEvent: (e) => handleEvent(tempId, e) });
       } else {
-        await startResearch({ query: queryText, mode, sessionId: sessionIdRef.current, signal: controller.signal, onEvent: (e) => handleEvent(tempId, e) });
+        await startResearch({ query: queryText, mode, sessionId: sessionIdRef.current, signal: controller.signal, hitl, onEvent: (e) => handleEvent(tempId, e) });
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -586,7 +649,7 @@ export default function App() {
         abortedRef.current.add(tempId);
         setMessages((prev) => prev.map((m) => {
           if (m.kind !== "run" || m.run.tempId !== tempId) return m;
-          const run = { ...m.run, aborted: true, resuming: false };
+          const run = { ...m.run, aborted: true, resuming: false, planReview: null };
           if (run.runId) {
             saveRunMission(run, { status: "cancelled" });
           }
@@ -600,6 +663,11 @@ export default function App() {
       const settled = runRef.current;
       runRef.current = null;
       parentRef.current = null;
+      // The run has settled, so the review window is over by definition —
+      // approved, expired, failed, or stopped. Dropping the approval card here
+      // is the catch-all: without it, any exit that is not the user pressing
+      // Approve leaves a live "start research" card pinned above the report.
+      if (settled) patchRun(tempId, { planReview: null });
       // The run has settled: the server holds the authoritative copy, so drop
       // the offscreen cache entry and its ownership record. Without this the
       // map would retain a full message list per session for the page's life.
@@ -610,7 +678,24 @@ export default function App() {
       }
       setRunning(false);
     }
-  }, [running, mode, patchRun, handleEvent, saveMissions, setActiveSession, scrollToBottomAfterRender]);
+  }, [running, mode, hitl, patchRun, handleEvent, saveMissions, setActiveSession, scrollToBottomAfterRender]);
+
+  // Submit a human-in-the-loop plan decision to the paused run. On success the
+  // run resumes streaming; the planReview card is cleared so it disappears.
+  const submitPlanDecision = useCallback(async (tempId, decision) => {
+    const msg = messages.find((m) => m.kind === "run" && m.run.tempId === tempId);
+    const rev = msg?.run?.planReview;
+    if (!rev?.runId) return;
+    patchRun(tempId, { planReview: { ...rev, submitting: true, error: "" } });
+    try {
+      await apiSubmitPlanDecision(rev.runId, decision);
+      patchRun(tempId, { planReview: null });
+    } catch (err) {
+      patchRun(tempId, {
+        planReview: { ...rev, submitting: false, error: err?.message || "Submission failed" },
+      });
+    }
+  }, [messages, patchRun]);
 
   const submitQuery = useCallback((text) => {
     const v = text.trim();
@@ -901,6 +986,8 @@ export default function App() {
                       onAbort={abortRun}
                       mode={mode}
                       onModeChange={setMode}
+                      hitl={hitl}
+                      onHitlChange={setHitl}
                       placeholder="Ask a research question… (Enter to send)"
                     />
                   }
@@ -913,6 +1000,7 @@ export default function App() {
                   onResume={resumeRun}
                   onRegenerate={submitQuery}
                   onAbort={abortRun}
+                  onPlanDecision={submitPlanDecision}
                   editingMessageId={editingMessageId}
                   onEditMessage={handleEditMessage}
                 />)
@@ -931,6 +1019,8 @@ export default function App() {
                   onAbort={abortRun}
                   mode={mode}
                   onModeChange={setMode}
+                  hitl={hitl}
+                  onHitlChange={setHitl}
                   placeholder="Ask a follow-up question…"
                 />
               </div>
@@ -985,7 +1075,7 @@ export default function App() {
 
 function ThreadMessage({
   message, running, onResume, onRegenerate, onAbort,
-  editingMessageId, onEditMessage,
+  editingMessageId, onEditMessage, onPlanDecision,
 }) {
   // The pipeline trace is rendered from the raw frames the backend streamed
   // (message.traceEvents), so the story it tells is exactly what was sent.
@@ -1035,6 +1125,12 @@ function ThreadMessage({
           status={traceStatus}
           defaultOpen={false}
         />
+        {run.planReview ? (
+          <PlanReviewCard
+            review={run.planReview}
+            onSubmit={(decision) => onPlanDecision(message.run.tempId, decision)}
+          />
+        ) : null}
         {run.aborted && !run.done ? (
           <div className="error-box" style={{ borderColor: "var(--line)", background: "var(--card)" }}>
             Mission aborted by user before completion.

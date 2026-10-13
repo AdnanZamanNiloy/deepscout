@@ -44,6 +44,10 @@ class ResearchState(TypedDict, total=False):
     title: Optional[str]
     date: Optional[str]
     sections: List[str]
+    # Candidate outlines the planner produced, for interactive plan review.
+    plan_alternatives: List[List[str]]
+    # Free-text direction the user gave at plan review; flows into section research.
+    plan_direction: str
     research_data: List[Any]
     introduction: str
     table_of_contents: str

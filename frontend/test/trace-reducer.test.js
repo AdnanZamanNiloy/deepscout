@@ -39,7 +39,7 @@ test("unknown event types are ignored rather than rendered as noise", () => {
 
 test("isKnownFrame accepts known types and rejects unknown ones", () => {
   assert.equal(isKnownFrame({ type: "intent" }), true);
-  assert.equal(isKnownFrame({ type: "plan_review" }), false);
+  assert.equal(isKnownFrame({ type: "plan_review" }), true);
 });
 
 test("reasoning prose comes from the real intent fields", () => {

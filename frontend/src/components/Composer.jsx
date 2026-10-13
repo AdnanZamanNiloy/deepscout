@@ -8,7 +8,7 @@ const MODES = ["quick", "standard", "deep"];
 const MENU_GAP = 6;
 
 export default function Composer({
-  value, onChange, onSubmit, running, onAbort, mode, onModeChange, placeholder,
+  value, onChange, onSubmit, running, onAbort, mode, onModeChange, placeholder, hitl, onHitlChange,
 }) {
   const [open, setOpen] = useState(false);
   // "down" opens below the selector (preferred); "up" flips above it when the
@@ -154,6 +154,26 @@ export default function Composer({
             </div>
           ) : null}
         </div>
+        <button
+          type="button"
+          className="pill-btn hitl-toggle"
+          role="switch"
+          aria-checked={hitl === true}
+          onClick={() => onHitlChange?.(!hitl)}
+          disabled={running}
+          title={
+            hitl === true
+              ? "On — you approve the outline before research starts"
+              : "Off — research starts as soon as the plan is ready"
+          }
+        >
+          {/* The mark slot is always in the DOM (hidden when off) so turning
+              the switch on cannot reflow the toolbar. */}
+          <span className="hitl-mark" aria-hidden="true">
+            {hitl === true ? <IconCheck size={12} strokeWidth={3} /> : null}
+          </span>
+          Review plan first
+        </button>
         <span className="toolbar-spacer" />
         {running ? (
           <button type="button" className="send-btn is-abort" onClick={onAbort} title="Stop this run" aria-label="Stop this run">
