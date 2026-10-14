@@ -1,0 +1,15 @@
+# Cloudflare Pages routing.
+#
+# The console is a hash-router SPA (`#/workspace`, `#/docs`, ...), so every
+# route resolves to the single index.html the browser already loaded — a
+# server-side rewrite is only needed for a DIRECT hit on a path that is not a
+# real file (e.g. a stale bookmark to `/workspace`). `docs.html` is a REAL
+# file in the build and is served directly; it must NOT be swallowed by the
+# SPA fallback, hence it is excluded below.
+
+# Serve the docs page as-is (static, its own in-page hash router).
+/docs.html /docs.html 200
+
+# SPA fallback: anything else that is not a built asset resolves to the app.
+# Placed last so real files (assets/*, deepscout.svg, docs.html) win.
+/* /index.html 200

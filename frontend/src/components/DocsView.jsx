@@ -7,6 +7,12 @@
 import { useEffect, useRef } from "react";
 import { getStoredTheme } from "../theme";
 
+/* Base-aware so the same build works at the site root (Cloudflare Pages) or
+ * under a subpath (a project GitHub Pages URL): Vite rewrites BASE_URL at
+ * build time to "/" or "/<repo>/". A hardcoded "/docs.html" would 404 under a
+ * subpath. */
+const DOCS_SRC = `${import.meta.env.BASE_URL || "/"}docs.html`;
+
 export default function DocsView() {
   const frameRef = useRef(null);
 
@@ -33,7 +39,7 @@ export default function DocsView() {
       <iframe
         ref={frameRef}
         className="docs-frame"
-        src="/docs.html"
+        src={DOCS_SRC}
         title="DeepScout Documentation"
         onLoad={() => {
           const frame = frameRef.current;

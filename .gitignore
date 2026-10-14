@@ -26,6 +26,8 @@ venv/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+# Scratch build of the demo modules for the Node test runner
+frontend/test/.demo-build/
 
 # OS / editor noise
 .DS_Store
