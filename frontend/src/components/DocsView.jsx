@@ -1,8 +1,8 @@
 /* DeepScout documentation view — mounts the standalone docs site at `#/docs`.
  * The docs themselves are a zero-build static page (`public/docs.html`);
  * the iframe isolates the docs' own `#page` hash routing from the
- * console's `#/view` hash router. Exiting via the docs' "Console" button
- * targets the top window, which the App's hashchange sync picks up. */
+ * console's `#/view` hash router. The docs page no longer links out to the
+ * console, so navigation back to it is the console's own sidebar. */
 
 import { useEffect, useRef } from "react";
 import { getStoredTheme } from "../theme";
