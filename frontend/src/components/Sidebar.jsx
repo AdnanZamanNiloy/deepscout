@@ -5,7 +5,6 @@ import {
   IconPlus, IconTrash,
 } from "./icons";
 import BrandLockup from "./Brand";
-import ThemeToggle from "./ThemeToggle";
 
 const NAV = [
   { id: "missions", label: "Research", icon: IconMissions },
@@ -173,9 +172,6 @@ export default function Sidebar({
           >
             <item.icon size={16} />
             {item.label}
-            {item.id === "missions" && missions.length > 0 ? (
-              <span className="count">{missions.length}</span>
-            ) : null}
           </button>
         ))}
       </nav>
@@ -203,11 +199,6 @@ export default function Sidebar({
         ) : (
           recent.map(renderRow)
         )}
-      </div>
-
-      <div className="side-foot">
-        <span className="ver">DeepScout console · v2.1</span>
-        <ThemeToggle />
       </div>
     </aside>
   );

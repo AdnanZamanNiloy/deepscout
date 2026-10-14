@@ -95,7 +95,7 @@
   /* ============================ Introduction ============================ */
   C["what-is-deepscout"] = [
     '<div class="hero">',
-      '<p class="eyebrow">Multi-Agent Research System · v2.1</p>',
+      '<p class="eyebrow">Documentation</p>',
       '<h1>Research beyond the obvious.</h1>',
       '<p class="lede">DeepScout is an autonomous research intelligence platform. It decomposes a complex question, plans a research strategy, dispatches specialized agents in parallel, verifies every claim against its cited source, challenges its own conclusions, and delivers a cited report with an honest, evidence-derived confidence score.</p>',
       '<div class="hero-cta">',
@@ -107,7 +107,7 @@
         '<div class="hero-stat"><div class="v">1.00</div><div class="k">Verification F1 · 16 labeled cases</div></div>',
         '<div class="hero-stat"><div class="v">0%</div><div class="k">Hallucination leak · 6/6 rejected</div></div>',
         '<div class="hero-stat"><div class="v">1.00</div><div class="k">Contradiction detection F1</div></div>',
-        '<div class="hero-stat"><div class="v">602</div><div class="k">Offline tests passing</div></div>',
+        '<div class="hero-stat"><div class="v">577</div><div class="k">Offline tests passing</div></div>',
       "</div>",
     "</div>",
 
@@ -200,7 +200,7 @@
 
     '<h3 id="qs-tests">4 · Tests &amp; benchmarks</h3>',
     shBlock([
-      g("pytest") + t(" tests/ -v                 ") + c("# 602 tests, fully offline"),
+      g("pytest") + t(" tests/ -v                 ") + c("# 577 tests, fully offline"),
       g("python") + t(" bench/run_offline.py      ") + c("# deterministic, no network, no keys"),
       g("python") + t(" bench/live_retrieval_check.py") + c("# live-provider retrieval probe"),
       g("ruff") + t(" check app tests bench scripts"),
@@ -229,9 +229,8 @@
     "</table></div>",
     '<p class="small muted">The mode sets <em>how much research happens</em>, not what the report looks like — every mode produces the same report shape (introduction, sections, conclusion, references). The section outline itself is derived from the question by the planner, so a mode with more sections researches the same subject more widely rather than changing the format. An unrecognised mode is not rejected; it falls back to <code>standard</code>.</p>',
 
-    '<h3 id="modes-waves">How the sections are researched</h3>',
-    "<p>Sections are researched in bounded waves of <code>MAX_PARALLEL_AGENTS</code> (default 3). Sections in the same wave cannot see each other's drafts, so each later wave is given the titles <em>and</em> the written drafts of the sections already completed. That is what lets a section be told not to restate a statistic or argument a sibling already made.</p>",
-    '<p class="small muted">A smaller wave means tighter de-duplication and longer wall-clock time; a larger wave is faster but the first wave has more independently-written sections.</p>'
+    '<h3 id="modes-waves">How sections are researched</h3>',
+    "<p>Independent of the mode, sections are researched in bounded waves of <code>MAX_PARALLEL_AGENTS</code> (default 3), and each later wave is handed the written drafts of the sections already finished so it does not restate them. The mechanism and its tradeoff are covered on <a href=\"#orchestration\">Orchestration &amp; waves</a>.</p>"
   ];
 
   /* ============================ Architecture ============================ */
@@ -295,8 +294,6 @@
     '<p class="lede">The lifecycle, from question to auditable answer. The stages are bounded: a run researches the outline it planned, once, and stops.</p>',
     '<div class="table-wrap"><table>',
       '<thead><tr><th class="num">#</th><th>Stage</th><th>What happens</th></tr></thead><tbody>',
-        '<tr><td class="num">01</td><td><strong>Receive</strong></td><td>User submits a query and mode.</td></tr>',
-        '<tr><td class="num">02</td><td><strong>Pathfinder</strong></td><td>Discovers sources and maps the landscape, grounding the outline.</td></tr>',
         '<tr><td class="num">01</td><td><strong>Receive</strong></td><td>User submits a query, a mode, and optionally a request for interactive plan review.</td></tr>',
         '<tr><td class="num">02</td><td><strong>Pathfinder</strong></td><td>First research pass: searches, reads, and writes an initial report that grounds the outline.</td></tr>',
         '<tr><td class="num">03</td><td><strong>Research Architect</strong></td><td>Derives the section outline from that pass. The mode caps how many sections.</td></tr>',
@@ -336,7 +333,7 @@
     "</div>",
 
     '<h3 id="orch-review">Bounded review loops</h3>',
-    "<p>Plan review and draft review may each send work back a fixed number of times, and the fact checker may revise once. Every loop has a ceiling: past it the graph force-accepts and moves on, so a stage that keeps finding fault cannot hold the request open. Each ceiling is reported in the stream rather than being invisible.</p>"
+    "<p>The graph has exactly two conditional edges, both bounded by the run\u2019s mode. The <strong>Review Gate</strong> can send the outline back to the Research Architect, and the <strong>Evidence Auditor</strong> can send the draft back to the Narrative Writer once. Past its ceiling the graph force-accepts and moves on, so a stage that keeps finding fault cannot hold the request open. Each ceiling is reported in the stream rather than being invisible \u2014 see <a href=\"#architecture\">System architecture</a> for the edges themselves and <a href=\"#stopping\">Depth &amp; stopping</a> for the exact limits.</p>"
   ];
 
   /* ============================ Streaming ============================ */
@@ -362,22 +359,28 @@
   ];
 
   /* ============================ Agents ============================ */
+  /* This page is about the agents as CODE UNITS — where each lives, what its
+   * fallback is — not a third restatement of the pipeline order, which the
+   * System architecture and Research workflow pages already cover. */
   C.agents = [
     '<p class="eyebrow">Agents</p>',
     '<h2 id="agents">Agent roster</h2>',
-    '<p class="lede">DeepScout operates as a temporary research organization. Each agent has one job, a deterministic fallback, and a specific module.</p>',
-    '<div class="grid cols-2">',
-      '<div class="feature"><div class="f-ico">', I.search, "</div><h4>Pathfinder</h4><p><code>agents/team.py</code> — runs the first research pass: choose a role for the query, gather evidence, write an initial report that grounds the outline. Backed by <code>research/researcher.py</code> and its skills (research conductor, report generator, context manager, browser manager, source curator).</p></div>",
-      '<div class="feature"><div class="f-ico">', I.flow, "</div><h4>Research Architect</h4><p><code>agents/architect.py</code> — derives the section outline from the initial research, then runs the sections in bounded waves so each can avoid restating earlier ones.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.book, "</div><h4>Review Gate</h4><p><code>agents/report.py</code> — reviews the outline before investigation begins. Deterministic structural checks by default, or a human approval when interactive review is on. A revise sends the outline back to the Architect.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.layers, "</div><h4>Scout Swarm</h4><p><code>agents/architect.py</code> + <code>agents/scout.py</code> — investigates each section in a wave, with a per-section reviewer/reviser loop that can send it back.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.shield, "</div><h4>Narrative Writer</h4><p><code>agents/report.py</code> — writes the report introduction and conclusion around the researched section bodies.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.bolt, "</div><h4>Evidence Auditor</h4><p><code>agents/report.py</code> — checks factual claims and source support across the assembled draft, and may send it back to the Narrative Writer once.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.check, "</div><h4>Diagram Designer</h4><p><code>agents/report.py</code> — creates a single Mermaid diagram from the research data, which the UI renders as a figure, or skips when none is warranted.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.doc, "</div><h4>Report Assembler</h4><p><code>agents/report.py</code> — combines the researched content into the final markdown: title, date, introduction, sections, conclusion, references.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.target, "</div><h4>Retrieval</h4><p><code>research/retrieval/</code> + <code>retrieval/client.py</code> — SearXNG with Wikipedia / arXiv / Crossref fallbacks, circuit breakers, dedup, domain diversity and page fetch.</p></div>",
-      '<div class="feature"><div class="f-ico">', I.scale, "</div><h4>Audit layer</h4><p><code>evidence/audit.py</code> + <code>core/</code> — reconstructs the fact pool from the report and its sources, then runs confidence, contradiction and evidence-grade analysis.</p></div>",
-    "</div>",
+    '<p class="lede">DeepScout behaves like a small research team assembled for one question. The flow they run in order is on <a href="#architecture">System architecture</a>; this page is the roster itself \u2014 what each agent owns, which module implements it, and how it degrades.</p>',
+
+    '<div class="table-wrap"><table>',
+      "<thead><tr><th>Agent</th><th>Owns</th><th>Module</th></tr></thead><tbody>",
+        "<tr><td><strong>Pathfinder</strong></td><td>First research pass: gathers evidence and writes an initial report that grounds the outline.</td><td><code>app/agents/team.py</code> + <code>app/research/researcher.py</code></td></tr>",
+        "<tr><td><strong>Research Architect</strong></td><td>Derives the section outline from that pass; runs sections in bounded waves.</td><td><code>app/agents/architect.py</code></td></tr>",
+        "<tr><td><strong>Review Gate</strong></td><td>Approves the outline (deterministic checks, or a human when interactive).</td><td><code>app/agents/report.py</code></td></tr>",
+        "<tr><td><strong>Scout Swarm</strong></td><td>Researches each section in a wave, with a per-section reviewer/reviser loop.</td><td><code>app/agents/architect.py</code> + <code>app/agents/scout.py</code></td></tr>",
+        "<tr><td><strong>Narrative Writer</strong></td><td>Writes the introduction and conclusion around the researched bodies.</td><td><code>app/agents/report.py</code></td></tr>",
+        "<tr><td><strong>Evidence Auditor</strong></td><td>Checks claims and support across the draft; may send it back once.</td><td><code>app/agents/report.py</code></td></tr>",
+        "<tr><td><strong>Diagram Designer</strong></td><td>Renders one Mermaid diagram, or skips cleanly.</td><td><code>app/agents/report.py</code></td></tr>",
+        "<tr><td><strong>Report Assembler</strong></td><td>Assembles the final markdown report; the audit is built separately.</td><td><code>app/agents/report.py</code></td></tr>",
+      "</tbody>",
+    "</table></div>",
+
+    '<p class="small muted">Two supporting pieces are not graph agents but do the shared work: <strong>Retrieval</strong> (<code>app/research/retrieval/</code> + <code>app/retrieval/client.py</code>) runs providers, breakers, dedup and page fetch; the <strong>Audit layer</strong> (<code>app/evidence/audit.py</code> + <code>app/core/</code>) reconstructs the fact pool and scores confidence, contradictions and evidence grades \u2014 off-graph and deterministic.</p>',
 
     '<h3 id="agents-fallback">The fallback contract</h3>',
     "<p>Every LLM-calling step follows the same shape: try the model, validate the output, and on failure fall back to a deterministic default while logging the degradation with its context. A new step without a non-LLM fallback is a regression relative to the rest of the system.</p>",

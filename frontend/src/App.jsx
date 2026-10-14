@@ -1204,6 +1204,9 @@ function PageTitle({ title, mission, view, onRename, onTogglePin, onDelete }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  /* True when the menu must left-anchor because right-anchoring to the toggle
+   * would push it past the viewport's left edge. Measured on open. */
+  const [flipLeft, setFlipLeft] = useState(false);
   const wrapRef = useRef(null);
 
   useEffect(() => {
@@ -1224,6 +1227,23 @@ function PageTitle({ title, mission, view, onRename, onTogglePin, onDelete }) {
     };
   }, [open ]);
 
+  /* The menu opens below the toggle's RIGHT edge. Flip it to the toggle's left
+   edge only when right-anchoring would push it off the viewport's left side
+   (a short title), so the actions stay reachable on any width.
+
+   offsetWidth is the menu's intrinsic width and is the same whichever anchor
+   is active, so it can be read directly. It must NOT be measured after
+   toggling the class by hand: React skips the re-render when the next state
+   equals the current one, which would strand the menu off-screen. */
+  useEffect(() => {
+    if (!open) return;
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const menu = wrap.querySelector(".title-menu");
+    if (!menu) return;
+    setFlipLeft(wrap.getBoundingClientRect().right - menu.offsetWidth < 12);
+  }, [open]);
+
   const close = () => { setOpen(false); setEditing(false); };
 
   const commitRename = () => {
@@ -1235,18 +1255,20 @@ function PageTitle({ title, mission, view, onRename, onTogglePin, onDelete }) {
   if (editing && mission) {
     return (
       <div className="page-title-bar">
-        <input
-          className="title-rename-input"
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commitRename}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commitRename();
-            if (e.key === "Escape") setEditing(false);
-          }}
-          aria-label="Rename research session"
-        />
+        <div className="title-menu-wrap">
+          <input
+            className="title-rename-input"
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitRename();
+              if (e.key === "Escape") setEditing(false);
+            }}
+            aria-label="Rename research session"
+          />
+        </div>
       </div>
     );
   }
@@ -1254,9 +1276,16 @@ function PageTitle({ title, mission, view, onRename, onTogglePin, onDelete }) {
   if (!mission) {
     // No persisted session behind this chat yet (first message not run), so
     // there is nothing to act on — render the title as plain text.
+    //
+    // It still goes through .title-menu-wrap so its box is IDENTICAL to the
+    // interactive one below. A bare span inherited the bar's full width, so
+    // submitting the first message snapped the title from ~726px to ~520px —
+    // a visible layout jump on every send. Same container, same clamp, no shift.
     return (
       <div className="page-title-bar">
-        <span className="page-title-text" title={title}>{title}</span>
+        <div className="title-menu-wrap">
+          <span className="page-title-text page-title-plain" title={title}>{title}</span>
+        </div>
       </div>
     );
   }
@@ -1278,10 +1307,10 @@ function PageTitle({ title, mission, view, onRename, onTogglePin, onDelete }) {
           title={title}
         >
           <span className="page-title-text">{title}</span>
-          <IconChevronDown size={15} className={`nav-chev${open ? " open" : ""}`} />
+          <IconChevronDown size={14} className={`nav-chev${open ? " open" : ""}`} />
         </button>
           {open ? (
-            <div className="title-menu" role="menu">
+            <div className={`title-menu session-menu${flipLeft ? " is-flipped" : ""}`} role="menu">
               <button
                 className="title-menu-item"
                 onClick={() => { setDraft(mission.title || mission.query || ""); setEditing(true); setOpen(false); }}
@@ -1291,6 +1320,7 @@ function PageTitle({ title, mission, view, onRename, onTogglePin, onDelete }) {
               <button className="title-menu-item" onClick={() => { onTogglePin(mission.runId); close(); }}>
                 <IconPin size={14} /> {mission.pinned ? "Unpin" : "Pin"}
               </button>
+              <div className="title-menu-sep" role="separator" />
               <button className="title-menu-item danger" onClick={() => { onDelete(mission.runId); close(); }}>
                 <IconTrash size={14} /> Delete
               </button>

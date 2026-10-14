@@ -239,7 +239,14 @@ a:hover { text-decoration: underline; text-underline-offset: 2px; }
   margin-left: var(--nav-w); width: 100%; min-width: 0;
   padding: calc(var(--topbar-h) + 40px) clamp(20px, 4vw, 56px) 120px;
 }
-.content-inner { max-width: var(--content-max); margin: 0 auto; }
+/* Article + on-this-page rail. The rail is a flex sibling of the article, so
+ * it sits beside the reading column at any viewport instead of relying on a
+ * fixed offset that could overlap at some widths. Centered as a pair. */
+.content-row {
+  max-width: calc(var(--content-max) + 260px);
+  margin: 0 auto; display: flex; align-items: flex-start; gap: 40px;
+}
+.content-inner { flex: 1 1 auto; min-width: 0; max-width: var(--content-max); }
 
 /* ============================ sidebar nav ============================ */
 .nav-group { margin-bottom: 20px; }
@@ -262,8 +269,29 @@ a:hover { text-decoration: underline; text-underline-offset: 2px; }
 .nav-link .n-ico { color: var(--t4); display: flex; }
 .nav-link.active .n-ico { color: var(--deepscout); }
 .nav-link .n-ico svg { width: 15px; height: 15px; }
-.nav-foot { padding: 14px 12px 0; margin-top: 6px; border-top: 1px solid var(--line-soft); font-size: 11.5px; color: var(--t4); line-height: 1.7; }
-.nav-foot code { font-size: 11px; }
+
+/* ============================ on-this-page rail ============================ */
+/* Sits to the right of the article (flex sibling), sticky so it tracks scroll.
+ * Hidden below the width where it would collide with the reading column. */
+.page-toc {
+  flex: 0 0 220px; position: sticky; top: calc(var(--topbar-h) + 40px);
+  align-self: flex-start; max-height: calc(100vh - var(--topbar-h) - 80px); overflow-y: auto;
+  border-left: 1px solid var(--line-soft); padding-left: 18px;
+}
+.page-toc:empty { display: none; }
+.page-toc .toc-title {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--t3); margin: 0 0 10px;
+}
+.page-toc a {
+  display: block; padding: 4px 0; font-size: 12.5px; line-height: 1.4;
+  color: var(--t3); border-left: 2px solid transparent; padding-left: 10px; margin-left: -12px;
+  transition: color .13s, border-color .13s;
+}
+.page-toc a:hover { color: var(--t1); text-decoration: none; }
+.page-toc a.level-3 { padding-left: 22px; font-size: 12px; color: var(--t4); }
+.page-toc a.active { color: var(--deepscout); border-left-color: var(--deepscout); }
+@media (max-width: 1180px) { .page-toc { display: none; } }
 
 /* ============================ typography ============================ */
 h1, h2, h3, h4 { line-height: 1.25; color: var(--t1); scroll-margin-top: calc(var(--topbar-h) + 18px); }
@@ -551,14 +579,13 @@ tbody td code { font-size: 12px; }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg> Close
     </button>
     <div id="navGroups"></div>
-    <div class="nav-foot">
-      <div><span class="dot live"></span> v2.1 · Multi-Agent Research System</div>
-      <div style="margin-top:5px">Source of truth: <code>ARCHITECTURE.md</code></div>
-    </div>
   </nav>
 
   <main class="content" id="content">
-    <div class="content-inner" id="contentInner"></div>
+    <div class="content-row">
+      <div class="content-inner" id="contentInner"></div>
+      <aside class="page-toc" id="pageToc" aria-label="On this page"></aside>
+    </div>
   </main>
 </div>
 

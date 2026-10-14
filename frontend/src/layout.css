@@ -61,8 +61,9 @@
      action is legible as primary inside a quiet rail. */
   background: var(--deepscout-wash);
   color: var(--t1);
-  font-size: 13px;
-  font-weight: 600;
+  /* New button: sans-serif, 14–15px, medium (500). */
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
   text-align: left;
   transition: background 0.14s, border-color 0.14s;
@@ -80,8 +81,9 @@
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--t2);
-  font-size: 13px;
-  font-weight: 600;
+  /* Navigation items: clean sans-serif, 14–15px, regular (400). */
+  font-size: 14px;
+  font-weight: 400;
   cursor: pointer;
   text-align: left;
   transition: background 0.13s, color 0.13s;
@@ -90,17 +92,6 @@
 .side-nav button.active { background: var(--row-active); color: var(--t1); }
 .side-nav button.active svg { color: var(--deepscout); }
 .side-nav svg { color: var(--t3); flex: none; }
-.side-nav .count {
-  margin-left: auto;
-  font-size: 10.5px;
-  font-weight: 650;
-  color: var(--t3);
-  background: var(--inset);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 1px 8px;
-  font-variant-numeric: tabular-nums;
-}
 
 .side-section { margin-top: 20px; padding: 0 2px; }
 .side-section-head {
@@ -112,9 +103,10 @@
   margin-bottom: 5px;
 }
 .side-section-head b {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.11em;
+  /* Workspace/section labels: small sans-serif, 12–13px, regular (400–450). */
+  font-size: 12px;
+  font-weight: 450;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--t4);
 }
@@ -153,8 +145,9 @@
 .mission-row .body { flex: 1; min-width: 0; display: block; }
 .mission-row .name {
   display: block;
-  font-size: 12.5px;
-  font-weight: 550;
+  /* Session titles: sans-serif, 13–14px, regular (400). */
+  font-size: 13.5px;
+  font-weight: 400;
   color: var(--t2);
   white-space: nowrap;
   overflow: hidden;
@@ -198,14 +191,21 @@
 .mission-menu-btn:hover { background: var(--menu-hover); color: var(--t1); }
 
 /* Popup menus share one surface treatment. Every popup is absolutely
-   positioned against its .title-menu-wrap anchor (never a flow block), so
-   opening one can never stretch the header or move its border. */
+   positioned against its own anchor (never a flow block), so opening one can
+   never stretch the header or move its border.
+
+   NOTE: no horizontal anchor lives here on purpose. A shared `left: 0` was the
+   thing that kept fighting the per-menu anchoring below — the session menu was
+   dragged to the header's far-left edge no matter what its own rule said. Each
+   menu now declares its own anchor next to its own rule:
+     .mission-menu -> right-anchored to its row's menu button (below)
+     .mode-menu    -> left-anchored (declared in components.css)
+     .title-menu   -> right-anchored to the title toggle (below) */
 .mission-menu,
 .title-menu,
 .mode-menu {
   position: absolute;
   top: calc(100% + 4px);
-  left: 0;
   padding: 5px;
   background: var(--menu);
   border: 1px solid var(--line);
@@ -221,25 +221,45 @@
   right: 4px;
   min-width: 152px;
 }
-/* The session menu anchors its LEFT edge to the title/arrow control. The
-   wrap begins at the header's left padding, so a left anchor keeps the menu
-   inside the header for every title length. (Right-anchoring made a short
-   title's menu extend leftward past the header and overlap the sidebar.) */
+/* The session menu opens directly BELOW the toggle arrow, its RIGHT edge
+   aligned to the toggle's right edge. .page-title-btn carries no horizontal
+   negative margin (see below), so the wrap's box and the button's box are
+   identical — right:0 therefore lands exactly on the toggle's right edge
+   rather than on the header's edge. `.is-flipped` is the viewport guard: a
+   short title would push a 208px menu off the LEFT edge, so that case
+   left-anchors instead and stays fully on screen. */
 .title-menu {
+  left: auto;
+  right: 0;
+}
+.title-menu.is-flipped {
   left: 0;
   right: auto;
 }
+/* Session actions (Rename / Pin / Delete) get the roomier, softer surface.
+   Scoped to .session-menu so the Export menu — which reuses .title-menu for a
+   short format list — keeps its compact sizing. */
+.session-menu {
+  min-width: 208px;
+  padding: 6px;
+  border-radius: 12px;
+}
 
 /* Anchor for the title/mission menu. position: relative gives the
-   absolutely-positioned menu a containing block. flex: 1 1 auto lets the
-   title claim the bar's free space so a short title is never clipped; the
-   text itself still ellipsizes only when it is genuinely too long. */
+   absolutely-positioned menu a containing block.
+
+   The wrap MUST carry the same max-width as the button. Without it the wrap
+   sized to the title's full max-content width while the button clamped at
+   520px, so the two boxes diverged by up to ~480px on a long title — and a
+   menu right-anchored to the wrap then opened at the header's far edge instead
+   of under the toggle. Both clamp to the same measure, so the wrap's box and
+   the button's box are always identical. */
 .title-menu-wrap {
   position: relative;
   display: inline-flex;
   align-items: center;
-  flex: 1 1 auto;
   min-width: 0;
+  max-width: min(100%, 520px);
 }
 .mission-menu-item,
 .title-menu-item {
@@ -247,15 +267,17 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 9px 10px;
   background: transparent;
   border: 0;
   border-radius: var(--r-xs);
   color: var(--t1);
-  font-size: 13px;
+  font-size: 13.5px;
+  font-weight: 400;
   text-align: left;
   cursor: pointer;
 }
+.title-menu-item { border-radius: 8px; }
 .mission-menu-item:hover,
 .title-menu-item:hover { background: var(--menu-hover); }
 .mission-menu-item svg,
@@ -269,6 +291,34 @@
 .title-menu-item.active { background: var(--menu-hover); color: var(--t1); }
 .title-menu-item.active svg { color: var(--deepscout); }
 
+/* Hairline that separates the reversible actions from the destructive one,
+   so Delete cannot be hit by muscle memory next to Pin/Rename. */
+.title-menu-sep {
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--line);
+}
+
+/* The inline rename field for the header title. Shares the title's measure so
+   entering rename mode does not resize the bar; it was previously unstyled,
+   so it rendered at the browser's default size and jumped on entry. */
+.title-rename-input {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--deepscout);
+  border-radius: 8px;
+  background: var(--bg-soft);
+  color: var(--t1);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  outline: none;
+}
+
 .mission-rename-input {
   display: block;
   width: 100%;
@@ -281,21 +331,6 @@
   font-size: 12.5px;
   font-weight: 550;
   outline: none;
-}
-
-.side-foot {
-  margin-top: auto;
-  padding-top: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  border-top: 1px solid var(--line-soft);
-}
-.side-foot .ver {
-  font-size: 10.5px;
-  color: var(--t4);
-  letter-spacing: 0.02em;
 }
 
 /* ============================================================
@@ -344,18 +379,44 @@
   text-overflow: ellipsis;
   min-width: 0;
 }
+/* The plain (non-interactive) title — shown before the session is persisted.
+   Mirrors .page-title-btn's box exactly (same padding, min-height and vertical
+   margin) so swapping in the interactive control on the first send changes
+   nothing geometrically. Without this the bare span stretched to the bar's full
+   width and the title visibly snapped narrower the moment a run persisted. */
+.page-title-plain {
+  display: block;
+  min-height: 32px;
+  /* Right padding reserves the chevron's footprint (14px icon + 6px gap) that
+     .page-title-btn carries, so the text's box — and therefore where the
+     ellipsis cuts — is byte-identical before and after the control appears. */
+  padding: 4px 28px 4px 8px;
+  margin: -4px 0;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
 /* The session title is a button: clicking it opens the session menu. Styled
    to read as the same title text, with a hover surface so the hit target is
-   discoverable and a comfortable height for touch. */
+   discoverable and a comfortable height for touch. max-width tracks the wrap
+   (which carries the 520px clamp) so the two boxes can never diverge. */
 .page-title-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  max-width: 100%;
   min-height: 32px;
   padding: 4px 8px;
-  margin: -4px -8px;
+  /* Vertical negative margin only. A horizontal one (-8px) offset the button's
+     border box 8px inside the wrap, so a menu left-anchored to the wrap opened
+     slightly right of the toggle's own left edge. Dropping it makes the wrap
+     and the button share an identical box — the hover surface is unchanged,
+     because it is the button's own padding box, not its margin box. */
+  margin: -4px 0;
+  /* Tracks the wrap (which carries the 520px clamp). Percentage max-width
+     against the wrap means the two can never diverge. */
+  max-width: 100%;
   border: 0;
   border-radius: 8px;
   background: transparent;

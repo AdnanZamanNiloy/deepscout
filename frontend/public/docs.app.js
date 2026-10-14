@@ -19,6 +19,7 @@
   });
 
   var contentInner = document.getElementById("contentInner");
+  var pageToc = document.getElementById("pageToc");
   var navGroups = document.getElementById("navGroups");
   var sidenav = document.getElementById("sidenav");
   var scrim = document.getElementById("scrim");
@@ -63,11 +64,76 @@
     // assistive tech without disturbing the editorial type scale.
     var h1 = page ? '<h1 class="sr-only">' + escapeHtml(page.title) + "</h1>" : "";
     contentInner.innerHTML = h1 + body.join("\n");
+    assignHeadingIds();
     bindCopyButtons();
     activeId = id;
     updateActiveNav();
+    buildPageToc();
     window.scrollTo(0, 0);
   }
+
+  /* Give every h2/h3 a stable id so it can be linked and listed. Content may
+   * author ids for important anchors; those are kept. Otherwise a slug is
+   * derived from the heading text, de-duplicated with a numeric suffix. */
+  function assignHeadingIds() {
+    var used = {};
+    contentInner.querySelectorAll("h2, h3").forEach(function (h) {
+      var id = h.id;
+      if (!id) {
+        id = h.textContent.toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "section";
+      }
+      var base = id, n = 2;
+      while (used[id]) { id = base + "-" + n; n++; }
+      used[id] = true;
+      h.id = id;
+    });
+  }
+
+  /* Build the "On this page" rail from the rendered page's real h2/h3 nodes,
+   * so it can never drift from the content. Only headings that carry an id are
+   * linked; the page's own hidden H1 is excluded. */
+  function buildPageToc() {
+    if (!pageToc) return;
+    var heads = contentInner.querySelectorAll("h2[id], h3[id]");
+    if (heads.length < 2) { pageToc.innerHTML = ""; return; }
+    var html = '<p class="toc-title">On this page</p>';
+    heads.forEach(function (h) {
+      html += '<a class="level-' + h.tagName[1] + '" href="#' + h.id + '" data-target="' +
+        h.id + '">' + escapeHtml(h.textContent) + "</a>";
+    });
+    pageToc.innerHTML = html;
+    pageToc.querySelectorAll("a").forEach(function (a) {
+      a.addEventListener("click", function () {
+        var el = document.getElementById(a.getAttribute("data-target"));
+        if (el) { el.scrollIntoView({ behavior: "smooth", block: "start" }); history.replaceState(null, "", "#" + a.getAttribute("data-target")); }
+      });
+    });
+    updateTocActive();
+  }
+
+  /* Highlight the rail entry for the heading currently nearest the top. */
+  function updateTocActive() {
+    if (!pageToc) return;
+    var links = Array.prototype.slice.call(pageToc.querySelectorAll("a"));
+    if (!links.length) return;
+    var offset = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--topbar-h"), 10) + 40 || 96;
+    var active = links[0].getAttribute("data-target");
+    for (var i = 0; i < links.length; i++) {
+      var el = document.getElementById(links[i].getAttribute("data-target"));
+      if (el && el.getBoundingClientRect().top - offset <= 0) active = links[i].getAttribute("data-target");
+    }
+    links.forEach(function (a) {
+      a.classList.toggle("active", a.getAttribute("data-target") === active);
+    });
+  }
+
+  var tocTicking = false;
+  window.addEventListener("scroll", function () {
+    if (tocTicking) return;
+    tocTicking = true;
+    requestAnimationFrame(function () { updateTocActive(); tocTicking = false; });
+  }, { passive: true });
 
   function updateActiveNav() {
     navGroups.querySelectorAll(".nav-link").forEach(function (link) {

@@ -67,6 +67,11 @@
 
 /* --- sizes --------------------------------------------------------------- */
 
+/* Project title in the rail: sans-serif, 14–15px, regular (400) — it is a
+   label identifying the workspace, not a headline. The gradient fill stays. */
+.brand-lockup[data-size="md"] { gap: 9px; }
+.brand-lockup[data-size="md"] .brand-name { font-size: 14.5px; font-weight: 400; }
+
 .brand-lockup[data-size="lg"] { gap: 11px; }
 /* The aperture mark is a filled disc, so it carries far more visual weight per
    pixel than adjacent type. Sized down to sit optically level with the
