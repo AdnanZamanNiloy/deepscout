@@ -1,0 +1,24 @@
+{
+  // Cloudflare Workers/Pages static-asset config for the DeepScout demo.
+  //
+  // WITHOUT this file, `npx wrangler deploy` treats the repo as a plain Worker
+  // and uploads the SOURCE tree (frontend/src/*.jsx, test/*) — which a browser
+  // cannot run, producing a blank page. The `assets` block below makes the
+  // Worker serve the BUILT SPA from frontend/dist instead.
+  //
+  // The build must run before deploy (Cloudflare's build command does this):
+  //   cd frontend && VITE_DEMO=1 npm run build
+  //
+  // VITE_DEMO=1 is required: it switches the console onto the scripted demo
+  // fixtures. Without it the app calls /api/* and breaks with no backend.
+  "name": "deepscout-ai",
+  "compatibility_date": "2024-11-01",
+  "assets": {
+    // The built static site (index.html, assets/*, docs.html, svg).
+    "directory": "frontend/dist",
+    // SPA behaviour: a request for a path that is not a real file returns
+    // index.html, so hash routes and deep links resolve. docs.html is a real
+    // file and is served directly (not swallowed by the fallback).
+    "not_found_handling": "single-page-application"
+  }
+}
