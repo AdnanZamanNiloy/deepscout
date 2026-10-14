@@ -1,0 +1,12 @@
+{
+  "name": "deepscout",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Repo-root package.json so static hosts (Cloudflare Workers/Pages) install the frontend dependencies at the root, where their build runner looks for a package.json. The actual app lives in frontend/.",
+  "scripts": {
+    "postinstall": "npm --prefix frontend ci || npm --prefix frontend install",
+    "build": "npm --prefix frontend run build",
+    "dev": "npm --prefix frontend run dev",
+    "test": "npm --prefix frontend test"
+  }
+}
