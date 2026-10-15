@@ -268,14 +268,26 @@ class SearchClient(CacheMixin, ProviderSearchMixin, ContentMixin):
         if not contracts:
             return []
 
-        # Budget accounting (Feature 12): every provider-backed contract
-        # search counts against the run ledger when one is active. Recorded
-        # before execution so a mid-batch failure still shows the spend.
+        # Budget accounting: every provider-backed contract search counts
+        # against the run ledger when one is active. Recorded before execution
+        # so a mid-batch failure still shows the spend. This is also the run's
+        # search brake: once the wall-clock ceiling is spent, retrieval stops
+        # and the pipeline continues on the evidence already gathered rather
+        # than fanning out further on a stalled provider.
         try:
             from app.core.usage import get_run_usage
+            from app.core.degradation import record_fallback
 
             usage = get_run_usage()
             if usage is not None:
+                if not usage.can_afford_search(len(contracts)):
+                    logger.warning(
+                        "[Search] budget exhausted; skipping %d contract(s)", len(contracts)
+                    )
+                    # A retrieval stop is a degradation, not an empty search:
+                    # say so rather than let it read as weak evidence.
+                    record_fallback("budget:search", "time budget exhausted")
+                    return []
                 usage.record_search("multi", stage="search", count=len(contracts))
         except Exception:
             pass

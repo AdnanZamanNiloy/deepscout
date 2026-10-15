@@ -80,6 +80,19 @@ class RunUsage:
     def exhausted(self) -> bool:
         return self.budget.exhausted
 
+    def can_afford(self, *, stage: str = "llm", calls: int = 1) -> bool:
+        """Whether another model call fits this run's ceilings."""
+        return self.budget.can_afford(stage=stage, calls=calls)
+
+    def can_afford_search(self, count: int = 1) -> bool:
+        """Whether another search batch fits this run's ceilings."""
+        return self.budget.can_afford_search(count=count)
+
+    @property
+    def refusals(self) -> list:
+        """What the governor declined, for the trace/degradation reasons."""
+        return list(self.budget.refusals)
+
     # -- reporting ----------------------------------------------------------
 
     def snapshot(self) -> Dict[str, Any]:

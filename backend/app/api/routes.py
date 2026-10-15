@@ -12,6 +12,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.core.usage import clear_run_usage, start_run_usage
+from app.infra.budget import mode_timeout_seconds
 from app.common.config import get_settings
 from app.core.providers import ProviderSecretUnavailableError
 from app.core.degradation import (
@@ -325,7 +326,11 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
             adapter = PipelineEventAdapter(payload.query)
 
             try:
-                async with asyncio.timeout(settings.research_timeout_sec):
+                # Hard wall-clock cap for THIS mode (quick fails fast, deep is
+                # allowed longer). One source of truth with the budget's
+                # max_seconds: see mode_timeout_seconds().
+                mode_timeout = mode_timeout_seconds(settings, str(payload.mode or "standard"))
+                async with asyncio.timeout(mode_timeout):
                     async for pipeline_event in runner.run():
                         for stage_frame in (adapter.stage_frame(pipeline_event.get("node")),):
                             if stage_frame is not None:
@@ -361,8 +366,8 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                 yield event_line(
                     "error",
                     message=(
-                        f"Research timed out after {int(settings.research_timeout_sec)}s. "
-                        "Try a narrower query or raise RESEARCH_TIMEOUT_SEC."
+                        f"Research timed out after {int(mode_timeout)}s. "
+                        "Try a narrower query, a faster mode, or raise RESEARCH_TIMEOUT_SEC."
                     ),
                 )
                 return
@@ -533,6 +538,12 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
     request_id = run_id  # resume continues the SAME run identity
     resume_session_id = state.get("session_id") or ""
     query = str(state.get("query") or "")
+    # The resumed run keeps the mode it was started with, so its hard cap is
+    # the same one the original run was held to (the stored complexity is the
+    # mode string written at start).
+    resume_mode = str(
+        (state.get("orchestration") or {}).get("complexity_level") or "standard"
+    )
 
     def event_line(event_type: str, **data: Any) -> str:
         return json.dumps(
@@ -588,12 +599,12 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
                 llm=llm_client,
                 search_client=getattr(getattr(request.app.state, "workflow", None), "search_client", None),
                 query=query,
-                mode="standard",
+                mode=resume_mode,
                 headers={},
             )
             adapter = PipelineEventAdapter(query)
             try:
-                async with asyncio.timeout(settings.research_timeout_sec):
+                async with asyncio.timeout(mode_timeout_seconds(settings, resume_mode)):
                     async for pipeline_event in runner.run():
                         stage_frame = adapter.stage_frame(pipeline_event.get("node"))
                         if stage_frame is not None:

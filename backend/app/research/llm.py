@@ -18,9 +18,33 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from app.core.llm import LLMClient
+from app.core.usage import get_run_usage
+from app.core.degradation import record_fallback
 from app.common.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _budget_allows(stage: str) -> bool:
+    """Whether the active run's governor permits another model call.
+
+    Outside a research run (provider probes, tests, the bench harness without a
+    ledger) there is no governor and every call is allowed — the funnel's job is
+    to enforce a ceiling, not to require one.
+
+    A refusal is recorded as a run degradation, so a run cut short by its own
+    budget says so on the wire instead of looking like a thin-evidence run.
+    """
+    usage = get_run_usage()
+    if usage is None:
+        return True
+    allowed = usage.can_afford(stage=stage)
+    if not allowed:
+        reason = next(
+            (r for r in usage.refusals if stage in r), "budget exhausted"
+        )
+        record_fallback(f"budget:{stage}", reason)
+    return allowed
 
 
 def flatten_messages(messages: List[Dict[str, Any]]) -> tuple[str, str]:
@@ -86,6 +110,13 @@ class LLMFunnel:
         call sites need no change.
         """
         system_prompt, user_prompt = flatten_messages(messages)
+        if not _budget_allows("llm"):
+            # The run has spent its call or wall-clock ceiling. Take the
+            # deterministic fallback (empty text, which every caller already
+            # handles) instead of expanding further; the refusal is recorded on
+            # the ledger so the trace explains the stop.
+            logger.warning("[LLMFunnel] budget exhausted; returning empty completion")
+            return ""
         try:
             text = await self.client._generate_with_fallback(system_prompt, user_prompt)
         except Exception as exc:
@@ -108,6 +139,9 @@ class LLMFunnel:
     ) -> Dict[str, Any]:
         """Return the model's JSON response as a dict, or ``{}`` on failure."""
         system_prompt, user_prompt = flatten_messages(messages)
+        if not _budget_allows("llm"):
+            logger.warning("[LLMFunnel] budget exhausted; returning empty JSON")
+            return {}
         try:
             return await self.client.generate_json(
                 system_prompt, user_prompt, retries=retries
