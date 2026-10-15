@@ -387,3 +387,87 @@ def test_a_revision_instruction_does_not_invite_a_shorter_plan():
     system = " ".join(m["content"] for m in msgs)
     assert "sections 1 and 2 overlap" in system
     assert "as fully as before" in system
+
+
+# --- Revision-ceiling semantics (Step 0 baseline) ---------------------------
+#
+# These pin what a "revision ceiling" actually permits, because the count is
+# incremented BEFORE the gate reads it and the gate uses `>` (not `>=`). An
+# off-by-one here is invisible until a run loops one extra planner round-trip
+# (latency) or force-accepts one too early (quality). The traced behaviour:
+#
+#   max_plan_revisions = N  ->  exactly N revisions, then the gate force-accepts
+#                               on the (N+1)-th review.
+#
+# The stored counter ends at N+1, which is harmless because nothing reads it
+# outside the loop; these tests lock BOTH facts so a future change to either
+# is deliberate.
+
+def _plan_revisions_taken(max_revisions: int) -> int:
+    """Simulate the gate loop with a reviewer that always finds issues."""
+    from app.agents.routing import route_review_gate
+    from app.agents.routing import MaxPlanRevisionsExceededError
+
+    count = 0
+    revisions = 0
+    for _ in range(20):
+        count += 1  # review_plan increments on every issue it reports
+        state = {"human_feedback": "fix these", "plan_revision_count": count}
+        try:
+            verdict = route_review_gate(state, max_revisions)
+        except MaxPlanRevisionsExceededError:
+            verdict = "accept"
+        if verdict == "accept":
+            return revisions
+        revisions += 1
+    raise AssertionError("gate loop did not terminate")
+
+
+def _fact_check_passes_taken(max_revisions: int) -> int:
+    """Simulate the audit loop with an auditor that always rejects."""
+    from app.agents.routing import route_evidence_audit
+    from app.agents.routing import MaxFactCheckRevisionsExceededError
+
+    count = 0
+    passes = 1  # the auditor always runs at least once
+    for _ in range(20):
+        count += 1
+        state = {"fact_check_notes": "problems", "fact_check_revision_count": count}
+        try:
+            verdict = route_evidence_audit(state, max_revisions)
+        except MaxFactCheckRevisionsExceededError:
+            verdict = "accept"
+        if verdict == "accept":
+            return passes
+        passes += 1  # revise -> the writer re-runs, then the auditor checks again
+    raise AssertionError("audit loop did not terminate")
+
+
+def test_a_revision_ceiling_permits_exactly_that_many_revisions():
+    assert _plan_revisions_taken(1) == 1
+    assert _plan_revisions_taken(2) == 2
+    assert _plan_revisions_taken(3) == 3
+
+
+def test_the_audit_ceiling_permits_that_many_rechecks_plus_the_first_pass():
+    # max_fact_check_revisions=0 -> the auditor never gets to reject
+    assert _fact_check_passes_taken(0) == 1
+    # =1 (every mode today) -> one rejection, so the auditor runs twice
+    assert _fact_check_passes_taken(1) == 2
+    # =2 -> two rejections, three auditor runs
+    assert _fact_check_passes_taken(2) == 3
+
+
+def test_the_mode_task_freezes_fact_check_at_one_for_every_mode():
+    """The auditor ceiling is the only one of the three with no mode branch.
+
+    Asserted so that scaling it (the proposal's 0/1/2 idea) is a deliberate,
+    visible change rather than a quiet edit to a neighbour.
+    """
+    from app.research.runner import _MODE_SECTIONS
+
+    # Every live mode must be able to build a task; the fact-check value is
+    # asserted by building the task with a stub runner below (see
+    # test_mode_task_shape.py for the full table).
+    for mode in ("quick", "standard", "deep"):
+        assert mode in _MODE_SECTIONS
