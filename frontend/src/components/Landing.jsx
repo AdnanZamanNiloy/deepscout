@@ -90,7 +90,7 @@ const CAPABILITIES = [
   {
     icon: IconTarget,
     title: "Bounded effort",
-    desc: "Every run is bounded in advance: sections per mode, revision loops, parallel agents, LLM calls and wall-clock time. The run stops at its budget and says so rather than expanding without limit.",
+    desc: "Every run is bounded before it starts: the mode fixes how many report sections are planned, and the run has an enforced wall-clock and model-call ceiling. When a ceiling is reached it stops expanding, sheds optional work in a fixed order, and says so — rather than running without limit.",
   },
   {
     icon: IconChart,
@@ -100,14 +100,16 @@ const CAPABILITIES = [
 ];
 
 /* Research modes — the section counts the runner actually uses
- * (`_MODE_SECTIONS` in app/research/runner.py) and the revision budgets that
- * go with them (`_build_task`). The "Executive" mode this list used to
- * advertise was removed from the backend long ago, so listing it described a
- * mode that cannot be selected. */
+ * (`_MODE_SECTIONS` in app/research/runner.py), the revision ceilings that go
+ * with them (`_build_task`), and the enforced wall-clock cap per mode
+ * (`MODE_HARD_CAP_SECONDS` in app/infra/budget.py). The agent count is NOT
+ * per-mode (MAX_PARALLEL_AGENTS is a fixed hardware cap), so it is not listed.
+ * The "Executive" mode this list used to advertise was removed from the
+ * backend long ago, so listing it described a mode that cannot be selected. */
 const MODES = [
-  { name: "Quick", desc: "3 sections, one revision loop, up to 3 agents. For lookups and narrow factual questions where breadth is not the point." },
-  { name: "Standard", desc: "5 sections and up to 2 revision loops. Balanced breadth and verification for everyday research questions." },
-  { name: "Deep", desc: "8 sections with the same revision ceilings but a wider decomposition, so more of the question gets its own investigation." },
+  { name: "Quick", desc: "3 sections, one revision loop, ~3 min cap. For lookups and narrow factual questions where breadth is not the point." },
+  { name: "Standard", desc: "5 sections and up to 2 revision loops, ~6 min cap. Balanced breadth and verification for everyday research questions." },
+  { name: "Deep", desc: "8 sections with the same revision ceilings but a wider decomposition (~12 min cap), so more of the question gets its own investigation." },
 ];
 
 /* Guarantees — the non-negotiable behaviours the pipeline enforces. */
@@ -370,7 +372,7 @@ export default function Landing({ onStart, onDocs, onDemo }) {
             </h2>
             <p className="landing-section-desc">
               The same pipeline runs at three depths. Each sets its own research breadth,
-              evidence requirements and iteration budget.
+              evidence requirements and time budget.
             </p>
           </header>
           <div className="landing-modes">

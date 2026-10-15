@@ -107,7 +107,7 @@
         '<div class="hero-stat"><div class="v">1.00</div><div class="k">Verification F1 · 16 labeled cases</div></div>',
         '<div class="hero-stat"><div class="v">0%</div><div class="k">Hallucination leak · 6/6 rejected</div></div>',
         '<div class="hero-stat"><div class="v">1.00</div><div class="k">Contradiction detection F1</div></div>',
-        '<div class="hero-stat"><div class="v">577</div><div class="k">Offline tests passing</div></div>',
+        '<div class="hero-stat"><div class="v">602</div><div class="k">Offline tests passing</div></div>',
       "</div>",
     "</div>",
 
@@ -154,8 +154,8 @@
     '<h3 id="cap-confidence">Compute confidence from evidence</h3>',
     "<p>The confidence engine blends nine evidence signals and subtracts a pool-size-scaled contradiction penalty. It is not a model’s self-report.</p>",
 
-    '<h3 id="cap-cost">Account for every token</h3>',
-    "<p>A per-run ledger records tokens, USD, LLM calls, searches and cache hits. A budget governor refuses research passes that cannot be paid for, and the live meter streams to the UI.</p>",
+    '<h3 id="cap-cost">Account for every call</h3>',
+    "<p>A per-run ledger records LLM calls, search calls, tokens, cache hits and wall time. A budget governor enforces a per-mode ceiling on LLM calls and wall-clock time: once a ceiling is spent the run stops expanding, sheds optional work in a fixed order, and reports the reason. No price is attached to any count.</p>",
 
     '<div class="grid cols-3" style="margin-top:26px">',
       '<div class="metric-card"><div class="m-val acc">F1 1.00</div><div class="m-lab">Verification accuracy</div><div class="m-sub">16 labeled claim/source cases</div></div>',
@@ -200,7 +200,7 @@
 
     '<h3 id="qs-tests">4 · Tests &amp; benchmarks</h3>',
     shBlock([
-      g("pytest") + t(" tests/ -v                 ") + c("# 577 tests, fully offline"),
+      g("pytest") + t(" tests/ -v                 ") + c("# 602 tests, fully offline"),
       g("python") + t(" bench/run_offline.py      ") + c("# deterministic, no network, no keys"),
       g("python") + t(" bench/live_retrieval_check.py") + c("# live-provider retrieval probe"),
       g("ruff") + t(" check app tests bench scripts"),
@@ -220,14 +220,15 @@
     '<h2 id="modes">Research modes</h2>',
     "<p class=\"lede\">A mode is an explicit contract for how much research a run does: how many report sections the planner may propose, and how many times a review stage may send work back.</p>",
     '<div class="table-wrap"><table>',
-      "<thead><tr><th>Mode</th><th class=\"num\">Report sections</th><th class=\"num\">Plan revisions</th><th class=\"num\">Draft revisions</th><th class=\"num\">Fact-check revisions</th></tr></thead>",
+      "<thead><tr><th>Mode</th><th class=\"num\">Report sections</th><th class=\"num\">Plan revisions</th><th class=\"num\">Draft revisions</th><th class=\"num\">Fact-check revisions</th><th class=\"num\">Wall-clock cap</th></tr></thead>",
       "<tbody>",
-        '<tr><td><strong>quick</strong></td><td class="num">3</td><td class="num">1</td><td class="num">1</td><td class="num">1</td></tr>',
-        '<tr><td><strong>standard</strong> <span class="pill mint">default</span></td><td class="num">5</td><td class="num">2</td><td class="num">2</td><td class="num">1</td></tr>',
-        '<tr><td><strong>deep</strong></td><td class="num">8</td><td class="num">2</td><td class="num">2</td><td class="num">1</td></tr>',
+        '<tr><td><strong>quick</strong></td><td class="num">3</td><td class="num">1</td><td class="num">1</td><td class="num">1</td><td class="num">3 min</td></tr>',
+        '<tr><td><strong>standard</strong> <span class="pill mint">default</span></td><td class="num">5</td><td class="num">2</td><td class="num">2</td><td class="num">1</td><td class="num">6 min</td></tr>',
+        '<tr><td><strong>deep</strong></td><td class="num">8</td><td class="num">2</td><td class="num">2</td><td class="num">1</td><td class="num">12 min</td></tr>',
       "</tbody>",
     "</table></div>",
-    '<p class="small muted">The mode sets <em>how much research happens</em>, not what the report looks like — every mode produces the same report shape (introduction, sections, conclusion, references). The section outline itself is derived from the question by the planner, so a mode with more sections researches the same subject more widely rather than changing the format. An unrecognised mode is not rejected; it falls back to <code>standard</code>.</p>',
+    '<p class="small muted">The mode sets <em>how much research happens</em>, not what the report looks like — every mode produces the same report shape (introduction, sections, conclusion, references). The section outline itself is derived from the question by the planner, so a mode with more sections researches the same subject more widely rather than changing the format. The fact-check ceiling is the same in every mode. An unrecognised mode is not rejected; it falls back to <code>standard</code>.</p>',
+    '<p class="small muted">The wall-clock cap is enforced, not aspirational: a run that reaches it stops expanding and <a href="#budget">sheds optional work</a> rather than running on. The cap is clamped to the deployment\'s <code>RESEARCH_TIMEOUT_SEC</code>, so an operator can always lower it globally.</p>',
 
     '<h3 id="modes-waves">How sections are researched</h3>',
     "<p>Independent of the mode, sections are researched in bounded waves of <code>MAX_PARALLEL_AGENTS</code> (default 3), and each later wave is handed the written drafts of the sections already finished so it does not restate them. The mechanism and its tradeoff are covered on <a href=\"#orchestration\">Orchestration &amp; waves</a>.</p>"
@@ -599,7 +600,7 @@
     '<div class="callout info">',
       '<span class="c-ico">', I.info, "</span>",
       '<div class="c-body"><div class="c-title">Bounded work, not metered spend</div>',
-      "<p>There is no USD ceiling, no token ceiling, and no budget governor. If a run cannot finish inside <code>RESEARCH_TIMEOUT_SEC</code> it is reported as a timeout rather than left hanging, and the browser disconnects cleanly on Stop.</p></div>",
+      "<p>There is no USD ceiling and no token ceiling — counts are recorded, never priced. There IS a governor: each mode has a wall-clock and LLM-call ceiling, and a run that reaches one stops expanding, sheds optional work (the diagram first, then a second fact-check pass), and reports what it dropped. A run that cannot finish inside its cap is reported as a timeout rather than left hanging, and the browser disconnects cleanly on Stop.</p></div>",
     "</div>"
   ];
 

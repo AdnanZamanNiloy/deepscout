@@ -283,10 +283,18 @@ export function resolveChainMembers(providers, memberIds) {
   return { members, available };
 }
 
+/* Mode labels and the one-line summary shown in the picker.
+ *
+ * Every number here must exist in the backend. A mode changes exactly two
+ * things a reader can feel: how many report sections are planned
+ * (`_MODE_SECTIONS`) and how long the run may take before its enforced
+ * wall-clock cap (`MODE_HARD_CAP_SECONDS`). It does NOT change the agent
+ * count (MAX_PARALLEL_AGENTS is a fixed hardware cap for every mode), so the
+ * hints must not claim a per-mode agent count. */
 export const MODE_META = {
-  quick: { label: "Quick scan", hint: "2 agents · 1 pass · fastest" },
-  standard: { label: "Standard", hint: "3 agents · up to 3 passes" },
-  deep: { label: "Deep research", hint: "5 agents · up to 5 passes" },
+  quick: { label: "Quick scan", hint: "3 sections · fast, ~3 min cap" },
+  standard: { label: "Standard", hint: "5 sections · balanced, ~6 min cap" },
+  deep: { label: "Deep research", hint: "8 sections · most thorough, ~12 min cap" },
 };
 
 /* True when a stream error means "no usable model", not "the run broke".

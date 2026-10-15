@@ -123,7 +123,7 @@ export default function Composer({
             disabled={running}
             aria-expanded={open}
             aria-haspopup="menu"
-            title="Research mode — changes agent count and iteration budget"
+            title="Research mode — changes how many report sections are planned and the run's time budget"
           >
             {MODE_META[mode]?.label || mode}
             <IconChevronDown size={13} />
