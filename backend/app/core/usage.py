@@ -21,7 +21,8 @@ import time
 from contextvars import ContextVar
 from typing import Any, Dict, Optional
 
-from app.infra.budget import ResearchBudget
+from app.infra.budget import ResearchBudget, mode_timeout_seconds
+from app.infra.ladder import DegradationLadder, soft_limit_for
 from app.common.logging import get_logger
 
 logger = get_logger(__name__)
@@ -33,7 +34,7 @@ class RunUsage:
     __slots__ = (
         "request_id", "budget", "mode", "started_at",
         "cache_hits", "cache_misses", "search_calls",
-        "stage_hint",
+        "stage_hint", "ladder",
     )
 
     def __init__(self, request_id: str, budget: ResearchBudget, mode: str = "standard"):
@@ -45,6 +46,14 @@ class RunUsage:
         self.cache_misses = 0
         self.search_calls = 0
         self.stage_hint = ""
+        # The steering wheel in front of the budget brake: decides what
+        # OPTIONAL work to shed before the hard cap, in a fixed order. Shares
+        # the run's clock so its decisions and the budget's refusal agree.
+        self.ladder = DegradationLadder(
+            soft_limit_s=soft_limit_for(budget.max_seconds, mode),
+            hard_cap_s=budget.max_seconds,
+            mode=mode,
+        )
 
     # -- recording (called from llm.py / search.py) ------------------------
 
@@ -126,6 +135,16 @@ def start_run_usage(request_id: str, settings: Any, mode: str = "standard") -> R
 def get_run_usage() -> Optional[RunUsage]:
     """The current run's ledger, or None outside a research request."""
     return _RUN_USAGE.get()
+
+
+def get_run_ladder():
+    """The current run's degradation ladder, or None outside a run.
+
+    Agents call this at the point optional work would run; outside a run there
+    is nothing to shed and every optional capability proceeds.
+    """
+    usage = _RUN_USAGE.get()
+    return usage.ladder if usage is not None else None
 
 
 def clear_run_usage() -> None:

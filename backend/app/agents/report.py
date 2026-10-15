@@ -12,6 +12,9 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 from app.agents.routing import is_none_accept_response
+from app.core.usage import get_run_ladder
+from app.core.degradation import record_fallback
+from app.infra.ladder import STAGE_P90_SECONDS
 from app.common.logging import get_logger
 from app.common.streaming import stream_output
 
@@ -224,6 +227,29 @@ class EvidenceAuditor:
         review = await self.check_facts(research_state)
         if is_none_accept_response(review):
             review = None
+        # A SECOND audit pass (the auditor rejecting an already-checked draft and
+        # sending it back again) is optional refinement: the first pass still
+        # happened. When the ladder says there is no room left, accept the draft
+        # as it stands and let the deterministic audit report the rest — better
+        # than overrunning the mode's budget for a second look.
+        if review is not None and int(research_state.get("fact_check_revision_count", 0) or 0) >= 1:
+            ladder = get_run_ladder()
+            if ladder is not None and not ladder.evaluate(
+                ["narrative_writer", "evidence_auditor", "report_assembler"],
+                capability="second_audit_pass",
+                extra_s=STAGE_P90_SECONDS.get("narrative_writer", 20.0),
+            ):
+                record_fallback(
+                    "ladder:second_audit_pass",
+                    ladder.shed_reasons().get("second_audit_pass", ""),
+                )
+                if self.sink:
+                    await stream_output(
+                        "logs", "fact_checking",
+                        "Single fact-check pass used to stay within the time budget.",
+                        self.sink,
+                    )
+                review = None
         out: Dict[str, Any] = {"fact_check_notes": review}
         if review is not None:
             out["fact_check_revision_count"] = (
@@ -261,6 +287,20 @@ class DiagramDesigner:
         return await self.llm.create_chat_completion(messages=prompt)
 
     async def run(self, research_state: Dict[str, Any]) -> Dict[str, Any]:
+        # The diagram is presentation only — it adds no evidence. When the
+        # run's ladder says there is no room left before the time budget, skip
+        # it rather than spend a model call the report does not need.
+        ladder = get_run_ladder()
+        if ladder is not None and not ladder.evaluate(
+            ["diagram_designer", "report_assembler"], capability="diagram"
+        ):
+            record_fallback("ladder:diagram", ladder.shed_reasons().get("diagram", ""))
+            if self.sink:
+                await stream_output(
+                    "logs", "visualizing",
+                    "Skipping visuals to stay within the time budget.", self.sink,
+                )
+            return {"diagrams": []}
         if self.sink:
             await stream_output(
                 "logs", "visualizing", "Generating visualizations for the research report...", self.sink
