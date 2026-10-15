@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from app.core.llm import LLMClient
+from app.core.usage import checkpoint_run, load_resume_checkpoint
 from app.common.config import get_settings
 from app.common.logging import get_logger
 from app.agents.team import build_research_team
@@ -124,6 +125,10 @@ class ResearchRunner:
         self.captured_sources: List[Dict[str, Any]] = []
         self._seen_urls: set = set()
         self._state: Dict[str, Any] = {}
+        # Nodes already persisted in this run's checkpoint. On a resume these
+        # carry their saved output in `_state`, so the graph is told to skip
+        # re-running them (see build_research_team's `already_completed`).
+        self._completed_nodes: List[str] = []
 
     def _record_sources(self, results: List[Dict[str, Any]]) -> None:
         """Collect retrieved sources for the audit layer, deduped by URL."""
@@ -215,6 +220,22 @@ class ResearchRunner:
 
         task = self._build_task()
         output_dir = f"./outputs/run_{uuid.uuid4().hex[:12]}"
+
+        # Resume: if a checkpoint exists for this run, seed the graph with the
+        # state it captured and tell the team which nodes to skip. Without a
+        # checkpoint this is a normal fresh run — the loader returns None.
+        checkpoint = await load_resume_checkpoint()
+        if checkpoint:
+            saved_state = checkpoint.get("state") or {}
+            self._completed_nodes = [
+                n for n in (checkpoint.get("completed_nodes") or [])
+                if isinstance(n, str)
+            ]
+            logger.info(
+                "[Runner] resuming run %s from checkpoint: %d node(s) already done",
+                self.run_id, len(self._completed_nodes),
+            )
+
         chief = build_research_team(
             task=task,
             llm=LLMFunnel(self.llm),
@@ -222,17 +243,25 @@ class ResearchRunner:
             researcher_factory=self._researcher_factory(cfg, retrievers, self.sink),
             output_dir=output_dir,
             sink=self.sink,
+            already_completed=set(self._completed_nodes),
         )
         chain = chief.build_graph().compile()
 
-        self._state = {"task": task}
+        # The task is always rebuilt (it carries live settings like the review
+        # timeout), but a checkpoint's saved outputs win over it, so the resumed
+        # run keeps the outline, drafts and sources it already produced.
+        if checkpoint:
+            self._state = {"task": task, **(checkpoint.get("state") or {})}
+            self._state["task"] = task
+        else:
+            self._state = {"task": task}
         # Run the graph in a background task that pushes BOTH node completions
         # and the agents' own stream_output activity onto one queue, in true
         # order, then drain that queue here. Draining (rather than awaiting the
         # graph iterator with a timeout) is deliberate: cancelling an async
         # generator's __anext__ closes it, which previously ended the stream
         # with zero events on the first slow node.
-        consumer = asyncio.create_task(self._consume_graph(chain, task))
+        consumer = asyncio.create_task(self._consume_graph(chain, dict(self._state)))
         try:
             while True:
                 item = await self._queue.get()
@@ -245,6 +274,15 @@ class ResearchRunner:
                     node, output = payload
                     if isinstance(output, dict):
                         self._state.update(output)
+                    # Durable checkpoint after each node, so a crash or timeout
+                    # can resume from here instead of re-paying for the work
+                    # already done. Fire-and-forget; never blocks the stream.
+                    # De-duplicated: a revision loop revisits nodes (the writer
+                    # and auditor run twice), and appending each time would grow
+                    # the list without bound and re-list nodes already restored.
+                    if node not in self._completed_nodes:
+                        self._completed_nodes.append(node)
+                    checkpoint_run(self._state, self._completed_nodes)
                     yield self._node_event(node, output)
         finally:
             if not consumer.done():
@@ -259,8 +297,12 @@ class ResearchRunner:
             rescue_sink()
             await asyncio.sleep(0)
 
-    async def _consume_graph(self, chain, task: Dict[str, Any]) -> None:
+    async def _consume_graph(self, chain, initial_state: Dict[str, Any]) -> None:
         """Drive the graph, queueing activity and node events in true order.
+
+        ``initial_state`` is the graph's input: ``{"task": ...}`` on a fresh
+        run, or the checkpoint's saved state plus the rebuilt task on a resume
+        (so skipped nodes find their output already present).
 
         The agents' stream_output calls already land on the queue (via
         :class:`_QueueSink`); this task adds one ``("node", (node, output))``
@@ -269,7 +311,7 @@ class ResearchRunner:
         """
         try:
             async for chunk in chain.astream(
-                {"task": task},
+                initial_state,
                 stream_mode="updates",
                 config={"recursion_limit": 60},
             ):

@@ -48,6 +48,7 @@ class ResearchTeam:
         output_dir: str = "./outputs",
         sink=None,
         tone=None,
+        already_completed: Optional[set] = None,
     ):
         self.task = task
         self.llm = llm
@@ -56,6 +57,11 @@ class ResearchTeam:
         self.output_dir = output_dir
         self.sink = sink
         self.tone = tone
+        # Nodes already folded into a resumed run's state. `_staged` short-
+        # circuits them: their output is supplied by the checkpoint, so
+        # re-running them would re-pay for work already done. Empty on a fresh
+        # run, which makes the wrapper a plain pass-through.
+        self.already_completed = set(already_completed or set())
 
     def _initialize_agents(self) -> Dict[str, Any]:
         return {
@@ -85,6 +91,14 @@ class ResearchTeam:
         leave the rail spinning on a stage that will never finish.
         """
         async def staged_node(state: ResearchState) -> Dict[str, Any]:
+            # Resumed run: this node's output is already in the seeded state, so
+            # re-running it would re-pay for work already done. Report the stage
+            # as complete (the rail must still settle) and return nothing new.
+            if node in self.already_completed:
+                await self._announce_stage(node, "start")
+                await self._announce_stage(node, "end")
+                logger.info("[team] %s skipped: restored from checkpoint", node)
+                return {}
             await self._announce_stage(node, "start")
             try:
                 result = await fn(state)
@@ -191,6 +205,7 @@ def build_research_team(
     output_dir: str = "./outputs",
     sink=None,
     tone=None,
+    already_completed: Optional[set] = None,
 ) -> ResearchTeam:
     """Convenience constructor."""
     return ResearchTeam(
@@ -201,4 +216,5 @@ def build_research_team(
         output_dir=output_dir,
         sink=sink,
         tone=tone,
+        already_completed=already_completed,
     )

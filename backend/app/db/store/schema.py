@@ -190,6 +190,20 @@ CREATE TABLE IF NOT EXISTS provider_chain_members (
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
+
+-- Node-level checkpoint of a research run, one row per run (upserted after each
+-- completed graph node). This is what lets a failed or timed-out run resume
+-- from where it stopped instead of restarting from scratch: `state_json` is the
+-- runner's accumulated pipeline state and `completed_nodes` is the ordered list
+-- of nodes whose output is already IN that state, so resume can skip them.
+-- Additive and idempotent like every other table here; nothing reads it unless
+-- a resume is requested.
+CREATE TABLE IF NOT EXISTS run_checkpoints (
+    run_id TEXT PRIMARY KEY REFERENCES research_runs(id),
+    state_json TEXT NOT NULL,
+    completed_nodes TEXT NOT NULL DEFAULT '[]',
+    updated_at TEXT NOT NULL
+);
 """
 
 

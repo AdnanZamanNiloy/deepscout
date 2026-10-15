@@ -17,6 +17,7 @@ research runs never see each other's ledgers.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from contextvars import ContextVar
 from typing import Any, Dict, Optional
@@ -34,13 +35,23 @@ class RunUsage:
     __slots__ = (
         "request_id", "budget", "mode", "started_at",
         "cache_hits", "cache_misses", "search_calls",
-        "stage_hint", "ladder",
+        "stage_hint", "ladder", "database_url",
     )
 
-    def __init__(self, request_id: str, budget: ResearchBudget, mode: str = "standard"):
+    def __init__(
+        self,
+        request_id: str,
+        budget: ResearchBudget,
+        mode: str = "standard",
+        database_url: str = "",
+    ):
         self.request_id = request_id
         self.budget = budget
         self.mode = mode
+        # Where this run's checkpoint is written, if any. Empty means "no
+        # durable checkpoint" (tests, bench, a bare run) and checkpointing is
+        # simply skipped rather than failing.
+        self.database_url = str(database_url or "")
         self.started_at = time.time()
         self.cache_hits = 0
         self.cache_misses = 0
@@ -127,7 +138,12 @@ _RUN_USAGE: ContextVar[Optional[RunUsage]] = ContextVar("deepscout_run_usage", d
 def start_run_usage(request_id: str, settings: Any, mode: str = "standard") -> RunUsage:
     """Install a fresh ledger for this run (call at request start)."""
     budget = ResearchBudget.from_settings(settings, mode=mode)
-    usage = RunUsage(request_id=request_id, budget=budget, mode=mode)
+    usage = RunUsage(
+        request_id=request_id,
+        budget=budget,
+        mode=mode,
+        database_url=str(getattr(settings, "database_url", "") or ""),
+    )
     _RUN_USAGE.set(usage)
     return usage
 
@@ -145,6 +161,47 @@ def get_run_ladder():
     """
     usage = _RUN_USAGE.get()
     return usage.ladder if usage is not None else None
+
+
+def checkpoint_run(state: dict, completed_nodes: list) -> None:
+    """Best-effort durable checkpoint of the current run, if one is active.
+
+    Called by the runner after each completed node. Reads the run's ledger to
+    find the database; outside a run (or with no database configured) it is a
+    no-op, so the runner needs no new constructor argument. Fire-and-forget:
+    the caller must not await this, and a failure must never affect the run.
+    """
+    usage = _RUN_USAGE.get()
+    if usage is None or not usage.database_url:
+        return
+    try:
+        from app.db.store.checkpoints import save_checkpoint
+
+        asyncio.create_task(
+            save_checkpoint(usage.database_url, usage.request_id, state, completed_nodes)
+        )
+    except Exception as exc:  # never let persistence touch the run
+        logger.warning("[checkpoint] schedule failed: %s", exc)
+
+
+async def load_resume_checkpoint() -> Optional[Dict[str, Any]]:
+    """The active run's saved checkpoint, or None.
+
+    Called by the runner at start: when a checkpoint exists the run resumes
+    from it (skipping nodes already in the state) instead of starting over.
+    Returns None outside a run, when no database is configured, or when the
+    checkpoint is absent/corrupt — every failure degrades to a fresh run.
+    """
+    usage = _RUN_USAGE.get()
+    if usage is None or not usage.database_url:
+        return None
+    try:
+        from app.db.store.checkpoints import load_checkpoint
+
+        return await load_checkpoint(usage.database_url, usage.request_id)
+    except Exception as exc:
+        logger.warning("[checkpoint] load failed: %s", exc)
+        return None
 
 
 def clear_run_usage() -> None:

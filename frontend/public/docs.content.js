@@ -680,7 +680,7 @@
     "<p>Schema changes are additive and idempotent — <code>CREATE TABLE IF NOT EXISTS</code> and <code>ALTER TABLE ... ADD COLUMN</code> guarded by <code>PRAGMA table_info</code>. The WAL journal allows concurrent readers alongside the writer, and a busy timeout prevents lock errors.</p>",
 
     '<h3 id="persist-replay">Research replay</h3>',
-    "<p><code>GET /api/research/{run_id}/trace</code> reconstructs the full ordered timeline — plan, sources, claims, verification, contradictions, citations, every critic review and decisions. The UI renders a read-only research card from the trace alone, with no re-fetching. A failed or timed-out run can be resumed at the critic node from its persisted evidence rather than re-running the whole pipeline.</p>",
+    "<p><code>GET /api/research/{run_id}/trace</code> reconstructs the full ordered timeline — plan, sources, claims, verification, contradictions, citations, every critic review and decisions. The UI renders a read-only research card from the trace alone, with no re-fetching. A failed or timed-out run resumes from its last completed node: the pipeline state is checkpointed after each node, so a resume restores that state and skips the nodes already done instead of re-running the whole pipeline.</p>",
 
     '<h3 id="persist-security">Security posture</h3>',
     "<ul>",

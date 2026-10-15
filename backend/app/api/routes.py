@@ -41,6 +41,7 @@ from app.db.sqlite import (
     start_research_run,
     touch_session,
 )
+from app.db.store.checkpoints import clear_checkpoint
 from app.common.logging import bind_request_context, get_logger, unbind_request_context
 
 
@@ -277,6 +278,12 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                     settings.database_url, request_id, status, confidence=confidence,
                 ))
                 await _persist(touch_session(settings.database_url, session_id))
+                # The run is terminal: its checkpoint has served its purpose and
+                # is dropped, so a later resume of this id finds nothing to
+                # rebuild from (a completed run is not resumable anyway, but the
+                # row should not linger and be mistaken for one).
+                if status in ("completed", "failed", "cancelled", "timeout"):
+                    await _persist(clear_checkpoint(settings.database_url, request_id))
 
             await _persist(ensure_session(settings.database_url, session_id, title=payload.query))
             await _persist(start_research_run(
@@ -561,6 +568,11 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
     async def resume_stream() -> AsyncGenerator[str, None]:
         bind_request_context(request_id=request_id, resumed=True)
         reset_fallbacks()
+        # Install the run's ledger under the SAME id the run had, so the runner
+        # finds this run's checkpoint (keyed by run id) and the budget is
+        # re-armed for the resumed attempt. Without this the checkpoint could
+        # not be located and a resume would silently start from scratch.
+        start_run_usage(request_id, settings, mode=resume_mode)
 
         async def _persist(coro):
             try:
