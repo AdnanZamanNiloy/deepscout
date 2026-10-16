@@ -141,55 +141,209 @@ def build_source_index(
     return out
 
 
+_HEADING_LINE_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$")
+_LEGEND_LINE_RE = re.compile(r"^\s*\[?\d+\]?[.)]?\s+\S.*—\s*\S+\s*$")
+
+
+def _match_section(heading: str, section_titles: Sequence[str]) -> str:
+    """Map a report heading to the plan section title it stands for.
+
+    Case/whitespace-insensitive exact match only — a fuzzy match could attach a
+    claim to the wrong research angle, which is worse than no attribution. The
+    raw heading is returned when nothing matches, so cross-source grouping still
+    distinguishes the claims by section.
+    """
+    norm = lambda s: " ".join(str(s or "").lower().split())  # noqa: E731
+    target = norm(heading)
+    for title in section_titles or []:
+        if norm(title) == target:
+            return str(title).strip()
+    return str(heading or "").strip()
+
+
 def _sentence_source_map(
     text: str,
     known_urls: Sequence[str],
-) -> List[Tuple[str, str]]:
-    """Pair each claim-bearing sentence with the nearest cited URL.
+    section_titles: Sequence[str] | None = None,
+) -> List[Tuple[str, List[str], str]]:
+    """Pair each claim-bearing sentence with its cited URL(s) and section.
 
     The pipeline writes prose with inline markdown links. A sentence that carries
     a link is attributed to that link; a sentence with no link inherits the most
     recently seen link (the writer tends to link once and keep discussing the
-    source). Returns ``(claim, url)`` pairs, claim already cleaned.
+    source). Returns ``(claim, urls, section)`` triples, claim already cleaned —
+    ``urls`` lists every known link of the sentence in order, so the verifier
+    can judge a multi-citation sentence against the union of its sources
+    (attributing it to only the first citation marked cross-source synthesis
+    unsupported by construction).
+
+    Section attribution: an H2/H3 heading matching a plan section title (or an
+    unmatched H2) starts a new section context; deeper unmatched headings keep
+    the current one (a subsection belongs to its parent section). This is what
+    lets the confidence engine group corroboration and coverage at the angle
+    level instead of per claim.
     """
     from app.evidence import clean_snippet_text, split_into_sentences
 
-    # Strip the report's own structure (headings, list bullets, legend lines)
-    # before sentence splitting: a heading glued to the following sentence
-    # ("RAG Summary Retrieval augmented generation...") is not a claim. Keeps
-    # inline links intact so attribution still works.
-    prose_lines: List[str] = []
-    for line in (text or "").splitlines():
-        if re.match(r"^\s{0,3}#{1,6}\s+", line):
-            continue
-        if re.match(r"^\s*\[?\d+\]?[.)]?\s+\S.*—\s*\S+\s*$", line):
-            continue
-        prose_lines.append(line)
-    prose = "\n".join(prose_lines)
+    # Headings and legend lines are structure, not claims ("RAG Summary
+    # Retrieval augmented generation..." must never become one claim), but the
+    # headings themselves are TRACKED: each prose block is attributed to the
+    # section heading above it.
+    groups: List[Tuple[str, List[str]]] = []
+    current_section = ""
+    block: List[str] = []
 
-    sentences = split_into_sentences(prose, max_sentences=400)
+    def _flush() -> None:
+        if block:
+            groups.append((current_section, list(block)))
+            block.clear()
+
+    for line in (text or "").splitlines():
+        heading = _HEADING_LINE_RE.match(line)
+        if heading:
+            _flush()
+            level, title = len(heading.group(1)), heading.group(2).strip()
+            if level == 1:
+                current_section = ""  # report title is not a research angle
+                continue
+            matched = _match_section(title, section_titles or [])
+            if matched != title:
+                current_section = matched  # a plan section title (any level)
+            elif level == 2:
+                current_section = title  # an unmatched H2 is its own angle
+            # An unmatched H3+ is a subsection: it keeps its parent's context.
+            continue
+        if _LEGEND_LINE_RE.match(line):
+            continue
+        block.append(line)
+    _flush()
+
     known = set(known_urls or [])
-    pairs: List[Tuple[str, str]] = []
+    pairs: List[Tuple[str, List[str], str]] = []
     last_url = ""
-    for sentence in sentences:
-        links = _extract_urls(sentence)
-        url = ""
-        for candidate in links:
-            if candidate in known:
-                url = candidate
-                break
-        if not url and links:
-            url = links[-1]
-        if url:
-            last_url = url
-        claim = clean_snippet_text(_MD_LINK_RE.sub(r"\1", sentence))
-        if not claim or len(claim) < 30:
-            continue
-        attributed = url or last_url
-        if not attributed:
-            continue
-        pairs.append((claim, attributed))
+    for section, lines in groups:
+        for sentence in split_into_sentences("\n".join(lines), max_sentences=400):
+            links = _extract_urls(sentence)
+            cited: List[str] = []
+            for candidate in links:
+                if candidate in known and candidate not in cited:
+                    cited.append(candidate)
+            if not cited and links:
+                cited = [links[-1]]
+            if cited:
+                last_url = cited[0]
+            claim = clean_snippet_text(_MD_LINK_RE.sub(r"\1", sentence))
+            if not claim or len(claim) < 30:
+                continue
+            if not cited and last_url:
+                cited = [last_url]
+            if not cited:
+                continue
+            pairs.append((claim, cited, section))
     return pairs
+
+
+def _attach_corroboration(facts: List[Dict[str, Any]]) -> None:
+    """Attach cross-publisher corroborators for claims restated elsewhere.
+
+    The confidence engine's cross-source agreement has a MEASURED path
+    (``corroboration_count`` per fact) and a weak pairwise fallback for pools
+    that lack the field. The arch-upgrade deleted the pass that wrote it, so
+    live runs fell into the fallback and read ~0.07. This restores the input:
+    for every un-corroborated fact, find a similar claim (the engine's own
+    ``claim_similarity`` at its own corroboration band — one band, one metric)
+    from a different registrable-domain publisher and attach it through
+    ``apply_corroboration`` — the sanctioned write path that rejects
+    same-publisher URLs.
+
+    Deterministic, LLM-free, total: any failure leaves the pool untouched.
+    """
+    items = [
+        f for f in facts or []
+        if isinstance(f, dict)
+        and str(f.get("claim", "")).strip()
+        and str(f.get("source", "")).strip()
+    ]
+    if len(items) < 2:
+        return
+    try:
+        from app.core.confidence import CORROBORATION_SIMILARITY, claim_similarity
+        from app.core.evidence_grade import apply_corroboration, registrable_domain
+    except Exception as exc:  # corroboration must never break the audit
+        logger.warning("[AuditBridge] corroboration imports failed: %s", exc, exc_info=exc)
+        return
+
+    claims = [str(f.get("claim", "")) for f in items]
+    domains = [
+        registrable_domain(str(f.get("source", ""))) or ""
+        for f in items
+    ]
+    attached = 0
+    for i, fact in enumerate(items):
+        try:
+            if int(fact.get("corroboration_count", 1) or 1) >= 2:
+                continue
+        except (TypeError, ValueError):
+            pass
+        for j, other in enumerate(items):
+            if i == j or domains[i] == domains[j] or not domains[j]:
+                continue
+            try:
+                similar = claim_similarity(claims[i], claims[j]) >= CORROBORATION_SIMILARITY
+            except Exception:
+                continue
+            if similar and apply_corroboration(fact, str(other.get("source", ""))):
+                attached += 1
+                break  # one independent corroborator is enough to score the angle
+    if attached:
+        logger.info("[AuditBridge] corroboration attached to %d claim(s)", attached)
+
+
+def _classify_verify_reason(reason: str) -> str:
+    """Primary failure category of one fact's verification reason.
+
+    A failed verdict lists every failure it hit ("weighted overlap 0.12 <
+    0.35; a figure in the claim does not appear in the source"); the FIRST
+    category in this precedence is what most fundamentally blocks the claim,
+    so the census counts each failing fact exactly once instead of
+    double-counting multi-failure claims.
+    """
+    lowered = (reason or "").lower()
+    if "content unavailable" in lowered:
+        return "no_text"
+    if "figure" in lowered:
+        return "numeric"
+    if "direction contradicts" in lowered:
+        return "polarity"
+    if "overlap" in lowered:
+        return "overlap"
+    return "other"
+
+
+def _log_verification_mix(facts: Sequence[Dict[str, Any]]) -> None:
+    """One-line census of why claims verified or failed.
+
+    The confidence score's dominant drags are the citation-coverage and
+    verification signals; without this line the mix of causes (missing source
+    text vs lexical overlap vs numeric grounding) is invisible in production
+    logs, and a change to the verifier or the source capture cannot be
+    evaluated against the next run's realities.
+    """
+    if not facts:
+        return
+    counts = {"overlap": 0, "numeric": 0, "no_text": 0, "polarity": 0, "other": 0}
+    verified = 0
+    for fact in facts:
+        if fact.get("verified"):
+            verified += 1
+        else:
+            counts[_classify_verify_reason(str(fact.get("verification_reason", "")))] += 1
+    logger.info(
+        "[AuditBridge] verification: %d/%d verified; failures: "
+        "overlap=%d, numeric=%d, no_text=%d, polarity=%d, other=%d",
+        verified, len(facts), counts["overlap"], counts["numeric"],
+        counts["no_text"], counts["polarity"], counts["other"],
+    )
 
 
 def build_facts(
@@ -197,6 +351,7 @@ def build_facts(
     source_index: Sequence[Dict[str, Any]],
     query: str,
     *,
+    sections: Sequence[str] | None = None,
     max_facts: int = 120,
 ) -> List[Dict[str, Any]]:
     """Reconstruct a backend-shaped fact pool from the run's report.
@@ -205,11 +360,16 @@ def build_facts(
     ``confidence``, ``published_at``, ``search_type``, ``is_primary``,
     ``source_tier``, ``direct_quote``) so every retained-core consumer —
     confidence, evidence grading, contradictions, citation support — reads it
-    unchanged. Fails safe to ``[]``.
+    unchanged. Verification (``verified`` / ``verification_score`` /
+    ``verification_reason``) is MEASURED per claim against the captured source
+    text (app.evidence.verify) instead of stamped true — a claim whose source
+    text is unavailable is explicitly unverified, not assumed good. Fails safe
+    to ``[]``.
     """
     try:
         from app.evidence import claim_query_overlap
         from app.evidence.sources import classify_source
+        from app.evidence.verify import source_text_map, verify_claim
 
         url_meta: Dict[str, Dict[str, Any]] = {
             str(s.get("url")): s for s in source_index or [] if s.get("url")
@@ -218,14 +378,16 @@ def build_facts(
         if not report or not known_urls:
             return []
 
-        pairs = _sentence_source_map(report, known_urls)
+        text_map = source_text_map(source_index or [])
+        pairs = _sentence_source_map(report, known_urls, sections or [])
         facts: List[Dict[str, Any]] = []
         seen_claims: set = set()
-        for claim, url in pairs:
+        for claim, urls, section in pairs:
             key = claim.lower()[:120]
             if key in seen_claims:
                 continue
             seen_claims.add(key)
+            url = urls[0]
             meta = url_meta.get(url, {})
             profile = classify_source(url)
             relevance = claim_query_overlap(query, claim)
@@ -233,28 +395,35 @@ def build_facts(
             # with the source's authority, exactly like the extractive fallback
             # in the summarizer (so the same numerical scale is preserved).
             confidence = round(min(1.0, (0.30 * max(0.4, relevance)) + (0.70 * profile.authority)), 3)
-            facts.append({
+            verdict = verify_claim(claim, urls, text_map)
+            fact = {
                 "claim": claim,
                 "source": url,
                 "confidence": confidence,
                 "agent": "pipeline",
-                "sub_question": "",
+                "sub_question": section,
                 "sense": "",
                 "direct_quote": claim[:240],
-                "quote_verified": True,
-                # A cited sentence from a page the run actually retrieved is
-                # treated as verified evidence — the pipeline's fact checker ran on
-                # the same sources. This is the honest default for a completed
-                # report; it is not an LLM opinion.
-                "verified": True,
+                "verified": bool(verdict.get("verified")),
+                "verification_score": float(verdict.get("verification_score", 0.0) or 0.0),
+                "verification_reason": str(verdict.get("verification_reason", "") or ""),
+                "verification_checks": verdict.get("verification_checks") or {},
                 "published_at": str(meta.get("published_at", "") or ""),
                 "search_type": str(meta.get("search_type", "") or "general"),
                 "is_primary": bool(meta.get("is_primary") or profile.is_primary),
                 "source_tier": profile.tier,
                 "extraction": "pipeline",
-            })
+            }
+            if len(urls) > 1:
+                # Kept additively: `source` remains the primary (first) citation
+                # for every existing consumer (grading, diversity, freshness);
+                # `sources` records the full citation set verification used.
+                fact["sources"] = list(urls)
+            facts.append(fact)
             if len(facts) >= max_facts:
                 break
+        _log_verification_mix(facts)
+        _attach_corroboration(facts)
         return facts
     except Exception as exc:  # audit must never break a completed run
         logger.warning("[AuditBridge] fact reconstruction failed: %s", exc, exc_info=exc)
@@ -268,12 +437,20 @@ def compute_audit(
     sources: Sequence[Dict[str, Any]],
     facts: List[Dict[str, Any]],
     answer_support: Optional[Dict[str, Any]] = None,
+    critique: Optional[Dict[str, Any]] = None,
+    sub_questions: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Run the retained audit core over the reconstructed fact pool.
 
     Returns a dict of audit fields ready to drop into ``final_state`` and the
     ``final_report`` wire frame. Every component is independently guarded, so
     the worst case is a subset of fields, never an exception.
+
+    ``critique`` and ``sub_questions`` are the run's real fact-check verdict
+    and the plan's research angles. Passing them is what keeps
+    ``critic_survival`` and ``axis_coverage`` from being constants: an empty
+    critique reads as a hedge (0.6) on every run, and without the plan the
+    engine can never tell a covered angle from an unplanned one.
     """
     from app.core.confidence import compute_confidence
     from app.core.contradictions import find_contradictions
@@ -302,11 +479,12 @@ def compute_audit(
     try:
         confidence = compute_confidence(
             facts,
-            critique={},
+            critique=critique or {},
             iteration=1,
             max_iterations=1,
             contradictions=contradictions,
             answer_support=support,
+            sub_questions=sub_questions,
         )
     except Exception as exc:
         logger.warning("[AuditBridge] confidence failed: %s", exc, exc_info=exc)

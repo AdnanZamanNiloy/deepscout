@@ -36,7 +36,7 @@ logger = get_logger(__name__)
 # by an older engine: replay must never present a stale signal as live (a
 # pre-versioned row could show critic_survival=0% forever). BUMP whenever a
 # signal's meaning or formula changes.
-ENGINE_VERSION = "confidence-v2"
+ENGINE_VERSION = "confidence-v3"
 
 # Corroboration band: similar enough to be about the same thing, below the
 # dedupe merge threshold (0.86) so identical claims were already collapsed.
@@ -131,7 +131,14 @@ def _safe_int(value: Any, default: int = 1) -> int:
         return default
 
 
-def _similarity(a: str, b: str) -> float:
+def claim_similarity(a: str, b: str) -> float:
+    """The corroboration-band metric: how alike two claims read.
+
+    Public because it defines ``CORROBORATION_SIMILARITY``: the audit's
+    corroboration attach must judge pairs by the SAME metric the engine's
+    pairwise fallback uses, or the measured input and the fallback would
+    disagree about what "same finding" means.
+    """
     a_norm = " ".join(sorted(a.lower().split()))
     b_norm = " ".join(sorted(b.lower().split()))
     if not a_norm or not b_norm:
@@ -195,11 +202,18 @@ def _citation_coverage(facts: List[Dict[str, Any]]) -> float:
     return verified / len(facts)
 
 
-def _claim_verification_strength(facts: List[Dict[str, Any]]) -> float:
-    """Mean lexical-overlap score among facts that were checked (Phase 2.3)."""
+def _claim_verification_strength(facts: List[Dict[str, Any]]) -> float | None:
+    """Mean lexical-overlap score among facts that were checked (Phase 2.3).
+
+    Returns None when NO fact carries a measured score: verification that never
+    ran is unmeasured, not a measured zero. Counting it as 0.0 capped every
+    audit-reconstructed pool 0.15 below its true weight (the audit bridge
+    stamped `verified` but no score) — a fake penalty as damaging as a fake
+    credit, just in the other direction.
+    """
     checked = [f for f in facts if isinstance(f.get("verification_score"), (int, float))]
     if not checked:
-        return 0.0
+        return None
     return sum(_safe_conf(f.get("verification_score", 0.0)) for f in checked) / len(checked)
 
 
@@ -282,7 +296,7 @@ def _cross_source_agreement(facts: List[Dict[str, Any]]) -> float:
         for j, other in enumerate(claims):
             if i == j or domains[i] == domains[j]:
                 continue
-            if _similarity(claim, other) >= CORROBORATION_SIMILARITY:
+            if claim_similarity(claim, other) >= CORROBORATION_SIMILARITY:
                 corroborated += 1
                 break
     return corroborated / len(claims)
@@ -544,10 +558,15 @@ def compute_confidence(
         "source_quality": round(_source_quality(facts), 3),
         "source_diversity": round(_source_diversity(facts), 3),
         "citation_coverage": round(_citation_coverage(facts), 3),
-        "claim_verification_strength": round(_claim_verification_strength(facts), 3),
         "cross_source_agreement": round(_cross_source_agreement(facts), 3),
         "freshness": freshness_value,
     }
+    # Verification strength joins only when it was measured (see the helper):
+    # an unmeasured signal is omitted and its weight redistributed, never
+    # counted as a measured zero.
+    verification_strength = _claim_verification_strength(facts)
+    if verification_strength is not None:
+        signals["claim_verification_strength"] = round(verification_strength, 3)
     # Critic survival reads the measured dimensions above, so it is computed
     # after they exist (it was a 3-valued constant when computed inline).
     signals["critic_survival"] = round(
@@ -575,12 +594,21 @@ def compute_confidence(
         weights["claim_evidence_quality"] = 0.05
         signals["claim_evidence_quality"] = round(grade_records, 3)
 
+    # Normalize over the signals actually present: when a signal is absent its
+    # weight must not silently deflate the score. With every signal present the
+    # denominator is 1.0 and the historical arithmetic is unchanged.
+    total_weight = sum(weights.get(name, 0.0) for name in signals)
     overall = sum(weights.get(name, 0.0) * value for name, value in signals.items())
-    overall = round(max(0.0, min(1.0, overall)), 3)
+    overall = round(max(0.0, min(1.0, overall / total_weight if total_weight else 0.0)), 3)
 
     notes = []
     if not measured:
         notes.append("freshness not yet measured (no publish dates captured) — weighted 0")
+    if verification_strength is None:
+        notes.append(
+            "claim verification not measured on this pool — signal omitted, "
+            "remaining weights normalized"
+        )
 
     # Contradiction penalty: the raw count of unresolved, cross-source
     # conflicts reduces confidence. There is no separate adjudication layer, so

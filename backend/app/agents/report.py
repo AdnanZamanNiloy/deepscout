@@ -188,6 +188,26 @@ class NarrativeWriter:
         )
 
 
+FACT_CHECK_SYSTEM_PROMPT = (
+    "You are a diligent Fact Checker Agent. Review a research report draft for "
+    "factual inaccuracies, hallucinations, or inconsistencies against the "
+    "provided research context. List concrete, actionable errors only — no "
+    "commentary, no praise, no description of your process."
+)
+
+# The schema demand lives in the USER message on purpose: chatty free-tier
+# models treat user instructions as the task and system instructions as
+# context, and wrote multi-paragraph review prose (no JSON at all) when the
+# shape was asked for only in the system prompt — every check then read as
+# "no verdict". With the demand here the same provider returns {"issues": []}.
+FACT_CHECK_USER_TEMPLATE = (
+    "Respond with ONE JSON object and nothing else. Shape: "
+    '{"issues": ["<specific problem>", ...]}. Use {"issues": []} if the draft '
+    "is factually sound. No prose, no markdown fences, no explanations.\n\n"
+    "Draft:\n{draft}"
+)
+
+
 class EvidenceAuditor:
     """Review the assembled draft for factual issues; can request one revision."""
 
@@ -197,27 +217,50 @@ class EvidenceAuditor:
         self.sink = sink
 
     async def check_facts(self, research_state: Dict[str, Any]) -> Any:
+        """The fact-check verdict: ``None`` (clean), issues text, or ``""``.
+
+        Structured output instead of a free-text sentinel: free-tier models
+        answered the old "return exactly 'None'" prompt with a description of
+        their review process, which every consumer read as a REJECTION —
+        forcing a writer revision and a second audit pass on drafts with
+        nothing wrong, and (once confidence measured the verdict honestly)
+        pinning ``critic_survival`` to a standing objection on every run.
+
+        The prompt declares ``{"issues": [...]}`` and the parser reads exactly
+        that key (AGENTS.md 4.2). Deterministic fallback (4.7): any LLM failure
+        or schema mismatch is ``""`` — *no verdict*; routing accepts it (an
+        unavailable check must not buy a blind, feedback-less revision) while
+        the confidence engine records it as unmeasured rather than as a pass.
+        """
         intro = research_state.get("introduction", "")
         conclusion = research_state.get("conclusion", "")
         data = research_state.get("research_data", [])
         draft = f"Introduction:\n{intro}\n\nSections Data:\n{data}\n\nConclusion:\n{conclusion}"
-        prompt = [
+        messages = [
+            {"role": "system", "content": FACT_CHECK_SYSTEM_PROMPT},
             {
-                "role": "system",
-                "content": "You are a diligent Fact Checker Agent. Your goal is to review a research "
-                "report draft, identify potential factual inaccuracies, hallucinations, or "
-                "inconsistencies based on the provided research context, and decide if it needs "
-                "to be sent back to the writer for revision.",
-            },
-            {
+                # .replace, not .format: the template carries literal JSON
+                # braces that str.format would treat as fields.
                 "role": "user",
-                "content": f"Review the following draft for factual accuracy:\n\n{draft}\n\n"
-                "If you find critical errors, provide a list of them so the writer can revise the draft. "
-                "If the draft is factually sound, return exactly the string 'None'. Do not return any "
-                "other text if it is accepted.",
+                "content": FACT_CHECK_USER_TEMPLATE.replace("{draft}", draft),
             },
         ]
-        return await self.llm.create_chat_completion(messages=prompt)
+        try:
+            payload = await self.llm.call_model_json(messages=messages)
+        except Exception as exc:  # a failed check must never crash the run
+            logger.warning("[EvidenceAuditor] fact-check call failed", exc_info=exc)
+            return ""
+        issues = payload.get("issues") if isinstance(payload, dict) else None
+        if issues is None:
+            return ""  # schema mismatch: no verdict, never guess "clean"
+        if isinstance(issues, str):
+            issues = [issues]
+        if not isinstance(issues, (list, tuple)):
+            return ""
+        named = [str(issue).strip() for issue in issues if str(issue).strip()]
+        if not named:
+            return None  # explicitly clean
+        return "\n".join(f"- {issue}" for issue in named)
 
     async def run(self, research_state: Dict[str, Any]) -> Dict[str, Any]:
         if self.sink:
@@ -225,14 +268,16 @@ class EvidenceAuditor:
                 "logs", "fact_checking", "Checking facts in the assembled draft...", self.sink
             )
         review = await self.check_facts(research_state)
-        if is_none_accept_response(review):
-            review = None
-        # A SECOND audit pass (the auditor rejecting an already-checked draft and
-        # sending it back again) is optional refinement: the first pass still
-        # happened. When the ladder says there is no room left, accept the draft
-        # as it stands and let the deterministic audit report the rest — better
-        # than overrunning the mode's budget for a second look.
-        if review is not None and int(research_state.get("fact_check_revision_count", 0) or 0) >= 1:
+        # A SECOND revision pass (the auditor objecting to an already-revised
+        # draft) is optional refinement: the first pass still happened. When
+        # the ladder says there is no room left, note the shed and ship the
+        # draft as it stands — the routing ceiling (`fact_check_revision_count`
+        # > max) then accepts it. The objection itself is NEVER erased: the
+        # notes stay on the state so the deterministic audit reports the
+        # standing objection (an erased verdict is exactly the silent
+        # false-confidence shape AGENTS.md §2 warns about).
+        out: Dict[str, Any] = {"fact_check_notes": review}
+        if review and int(research_state.get("fact_check_revision_count", 0) or 0) >= 1:
             ladder = get_run_ladder()
             if ladder is not None and not ladder.evaluate(
                 ["narrative_writer", "evidence_auditor", "report_assembler"],
@@ -246,12 +291,10 @@ class EvidenceAuditor:
                 if self.sink:
                     await stream_output(
                         "logs", "fact_checking",
-                        "Single fact-check pass used to stay within the time budget.",
+                        "Second fact-check revision skipped to stay within the time budget.",
                         self.sink,
                     )
-                review = None
-        out: Dict[str, Any] = {"fact_check_notes": review}
-        if review is not None:
+        if out["fact_check_notes"]:
             out["fact_check_revision_count"] = (
                 research_state.get("fact_check_revision_count", 0) + 1
             )

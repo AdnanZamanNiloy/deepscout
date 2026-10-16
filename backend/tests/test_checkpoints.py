@@ -13,12 +13,9 @@ Contract under test:
 from __future__ import annotations
 
 import asyncio
-import json
 import tempfile
 from pathlib import Path
-from typing import Any, Dict
 
-import pytest
 
 from app.common.config import Settings
 from app.core.usage import clear_run_usage, load_resume_checkpoint, start_run_usage
@@ -208,6 +205,114 @@ def test_without_a_checkpoint_every_node_runs():
     team = ResearchTeam(task={}, llm=None, cfg=None, researcher_factory=None)
     asyncio.run(team._staged("pathfinder", node)({}))
     assert calls["n"] == 1
+
+
+# --- queued (runner) writes: capture time, order, clearing -------------------
+
+
+def test_a_queued_snapshot_is_serialized_at_call_time():
+    """The snapshot must capture the state as of the node that queued it.
+
+    The old fire-and-forget path serialized the LIVE state dict whenever the
+    task happened to start, so a queued write captured a later, different state
+    than the node it represented.
+    """
+    db = _db_path()
+
+    async def go():
+        from app.db.store.checkpoints import flush_checkpoints, queue_checkpoint
+
+        await _prepare_run(db, "r8")
+        state = {"sections": ["A"]}
+        queue_checkpoint(db, "r8", state, ["pathfinder"])
+        state["sections"] = ["A", "B"]  # mutated after queuing — must not leak in
+        await flush_checkpoints()
+        return await load_checkpoint(db, "r8")
+
+    got = asyncio.run(go())
+    assert got["state"]["sections"] == ["A"]
+
+
+def test_the_latest_queued_snapshot_wins():
+    """Writes are single-flight latest-wins: no old snapshot can land last."""
+    db = _db_path()
+
+    async def go():
+        from app.db.store.checkpoints import flush_checkpoints, queue_checkpoint
+
+        await _prepare_run(db, "r9")
+        queue_checkpoint(db, "r9", {"v": 1}, ["pathfinder"])
+        await asyncio.sleep(0)  # let the first write start if it is going to
+        queue_checkpoint(db, "r9", {"v": 2}, ["pathfinder", "architect"])
+        queue_checkpoint(db, "r9", {"v": 3}, ["pathfinder", "architect"])
+        await flush_checkpoints()
+        return await load_checkpoint(db, "r9")
+
+    got = asyncio.run(go())
+    assert got["state"]["v"] == 3
+    assert got["completed_nodes"] == ["pathfinder", "architect"]
+
+
+def test_clear_cannot_be_resurrected_by_a_queued_snapshot():
+    """A pending write from the run's last node must not recreate the row."""
+    db = _db_path()
+
+    async def go():
+        from app.db.store.checkpoints import flush_checkpoints, queue_checkpoint
+
+        await _prepare_run(db, "r10")
+        queue_checkpoint(db, "r10", {"v": 1}, ["pathfinder"])
+        await clear_checkpoint(db, "r10")
+        await flush_checkpoints()
+        return await load_checkpoint(db, "r10")
+
+    assert asyncio.run(go()) is None
+
+
+def test_queue_checkpoint_outside_a_loop_never_raises():
+    from app.db.store.checkpoints import queue_checkpoint
+
+    queue_checkpoint("file::memory:", "no-loop", {"a": 1}, [])
+
+
+# --- resume: nodes left mid-revision must reopen -----------------------------
+
+
+def test_resume_reopens_nodes_left_mid_revision():
+    """A saved rejection is unresolved work — skipping its rerun loops routing.
+
+    `completed_nodes` stores node NAMES, so a checkpoint taken between a
+    rejection and the revision it demanded listed the rejecting node as done.
+    Routing, on resume, re-reads the saved rejection and demands a revise that
+    the skipped nodes never perform — forever (observed as GraphRecursionError).
+    """
+    from app.research.runner import _resume_completed_nodes
+
+    all_nodes = [
+        "pathfinder", "architect", "review_gate", "scout_swarm",
+        "narrative_writer", "evidence_auditor", "diagram_designer", "report_assembler",
+    ]
+
+    # Accepted state: nothing reopens.
+    assert _resume_completed_nodes(
+        {"fact_check_notes": None, "human_feedback": None}, all_nodes
+    ) == all_nodes
+
+    # Fact-check rejection pending: writer + auditor reopen, the rest stays.
+    got = _resume_completed_nodes({"fact_check_notes": "fact check found an error"}, all_nodes)
+    assert "narrative_writer" not in got
+    assert "evidence_auditor" not in got
+    assert "pathfinder" in got and "report_assembler" in got
+
+    # An EMPTY notes string is an unavailable check, not a pending revision —
+    # routing accepts it, so resume must not reopen a pointless rerun.
+    assert _resume_completed_nodes({"fact_check_notes": ""}, all_nodes) == all_nodes
+
+    # Plan rejection pending: architect + review_gate reopen (the pair whose
+    # rerun clears the routing marker).
+    got = _resume_completed_nodes({"human_feedback": "make sections distinct"}, all_nodes)
+    assert "architect" not in got and "review_gate" not in got
+    assert "scout_swarm" in got
 
 
 def test_completed_nodes_are_de_duplicated_across_a_revision_loop():

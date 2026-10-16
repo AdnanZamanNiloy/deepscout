@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from app.core.llm import LLMClient
-from app.core.usage import checkpoint_run, load_resume_checkpoint
+from app.core.usage import checkpoint_run, flush_checkpoints, load_resume_checkpoint
 from app.common.config import get_settings
 from app.common.logging import get_logger
 from app.agents.team import build_research_team
@@ -45,6 +45,39 @@ _NODE_STAGE = {
 
 # Mode presets: report sections and revision strictness.
 _MODE_SECTIONS = {"quick": 3, "standard": 5, "deep": 8}
+
+# State markers that mean a node's LAST action was a rejection whose rerun never
+# happened (the checkpoint was taken between the rejection and the revision).
+# `completed_nodes` stores node NAMES, so without reopening, a resumed run skips
+# the very nodes the routing still wants to re-run — and because skipped nodes
+# change nothing, routing re-reads the same rejection and loops until
+# GraphRecursionError. Each marker reopens the pair [rejecting node, node that
+# consumes the rejection AND writes the accept signal]: routing then reads the
+# fresh output; the revision counters restored from the checkpoint keep it
+# bounded exactly as in a live run.
+_REVISION_REOPEN = {
+    "human_feedback": ("architect", "review_gate"),
+    "fact_check_notes": ("narrative_writer", "evidence_auditor"),
+}
+
+
+def _resume_completed_nodes(saved_state: Dict[str, Any], completed_nodes: List[str]) -> List[str]:
+    """Nodes to skip on resume, reopening any left mid-revision.
+
+    The marker tests mirror routing exactly: a PLAN objection is pending only
+    when ``human_feedback`` is non-None, and a FACT-CHECK objection only when
+    ``fact_check_notes`` is truthy (an empty notes string is an unavailable
+    check, which routing accepts — reopening on it would force a pointless
+    writer revision).
+    """
+    drop = set()
+    if saved_state.get("human_feedback") is not None:
+        drop.update(_REVISION_REOPEN["human_feedback"])
+    if saved_state.get("fact_check_notes"):
+        drop.update(_REVISION_REOPEN["fact_check_notes"])
+    if not drop:
+        return list(completed_nodes)
+    return [n for n in completed_nodes if n not in drop]
 
 
 @dataclass
@@ -227,13 +260,14 @@ class ResearchRunner:
         checkpoint = await load_resume_checkpoint()
         if checkpoint:
             saved_state = checkpoint.get("state") or {}
-            self._completed_nodes = [
+            restored = [
                 n for n in (checkpoint.get("completed_nodes") or [])
                 if isinstance(n, str)
             ]
+            self._completed_nodes = _resume_completed_nodes(saved_state, restored)
             logger.info(
-                "[Runner] resuming run %s from checkpoint: %d node(s) already done",
-                self.run_id, len(self._completed_nodes),
+                "[Runner] resuming run %s from checkpoint: %d node(s) already done (%d reopened)",
+                self.run_id, len(self._completed_nodes), len(restored) - len(self._completed_nodes),
             )
 
         chief = build_research_team(
@@ -296,6 +330,11 @@ class ResearchRunner:
                 raise
             rescue_sink()
             await asyncio.sleep(0)
+            # Best-effort: let the last node's queued checkpoint commit before
+            # the stream ends (the API path clears the row on terminal status
+            # anyway; this matters for callers that don't, and for crash-after-
+            # return determinism). Never part of the run's success contract.
+            await flush_checkpoints()
 
     async def _consume_graph(self, chain, initial_state: Dict[str, Any]) -> None:
         """Drive the graph, queueing activity and node events in true order.
@@ -388,6 +427,30 @@ class ResearchRunner:
         """
         return build_final_state(self._state, self.captured_sources, self.query)
 
+    async def capture_cited_sources(self) -> None:
+        """Give the audit verifier real page text for the URLs the report cites.
+
+        Runs after the graph completes and before :meth:`final_state` (the
+        route calls it outside the research-mode timeout, so a slow fetch can
+        neither kill nor time out an otherwise-finished run). Bounded and
+        best-effort: any failure merely leaves the snippet text in place.
+        """
+        from app.research.source_capture import capture_cited_source_text
+
+        try:
+            report = str(self._state.get("report") or _render_report(self._state) or "")
+            stats = await capture_cited_source_text(self.captured_sources, report)
+        except Exception as exc:
+            logger.warning("[Runner] cited-source capture failed", exc_info=exc)
+            return
+        if stats.get("considered"):
+            logger.info(
+                "[Runner] cited-source capture: cited=%d fetched=%d failed=%d "
+                "unsafe=%d over_budget=%d",
+                stats["considered"], stats["fetched"], stats["failed"],
+                stats["skipped_unsafe"], stats["skipped_budget"],
+            )
+
 
 def _sanitize_markdown(markdown: str) -> str:
     """Normalise the assembled report for storage and rendering.
@@ -451,6 +514,45 @@ def _render_report(state: Dict[str, Any]) -> str:
     return "\n".join(parts).strip()
 
 
+def _split_fact_check_issues(text: str) -> List[str]:
+    """Split the auditor's revision notes into individual named issues.
+
+    The structured fact-checker writes one ``- `` bullet per issue, and the
+    confidence engine's critic signal prices each named gap separately
+    (``0.6 - 0.02 * len(gaps)``) — collapsing N issues into one made every
+    rejection score identically 0.58. Tolerates older/free-text notes (a
+    single blob becomes a single gap); clips each entry for the breakdown.
+    """
+    issues: List[str] = []
+    for raw in str(text or "").splitlines():
+        line = re.sub(r"^[-*•]\s*", "", raw.strip())
+        line = re.sub(r"^\d+[.)]\s*", "", line)
+        if line:
+            issues.append(line[:400])
+    if not issues and str(text or "").strip():
+        issues = [str(text).strip()[:400]]
+    return issues
+
+
+def _audit_critique(state: Dict[str, Any]) -> Dict[str, Any]:
+    """The run's fact-check verdict, in the shape the confidence engine reads.
+
+    ``fact_check_notes`` is None exactly when the auditor accepted the draft;
+    a non-blank string is the auditor's named issues (one gap each); an empty
+    string means the check could not produce a verdict (failed call / budget)
+    and is left unmeasured rather than counted as a pass or a fail.
+    """
+    if "fact_check_notes" not in state:
+        return {}
+    notes = state.get("fact_check_notes")
+    if notes is None:
+        return {"is_sufficient": True}
+    issues = _split_fact_check_issues(str(notes))
+    if not issues:
+        return {}
+    return {"is_sufficient": False, "gaps": issues}
+
+
 def build_final_state(
     state: Dict[str, Any],
     captured_sources: List[Dict[str, Any]],
@@ -465,10 +567,24 @@ def build_final_state(
 
     report = _sanitize_markdown(str(state.get("report") or _render_report(state) or ""))
     report = _clean_report_prose(report)
+    # The plan's section titles are this pipeline's research angles: facts are
+    # attributed to them (build_facts) and the confidence engine scores axis
+    # coverage against them. Without this the engine cannot tell a covered
+    # angle from an unplanned one and leaves the signal inert.
+    sections = [
+        str(s).strip() for s in (state.get("sections") or []) if str(s).strip()
+    ]
     source_index = build_source_index(captured_sources, state.get("sources") or [], report)
     sources = [s["url"] for s in source_index if s.get("url")]
-    facts = build_facts(report, source_index, query)
-    audit = compute_audit(query=query, report=report, sources=source_index, facts=facts)
+    facts = build_facts(report, source_index, query, sections=sections)
+    audit = compute_audit(
+        query=query,
+        report=report,
+        sources=source_index,
+        facts=facts,
+        critique=_audit_critique(state),
+        sub_questions=[{"question": s, "axis": s} for s in sections],
+    )
 
     return {
         "final_report": report,

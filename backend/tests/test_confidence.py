@@ -46,6 +46,35 @@ def test_unverified_facts_get_no_coverage_credit():
     assert result["signals"]["citation_coverage"] == 0.0
 
 
+def test_unmeasured_verification_strength_is_omitted_not_zeroed():
+    """Verification that never ran must not count as a measured zero.
+
+    The audit's reconstructed pool used to carry no verification_score at all,
+    so the 0.15 weight multiplied a structural 0.0 on every live run. An
+    absent signal is omitted and the remaining weights normalized; when the
+    score IS measured, weights and score arithmetic stay historical.
+    """
+    unverified_pool = [
+        {"claim": "RAG retrieves documents before generation", "source": "https://arxiv.org/abs/1", "confidence": 0.9, "verified": True},
+        {"claim": "RAG conditions generation on retrieved documents", "source": "https://en.wikipedia.org/wiki/RAG", "confidence": 0.85, "verified": True},
+        {"claim": "RAG reduces hallucination in open-domain answers", "source": "https://www.nature.com/x", "confidence": 0.8, "verified": True},
+    ]
+    critique = {"is_sufficient": True}
+    absent = compute_confidence(unverified_pool, critique, 1, 3)
+    assert "claim_verification_strength" not in absent["signals"]
+    assert any("verification not measured" in note for note in absent["notes"])
+
+    measured = compute_confidence(STRONG_FACTS, critique, 1, 3)
+    assert "claim_verification_strength" in measured["signals"]
+    assert measured["signals"]["claim_verification_strength"] == 0.8
+
+    # Per-signal values are identical between the two runs; only the omitted
+    # signal's weight differentiates the overalls.
+    for key, value in absent["signals"].items():
+        assert measured["signals"][key] == value
+    assert measured["overall"] != absent["overall"]
+
+
 def test_breakdown_structure_for_frontend():
     result = compute_confidence(STRONG_FACTS, {"is_sufficient": True}, 1, 3)
     assert {"overall", "signals", "weights", "notes"} <= set(result.keys())

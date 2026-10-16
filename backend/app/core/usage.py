@@ -17,12 +17,11 @@ research runs never see each other's ledgers.
 
 from __future__ import annotations
 
-import asyncio
 import time
 from contextvars import ContextVar
 from typing import Any, Dict, Optional
 
-from app.infra.budget import ResearchBudget, mode_timeout_seconds
+from app.infra.budget import ResearchBudget
 from app.infra.ladder import DegradationLadder, soft_limit_for
 from app.common.logging import get_logger
 
@@ -170,18 +169,28 @@ def checkpoint_run(state: dict, completed_nodes: list) -> None:
     find the database; outside a run (or with no database configured) it is a
     no-op, so the runner needs no new constructor argument. Fire-and-forget:
     the caller must not await this, and a failure must never affect the run.
+    Writes are queued latest-wins (``queue_checkpoint``) so a snapshot from an
+    earlier node can never overwrite a newer one out of order.
     """
     usage = _RUN_USAGE.get()
     if usage is None or not usage.database_url:
         return
     try:
-        from app.db.store.checkpoints import save_checkpoint
+        from app.db.store.checkpoints import queue_checkpoint
 
-        asyncio.create_task(
-            save_checkpoint(usage.database_url, usage.request_id, state, completed_nodes)
-        )
+        queue_checkpoint(usage.database_url, usage.request_id, state, completed_nodes)
     except Exception as exc:  # never let persistence touch the run
         logger.warning("[checkpoint] schedule failed: %s", exc)
+
+
+async def flush_checkpoints() -> None:
+    """Wait (bounded) for queued checkpoint writes to land. Never raises."""
+    try:
+        from app.db.store.checkpoints import flush_checkpoints as _flush
+
+        await _flush()
+    except Exception as exc:
+        logger.warning("[checkpoint] flush failed: %s", exc)
 
 
 async def load_resume_checkpoint() -> Optional[Dict[str, Any]]:

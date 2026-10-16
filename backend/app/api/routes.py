@@ -408,6 +408,10 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                     yield event_line("error", message=f"Research workflow failed: {message}")
                 return
 
+            # Fetch real page text for cited URLs whose captured text is only
+            # a snippet, so the audit verifier judges the page (bounded, and
+            # outside the mode timeout — it can only enrich, never kill, the run).
+            await runner.capture_cited_sources()
             final_state = runner.final_state()
             report = str(final_state.get("final_report") or "")
             sources = list(final_state.get("sources") or [])
@@ -652,6 +656,7 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
                 yield event_line("error", message=f"Resumed run failed: {exc}")
                 return
 
+            await runner.capture_cited_sources()
             final_state = runner.final_state()
             report = str(final_state.get("final_report") or "")
             source_index = list(final_state.get("source_index") or [])

@@ -76,8 +76,14 @@ def route_review_gate(review, max_plan_revisions=DEFAULT_MAX_PLAN_REVISIONS):
 
 
 def route_evidence_audit(state, max_fact_check_revisions=DEFAULT_MAX_FACT_CHECK_REVISIONS):
-    """Route after the fact-check node: ``accept`` or ``revise``."""
-    if state.get("fact_check_notes") is None:
+    """Route after the fact-check node: ``accept`` or ``revise``.
+
+    A missing or EMPTY verdict is an unavailable check, not an objection:
+    routing accepts it (the audit's critique signal records it as unmeasured,
+    never as a pass) instead of buying a blind, feedback-less revision.
+    Only a NAMED objection routes to revision.
+    """
+    if not state.get("fact_check_notes"):
         return "accept"
     if max_fact_check_revisions is None:
         return "revise"

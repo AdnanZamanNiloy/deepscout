@@ -77,6 +77,14 @@ class Settings(BaseSettings):
     # so adding them changes nothing until the v3 search is ported):
     # concurrent page fetches per search, bounded separately from query fan-out
     max_parallel_fetch: int = 4
+    # Audit-time source capture: after a report completes, fetch the text of
+    # cited URLs whose captured text is only a search snippet, so claim
+    # verification judges the page rather than the snippet. Bounded: at most
+    # this many URLs, one shared wall-clock budget; concurrency and retries
+    # reuse max_parallel_fetch / search_fetch_retry_attempts. 32 covers a
+    # quick-mode report's full citation list (~30 in practice) with headroom.
+    audit_fetch_max_urls: int = 32
+    audit_fetch_timeout_sec: float = 20.0
     # transient-error retries per provider search (timeouts fail fast in the
     # LLM chain and stay that way — this covers search providers only)
     search_retry_attempts: int = 3

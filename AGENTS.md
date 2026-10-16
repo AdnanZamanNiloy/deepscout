@@ -401,6 +401,85 @@ These are real bugs found by reading the code, not hypotheticals. Each one below
   orchestration path or reintroduce an external research dependency.
 ```
 
+[FIXED — confidence measured nothing it claimed to measure] app/evidence/verify.py (new), app/evidence/audit.py, app/research/runner.py, app/core/confidence.py
+  Live confidence was structurally capped near 0.67 and the UI's "High" band
+  (>= 0.8) was unreachable, for four compounding reasons: `build_facts` stamped
+  `verified: True` on every reconstructed claim (claim_verification_strength
+  read a structural 0.0 — every run silently lost its 0.15 weight), the
+  arch-upgrade deleted the only writers of `corroboration_count`
+  (cross_source_agreement read ~0.04-0.08 from a weakened fallback),
+  `compute_audit` passed `critique={}` so critic survival sat on the 0.6
+  "model hedge" branch forever, and citation coverage was 1.0 by construction
+  (the same hardcoded `verified: True`). Fixed: claims are verified against
+  the cited source's captured text (app/evidence/verify.py — weighted token
+  overlap, numeric grounding, polarity; a source without text is explicitly
+  unverified); cross-publisher restatements are attached via
+  `apply_corroboration` using the engine's own `claim_similarity` at its own
+  band (one metric, one threshold, defined next to its consumer — the hybrid
+  metric scored true paraphrases 0.33-0.51 against a 0.55 band and would have
+  found nothing); the run's fact-check verdict and plan axes reach
+  `compute_audit`; unmeasured signals are OMITTED and the remaining weights
+  renormalized (`ENGINE_VERSION` bumped to confidence-v3). Rule: every input a
+  scoring signal reads must be produced by the pass that owns it — a
+  hardcoded default ("verified: True") buys a number that looks measured and
+  is not, and a signal whose input has no writer is a constant wearing a
+  formula. Corollary: any per-claim similarity check must use the metric its
+  band was calibrated on, or recall silently collapses.
+
+[FIXED — checkpoint resume looped forever mid-revision] app/db/store/checkpoints.py, app/core/usage.py, app/research/runner.py
+  Resuming a crashed run could end in GraphRecursionError. Two compounding
+  causes: (a) per-node fire-and-forget writes committed OUT OF ORDER — an
+  older snapshot could overwrite a newer one, so the row a resume loaded
+  could predate the node the run actually stopped after; (b) `completed_nodes`
+  stores node NAMES, and a checkpoint taken after the fact-checker rejected
+  (or the plan gate rejected) listed the rejecting node as done — the resumed
+  run skipped the rerun routing still demanded, routing re-read the saved
+  rejection, and the graph cycled until the recursion limit (reproduced live
+  by re-running a crashed run id: 180 events, no search, immediate error).
+  Fixed: `queue_checkpoint` serializes at call time and writes latest-wins
+  single-flight (the committed row is always the last completed node);
+  `_resume_completed_nodes` reopens [architect, review_gate] and
+  [narrative_writer, evidence_auditor] when the saved state carries a pending
+  objection (marker tests mirror routing exactly — including that an empty
+  notes string is an unavailable check, not an objection); `clear_checkpoint`
+  drops pending writes and waits out in-flight ones so a terminal delete
+  cannot be resurrected. Rule: a completion list keyed on node names cannot
+  represent "ran, but its last act was a rejection" — and fire-and-forget
+  writes to one row are not ordered; if the last write must win, say so in
+  the code.
+
+[FIXED — chatty fact-check verdicts fabricated objections] app/agents/report.py, app/agents/routing.py
+  The auditor asked for exactly the string 'None' on a clean draft; chatty
+  free-tier models replied with a description of their review process, every
+  consumer read it as a REJECTION, and every run paid a pointless writer
+  revision plus a second audit pass — then shipped with a "standing
+  objection" the now-honest confidence signal priced (critic_survival 0.58 on
+  every smoke run). The structured replacement declares {"issues": [...]} and
+  parses exactly that key; the schema demand lives in the USER message
+  (models ignored a schema stated only in the system message and returned
+  prose with no JSON at all — generate_json failed all retries); a failed or
+  unavailable check is "" (no verdict): routing accepts it (never a blind,
+  feedback-less revision) and the audit records it unmeasured rather than as
+  a pass or a fabricated fail. Rule: when a model output feeds a SECOND
+  system (routing, scoring), a free-text sentinel is a parsing contract in
+  disguise — make the shape explicit and keep the fallback distinguishable
+  from both verdicts.
+
+[FIXED — audit-capture pass killed every completed run] app/runtime/orchestrator.py,
+  app/research/runner.py, app/api/routes.py
+  The audit-time source capture was implemented on ResearchRunner, but the
+  routes call methods on the PipelineRunner FACADE (orchestrator.py). The
+  first live run after the change completed all research and then died with
+  `AttributeError: 'PipelineRunner' object has no attribute
+  'capture_cited_sources'` at the final frame — stream truncated, no report
+  frame, no persistence. Caught only by the live smoke, not by unit tests
+  (which construct ResearchRunner directly). Fixed by delegating on the
+  facade + a regression test that pins the delegation. Rule: this codebase
+  has two runner identities — anything routes call must exist on
+  PipelineRunner; when touching the runner seam, grep both sides. A facade
+  that forwards some methods is not an abstraction, it is a list of the
+  methods someone remembered.
+
 If you find a new instance of any of these patterns anywhere in the codebase while working on something else, fix it or flag it in your commit message — don't leave it for later just because it's outside your current task's file scope.
 
 ---

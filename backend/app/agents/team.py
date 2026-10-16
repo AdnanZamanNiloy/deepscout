@@ -9,7 +9,7 @@ the wire frames the frontend consumes.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from langgraph.graph import END, StateGraph
 

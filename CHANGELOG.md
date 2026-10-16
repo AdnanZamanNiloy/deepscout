@@ -1,5 +1,86 @@
 # Changelog
 
+## Unreleased — Confident where measured, quiet where not
+
+Live confidence was structurally depressed: the audit bridge stamped
+`verified: True` on every reconstructed claim (the verification signal read a
+structural 0.0 — every run quietly lost its 0.15 weight), no pass had written
+`corroboration_count` since the arch-upgrade (agreement read ~0.04-0.08), the
+critic signal sat on a "model hedge" branch forever, and citation coverage was
+1.0 by construction. The UI's "High" band (>=0.8) was unreachable.
+
+- **Claims are verified, not assumed** (`app/evidence/verify.py`, new). Each
+  reconstructed claim is checked against its cited source's captured text:
+  weighted token overlap, numeric grounding (a number absent from the source
+  fails the claim), polarity. A source without captured text is explicitly
+  unverified rather than silently trusted.
+- **Corroboration is measured again** (`app/evidence/audit.py`). Claims
+  restated by a different publisher's source are attached through the
+  sanctioned `apply_corroboration` path, using the engine's own
+  `claim_similarity` at its own band — one metric, one threshold, defined
+  next to its consumer.
+- **The fact-check verdict reaches the score** (`app/research/runner.py`).
+  The auditor's verdict and the plan's axes now reach `compute_audit`. The
+  auditor returns structured `{"issues": [...]}` (schema demand lives in the
+  user message — chatty free-tier models ignored a system-only schema and
+  returned prose, so every check read as an objection); named issues price
+  individually; a failed/unavailable check is "no verdict" — routing accepts
+  it instead of buying a blind revision, and the audit records it as
+  unmeasured, never as a pass.
+- **Unmeasured signals are omitted, not zeroed** (`app/core/confidence.py`,
+  engine `confidence-v3`). A pool with no verification data renormalizes the
+  remaining weights and the breakdown notes the omission, instead of
+  multiplying a structural 0.0. Degraded runs still cap at 0.55.
+- **Checkpoint resume can no longer loop or rewind**
+  (`app/db/store/checkpoints.py`, `app/research/runner.py`). Per-node
+  fire-and-forget writes could commit out of order, so the row a resume
+  loaded could predate the node the run actually stopped after; and a
+  checkpoint saved mid-revision listed the rejecting node as completed, so
+  the resumed run skipped the rerun routing still demanded — until
+  `GraphRecursionError`. Writes now serialize latest-wins on a snapshot taken
+  at call time; resume reopens [rejector, consumer] for any pending
+  plan/fact-check objection; a terminal clear cannot be resurrected by a
+  queued write.
+- **Multi-cited sentences verify against the union of their sources**
+  (`app/evidence/audit.py`, `app/evidence/verify.py`). A sentence citing two
+  sources was judged against the FIRST one only, so cross-source synthesis
+  sentences failed the overlap band by construction — the same bug class as
+  the answer-support fix. Attribution now collects every known link in the
+  sentence; each fact carries its full `sources` list.
+- **Cited pages are fetched at audit time, bounded and SSRF-guarded**
+  (`app/research/source_capture.py`, new). Captured text for many cited URLs
+  was only the search snippet, so the verifier failed claims the page itself
+  supports. After a report completes — outside the mode timeout — thin cited
+  URLs are fetched (≤`AUDIT_FETCH_MAX_URLS`, one `AUDIT_FETCH_TIMEOUT_SEC`
+  budget, concurrency `MAX_PARALLEL_FETCH`, every URL through the same
+  `validate_url` guard as search results) and the captured-source list is
+  enriched in place. Never raises; failures leave the snippet in place.
+- **The verifier logs why claims fail** (`app/evidence/audit.py`): one
+  census line per run — verified count plus failures by class
+  (overlap/numeric/no_text/polarity/other) — so the remaining failure mass is
+  visible instead of inferred.
+- **The runtime facade must mirror the runner's route-facing methods**
+  (`app/runtime/orchestrator.py`). The capture pass was added to
+  `ResearchRunner` but routes call the `PipelineRunner` facade — every
+  completed live run died with `AttributeError` at the final frame until the
+  facade delegated the method. A regression test now pins delegation.
+
+Live smoke (cold, quick mode): confidence 0.714 with every signal measured —
+source_quality 0.808, coverage 0.40, agreement 1.0, verification 0.344,
+critic_survival 1.0 (the structured check returned a clean verdict and the
+run no longer pays a pointless revision).
+
+Live A/B on the same query (warm-cache, so content-level, not latency-level):
+before 0.598 (coverage 0.242, verification 0.229) -> after 0.700 (coverage
+0.442, verification 0.368) with the capture bound at its shipped default
+(32 URLs / 20s wall clock). Census: 53/120 verified, failures overlap=45,
+numeric=22, no_text=0 — the missing-text class the capture targets is gone;
+what remains is substantive mismatch the verifier exists to catch. Capture:
+30 cited URLs, 23 fetched, 4 failed, 0 over budget, ~9s after the run's
+timeout scope closed.
+
+662 backend tests pass; ruff clean.
+
 ## Unreleased — First-party research pipeline
 
 The multi-agent research engine that previously drove every request was

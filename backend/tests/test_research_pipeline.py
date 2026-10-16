@@ -247,6 +247,36 @@ def test_graph_runs_end_to_end_with_fakes():
 # --- runner wiring -----------------------------------------------------------
 
 
+def test_pipeline_runner_facade_delegates_audit_capture(monkeypatch):
+    """The route-facing facade must expose every method the routes call.
+
+    Regression: routes call ``runner.capture_cited_sources()`` on the
+    PipelineRunner facade, but the method was added only to the wrapped
+    ResearchRunner — every completed live run then died with AttributeError at
+    the final frame. The facade is a seam; a method on one side is not a method
+    on the other.
+    """
+    import app.runtime.orchestrator as orchestrator
+
+    called: list = []
+
+    class _StubRunner:
+        def __init__(self, **kwargs):
+            pass
+
+        async def capture_cited_sources(self):
+            called.append("capture")
+
+        def final_state(self):
+            return {"stub": True}
+
+    monkeypatch.setattr(orchestrator, "ResearchRunner", _StubRunner)
+    facade = orchestrator.PipelineRunner(llm=None, search_client=None, query="q")
+    asyncio.run(facade.capture_cited_sources())
+    assert called == ["capture"]
+    assert facade.final_state() == {"stub": True}
+
+
 def test_runner_fails_loudly_without_search_client():
     """A run with no retrieval client must fail, not silently return no sources.
 

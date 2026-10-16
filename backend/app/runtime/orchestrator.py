@@ -47,6 +47,10 @@ class PipelineRunner:
         async for event in self._runner.run():
             yield event
 
+    async def capture_cited_sources(self) -> None:
+        """Delegate audit-time source capture to the pipeline runner."""
+        await self._runner.capture_cited_sources()
+
     def final_state(self) -> Dict[str, Any]:
         return self._runner.final_state()
 
