@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import statistics
 import sys
 import time
@@ -83,6 +84,10 @@ async def _run_one(mode: str, query: str, timeout_s: float) -> Dict[str, Any]:
     from app.runtime.orchestrator import PipelineRunner
 
     settings = Settings(_env_file=str(BACKEND / ".env"))
+    # COLD EVERY RUN. A warm LLM cache makes a repeat query look near-free
+    # (measured: a standard run finished in 1.81s from cache), so a comparison
+    # that lets later modes ride an earlier mode's calls is meaningless.
+    settings = settings.model_copy(update={"llm_cache_enabled": False})
     llm = LLMClient(settings)
     search_client = SearchClient(settings)
 
@@ -158,6 +163,47 @@ async def _run_one(mode: str, query: str, timeout_s: float) -> Dict[str, Any]:
     # First token of the report is enough to prove an answer was produced.
     report = str(state.get("final_report") or "")
 
+    # --- mechanical quality metrics (no judge; computed from the run) --------
+    # Sections = the report's own `##` headings minus the publisher's fixed
+    # ones, so "sections" counts what the reader sees, not what was planned.
+    headings = [h[3:].strip() for h in re.findall(r"^## .+$", report, re.M)]
+    fixed = {"introduction", "table of contents", "conclusion",
+             "visualizations", "references", "limitations & open questions",
+             "limitations and open questions", "limitations"}
+    body_sections = [h for h in headings if h.lower() not in fixed]
+
+    # Distinct source domains in the report (citation links + the reference
+    # legend), so a run that listed one domain ten times scores 1, not 10.
+    urls = re.findall(r"\]\((https?://[^)\s]+)\)", report)
+    domains = set()
+    for u in urls:
+        try:
+            from app.retrieval.searchkit.identity import canonical_source_domain
+
+            d = canonical_source_domain(u)
+        except Exception:
+            d = (u.split("/")[2] if "//" in u else "")
+        if d:
+            domains.add(d)
+
+    # Cross-section overlap: the mean pairwise similarity of the body sections
+    # on the SAME semantic engine the pipeline uses, so "overlap" here means
+    # what it means everywhere else in the product.
+    overlap = None
+    if len(body_sections) >= 2:
+        try:
+            from app.common.semantic import pair_similarity
+
+            pairs = [
+                pair_similarity(body_sections[i], body_sections[j])
+                for i in range(len(body_sections))
+                for j in range(i + 1, len(body_sections))
+            ]
+            if pairs:
+                overlap = round(sum(pairs) / len(pairs), 4)
+        except Exception:
+            overlap = None
+
     return {
         "mode": mode,
         "query": query,
@@ -172,8 +218,18 @@ async def _run_one(mode: str, query: str, timeout_s: float) -> Dict[str, Any]:
         "auditor_passes": auditor_passes,
         "sources": len(state.get("source_index") or state.get("sources") or []),
         "report_chars": len(report),
+        "words": len(report.split()),
         "confidence": state.get("confidence"),
         "critical_path_ms": round(sum(stage_ms.values()), 1),
+        # --- mechanical quality / honesty signals ---
+        "body_sections": len(body_sections),
+        "distinct_domains": len(domains),
+        "overlap": overlap,
+        "contradictions": len(state.get("contradictions") or []),
+        "degraded": list(state.get("degraded") or []),
+        "degraded_reasons": dict(state.get("degraded_reasons") or {}),
+        # A report has a Limitations section or it does not; deep-only feature.
+        "has_limitations": any("limitation" in h.lower() for h in headings),
     }
 
 
@@ -213,9 +269,14 @@ def _summarize(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         vals = [r[key] for r in ok if isinstance(r.get(key), int)]
         return round(statistics.mean(vals), 1) if vals else None
 
+    def _median(key):
+        vals = [r[key] for r in ok if isinstance(r.get(key), (int, float))]
+        return round(statistics.median(vals), 3) if vals else None
+
     return {
         "runs": len(records),
         "ok_runs": len(ok),
+        "wall_median_s": _median("wall_s"),
         "wall_p50_s": _pct(walls, 50),
         "wall_p90_s": _pct(walls, 90),
         "wall_min_s": round(min(walls), 1),
@@ -224,7 +285,17 @@ def _summarize(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         "mean_search_calls": _mean("search_calls"),
         "mean_tokens": _mean("tokens"),
         "mean_sections": _mean("sections_researched"),
+        "mean_body_sections": _mean("body_sections"),
         "mean_auditor_passes": _mean("auditor_passes"),
+        "mean_domains": _mean("distinct_domains"),
+        "mean_words": _mean("words"),
+        "mean_confidence": _median("confidence"),
+        "median_overlap": _median("overlap"),
+        "mean_contradictions": _mean("contradictions"),
+        "any_degraded": any(r.get("degraded") for r in ok),
+        "limitations_rate": round(
+            sum(1 for r in ok if r.get("has_limitations")) / len(ok), 2
+        ) if ok else None,
         "dominant_stage": dominant,
         "stages": stage_table,
     }
@@ -240,18 +311,38 @@ def _markdown(summary: Dict[str, Dict[str, Any]], records: List[Dict[str, Any]])
     )
 
     lines.append("\n## Headline\n")
-    lines.append("| mode | ok/total | wall p50 | wall p90 | wall max | LLM calls | search | sections | auditor passes | dominant stage |")
-    lines.append("|---|---|---|---|---|---|---|---|---|---|")
+    lines.append("| mode | ok/total | wall median | wall p90 | wall max | LLM calls | search | sections | body secs | domains | words | overlap | conf | degraded |")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for mode in MODES:
         s = summary.get(mode) or {}
         if not s.get("ok_runs"):
-            lines.append(f"| {mode} | 0/{s.get('runs', 0)} | — | — | — | — | — | — | — | — |")
+            lines.append(f"| {mode} | 0/{s.get('runs', 0)} | " + "— |" * 12)
             continue
         lines.append(
-            f"| {mode} | {s['ok_runs']}/{s['runs']} | {s['wall_p50_s']}s | {s['wall_p90_s']}s | "
+            f"| {mode} | {s['ok_runs']}/{s['runs']} | {s['wall_median_s']}s | {s['wall_p90_s']}s | "
             f"{s['wall_max_s']}s | {s['mean_llm_calls']} | {s['mean_search_calls']} | "
-            f"{s['mean_sections']} | {s['mean_auditor_passes']} | {s['dominant_stage']} |"
+            f"{s['mean_sections']} | {s['mean_body_sections']} | {s['mean_domains']} | "
+            f"{s['mean_words']} | {s['median_overlap']} | {s['mean_confidence']} | "
+            f"{'yes' if s['any_degraded'] else 'no'} |"
         )
+
+    lines.append("\n## Same query across the three modes (the comparison the protocol asks for)\n")
+    lines.append("| query | mode | wall | sections | domains | words | overlap | contradictions | limitations | degraded |")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|")
+    # Group by query so the three modes sit together and can be read across.
+    by_query: Dict[str, List[Dict[str, Any]]] = {}
+    for r in records:
+        by_query.setdefault(r["query"], []).append(r)
+    for q, rows in by_query.items():
+        for r in sorted(rows, key=lambda x: MODES.index(x["mode"]) if x["mode"] in MODES else 9):
+            lines.append(
+                f"| {q[:40]}{'…' if len(q) > 40 else ''} | {r['mode']} | {r.get('wall_s')}s | "
+                f"{r.get('body_sections', '—')} | {r.get('distinct_domains', '—')} | "
+                f"{r.get('words', '—')} | {r.get('overlap', '—')} | {r.get('contradictions', '—')} | "
+                f"{'yes' if r.get('has_limitations') else 'no'} | "
+                f"{('yes' if r.get('degraded') else 'no')} |"
+            )
+
 
     lines.append("\n## Per-stage mean (seconds)\n")
     all_stages = sorted({n for s in summary.values() for n in (s.get("stages") or {})})
@@ -297,21 +388,28 @@ async def _main_async(args: argparse.Namespace) -> int:
         return 2
 
     records: List[Dict[str, Any]] = []
+    # Mode-major ordering with repeats innermost: every mode sees the SAME
+    # cache state (all cold) and the same provider conditions as closely as the
+    # harness can arrange, so a mode cannot look faster by running later.
     for mode in modes:
-        for query in queries:
-            print(f"[{mode}] {query[:60]}…", flush=True)
-            rec = await _run_one(mode, query, args.timeout)
-            print(
-                f"    -> ok={rec.get('ok')} wall={rec.get('wall_s')}s "
-                f"llm={rec.get('llm_calls')} search={rec.get('search_calls')} "
-                f"sections={rec.get('sections_researched')} "
-                f"auditor={rec.get('auditor_passes')} {rec.get('error','')}",
-                flush=True,
-            )
-            records.append(rec)
-            # A short pause between runs so a provider rate limit does not make
-            # the second run look slower than it is.
-            await asyncio.sleep(args.pause)
+        for rep in range(max(1, args.repeat)):
+            for query in queries:
+                label = f"r{rep + 1}" if args.repeat > 1 else ""
+                print(f"[{mode}{label}] {query[:60]}…", flush=True)
+                rec = await _run_one(mode, query, args.timeout)
+                rec["repeat"] = rep + 1
+                print(
+                    f"    -> ok={rec.get('ok')} wall={rec.get('wall_s')}s "
+                    f"llm={rec.get('llm_calls')} search={rec.get('search_calls')} "
+                    f"sections={rec.get('sections_researched')} "
+                    f"body={rec.get('body_sections')} domains={rec.get('distinct_domains')} "
+                    f"overlap={rec.get('overlap')} {rec.get('error','')}",
+                    flush=True,
+                )
+                records.append(rec)
+                # A pause between runs so a provider rate limit does not make
+                # the next run look slower than it is.
+                await asyncio.sleep(args.pause)
 
     summary = {mode: _summarize([r for r in records if r["mode"] == mode]) for mode in modes}
     payload = {
@@ -341,6 +439,10 @@ def main() -> int:
     parser.add_argument("--queries-file", default=None, help="one query per line")
     parser.add_argument("--timeout", type=float, default=1100.0, help="per-run hard timeout (s)")
     parser.add_argument("--pause", type=float, default=3.0, help="seconds between runs")
+    parser.add_argument(
+        "--repeat", type=int, default=1,
+        help="runs per (mode, query); >1 gives a spread instead of a single sample",
+    )
     parser.add_argument("--out", default=str(Path(__file__).resolve().parent / "results"))
     args = parser.parse_args()
     return asyncio.run(_main_async(args))
