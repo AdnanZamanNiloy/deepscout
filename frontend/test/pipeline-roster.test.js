@@ -40,8 +40,7 @@ const REAL_ROSTER = [
 // Agent names that were removed with the engine era and must not appear as
 // pipeline stages. ("Critic" and "Verifier" are deliberately excluded: they
 // survive as accurate metric labels — the "Critic survival" confidence signal
-// and "Critic passes" health row read real backend fields — so they are not
-// stale-roster evidence.)
+// reads a real backend field — so they are not stale-roster evidence.)
 const STALE = ["Orchestrator", "Summarizer", "Synthesizer"];
 
 test("the real eight pipeline stages appear in every roster surface", () => {
