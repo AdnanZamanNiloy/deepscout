@@ -59,3 +59,11 @@ jobs:
 
       - name: Validate the deploy config with wrangler
         run: npx --yes wrangler@4 deploy --dry-run
+
+      # Cloudflare's non-production build deploys with `npx wrangler preview`,
+      # which refuses to start unless wrangler.jsonc declares a `previews`
+      # block. The deploy dry-run above does not exercise that path, so a
+      # missing block failed feature-branch builds with no signal here.
+      - name: Validate the preview deploy config
+        run: |
+          node -e 'const fs=require("fs");const cfg=JSON.parse(fs.readFileSync("wrangler.jsonc","utf8").replace(/^\s*\/\/.*$/gm,""));if(!("previews" in cfg)){console.error("wrangler.jsonc is missing the previews block that `wrangler preview` requires");process.exit(1);}console.log("previews block present");'

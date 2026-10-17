@@ -13,6 +13,13 @@
   // fixtures. Without it the app calls /api/* and breaks with no backend.
   "name": "deepscout-ai",
   "compatibility_date": "2024-11-01",
+  // Cloudflare's NON-PRODUCTION builds deploy with `npx wrangler preview`,
+  // which refuses to run unless this block exists:
+  //   ✘ Your Wrangler configuration is missing a `previews` block
+  // Production builds on main use a different path and never needed it, so
+  // its absence only ever failed feature branches. The block may be empty:
+  // assets, compatibility settings and placement stay at the top level.
+  "previews": {},
   "assets": {
     // The built static site (index.html, assets/*, docs.html, svg).
     "directory": "frontend/dist",

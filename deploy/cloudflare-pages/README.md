@@ -77,6 +77,25 @@ npx wrangler pages deploy frontend/dist --project-name deepscout-demo
 `build.sh` installs deps if needed, builds with `VITE_DEMO=1`, and copies
 `_redirects` + `_headers` into `dist/`.
 
+### Workers Builds (the live `deepscout` service)
+
+The Cloudflare Workers service connected to this repo installs at the repo
+root, builds with `cd frontend && VITE_DEMO=1 npm run build`, and deploys
+non-production branches with `npx wrangler preview`.
+
+That last command is the failure mode to know: `wrangler preview` refuses to
+run unless `wrangler.jsonc` contains a `previews` block (it may be empty),
+failing with:
+
+```text
+✘ Your Wrangler configuration is missing a `previews` block to run this command
+```
+
+Production deploys from the production branch do not use that path, so a
+missing block fails ONLY feature branches, and the build log is the only place
+the error appears. `wrangler.jsonc` carries the block for this reason; the
+`tests` workflow asserts it stays there.
+
 ---
 
 ## What gets deployed
