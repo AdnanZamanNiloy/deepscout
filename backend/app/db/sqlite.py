@@ -35,6 +35,8 @@ from app.db.store.records import (  # noqa: F401
     save_sources,
     save_claims,
     mark_challenged_claims,
+    claim_match_key,
+    challenged_claim_texts,
     record_event,
     save_trace_frames,
     load_trace_frames,

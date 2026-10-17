@@ -64,6 +64,21 @@ critic signal sat on a "model hedge" branch forever, and citation coverage was
   `ResearchRunner` but routes call the `PipelineRunner` facade — every
   completed live run died with `AttributeError` at the final frame until the
   facade delegated the method. A regression test now pins delegation.
+- **A live run streams the same claims its replay shows**
+  (`app/api/routes.py`, `frontend/src/App.jsx`). The panel's "Total claims" /
+  "Verified claims" read `run.findings`, which only the REPLAY path ever
+  populated (`replayPanelRun` rebuilds it from the persisted `claims` rows) —
+  the `findings` NDJSON emission was lost in the first-party consolidation
+  and the live handler had no case for the frame, silently dropped by
+  `applyEvent`'s `default: break`. The same run read 0 claims live and real
+  numbers on reopen. Both stream paths now emit one end-of-run `findings`
+  frame, projected to the frontend `Finding` shape (internal verification
+  checks stay server-side, `challenged` derived with the same normalized
+  match the DB flagging uses), and the live case assigns it. The resume path
+  also flags contradictions now — it previously never called
+  `mark_challenged_claims`, so a resumed run persisted unmarked claims.
+  Verified live: run `0e84a07c` streamed 120 items / 61 verified, identical
+  to its `claims` rows and its replay.
 
 Live smoke (cold, quick mode): confidence 0.714 with every signal measured —
 source_quality 0.808, coverage 0.40, agreement 1.0, verification 0.344,

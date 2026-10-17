@@ -536,6 +536,20 @@ export default function App() {
           ));
         }
         break;
+      case "findings": {
+        // One end-of-run frame carrying the annotated claims — the same facts
+        // the backend persists to `claims`. A restored run already rebuilt
+        // `run.findings` from trace.claims (replayPanelRun); the live run did
+        // not, so its panel counted 0 claims while a replay of the same run
+        // showed real numbers.
+        if (Array.isArray(evt.items)) {
+          patchRun(tempId, {
+            findings: evt.items,
+            verifiedCount: evt.items.filter((f) => f && f.verified === true).length,
+          });
+        }
+        break;
+      }
       case "final_report":
         setMessages((prev) => prev.map((m) => {
           if (m.kind !== "run" || m.run.tempId !== tempId) return m;

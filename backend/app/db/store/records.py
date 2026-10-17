@@ -112,6 +112,30 @@ async def save_claims(database_path: str, run_id: str, facts: list) -> None:
         await db.commit()
 
 
+def claim_match_key(text) -> str:
+    """Equality key for matching contradiction sides to claims.
+
+    Lowercase + whitespace-collapsed. NOT `app.evidence.text.normalize_claim_text`,
+    which is a display form that keeps case and truncates. Shared by the DB
+    flagging and the live ``findings`` projection so a live frame and a replay
+    of the same run agree on which claims are challenged.
+    """
+    return re.sub(r"\s+", " ", str(text or "").strip().lower())
+
+
+def challenged_claim_texts(contradictions: list) -> set:
+    """Normalized claim texts appearing on either side of a contradiction."""
+    sides = set()
+    for c in contradictions or []:
+        if not isinstance(c, dict):
+            continue
+        for key in ("claim_a", "claim_b"):
+            text = claim_match_key(c.get(key))
+            if text:
+                sides.add(text)
+    return sides
+
+
 async def mark_challenged_claims(database_path: str, run_id: str, contradictions: list) -> int:
     """Flag claims that appear on either side of a detected contradiction.
 
@@ -120,14 +144,7 @@ async def mark_challenged_claims(database_path: str, run_id: str, contradictions
     Returns the number of rows flagged. Matching is normalized-text
     equality against both contradiction sides.
     """
-    sides = set()
-    for c in contradictions or []:
-        if not isinstance(c, dict):
-            continue
-        for key in ("claim_a", "claim_b"):
-            text = re.sub(r"\s+", " ", str(c.get(key, "") or "").strip().lower())
-            if text:
-                sides.add(text)
+    sides = challenged_claim_texts(contradictions)
     if not sides:
         return 0
     flagged = 0
@@ -136,7 +153,7 @@ async def mark_challenged_claims(database_path: str, run_id: str, contradictions
         cur = await db.execute("SELECT id, claim FROM claims WHERE run_id = ?", (run_id,))
         ids = [
             r["id"] for r in await cur.fetchall()
-            if re.sub(r"\s+", " ", str(r["claim"] or "").strip().lower()) in sides
+            if claim_match_key(r["claim"]) in sides
         ]
         for claim_id in ids:
             await db.execute("UPDATE claims SET challenged = 1 WHERE id = ?", (claim_id,))

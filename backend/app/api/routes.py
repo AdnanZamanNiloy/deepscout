@@ -3,7 +3,7 @@ import uuid
 import json
 import time
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict
+from typing import Any, AsyncGenerator, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -34,6 +34,8 @@ from app.db.sqlite import (
     save_citations,
     save_claims,
     mark_challenged_claims,
+    claim_match_key,
+    challenged_claim_texts,
     save_evidence,
     save_final_report,
     save_report,
@@ -85,6 +87,33 @@ def _ts_to_iso(ts: Any) -> str:
     if ms <= 0:
         return ""
     return datetime.fromtimestamp(ms / 1000.0, tz=timezone.utc).isoformat()
+
+
+def _finding_items(facts: Any, contradictions: Any = None) -> List[Dict[str, Any]]:
+    """Project annotated facts to the ``findings`` frame's item shape.
+
+    One item per verified claim, carrying only what the UI renders (the
+    ``Finding`` contract: claim, source, verdict, provenance). Internal
+    verification checks stay server-side; the persisted ``claims`` rows and
+    this frame are built from the same fact list, so ``challenged`` is derived
+    with the same normalized-text match the DB flagging uses.
+    """
+    challenged = challenged_claim_texts(contradictions)
+    items: List[Dict[str, Any]] = []
+    for fact in facts or []:
+        if not isinstance(fact, dict):
+            continue
+        items.append({
+            "claim": str(fact.get("claim") or ""),
+            "source": str(fact.get("source") or ""),
+            "verified": bool(fact.get("verified")),
+            "verification_score": float(fact.get("verification_score", 0.0) or 0.0),
+            "verification_reason": str(fact.get("verification_reason") or ""),
+            "agent": str(fact.get("agent") or "pipeline"),
+            "confidence": float(fact.get("confidence", 0.0) or 0.0),
+            "challenged": claim_match_key(fact.get("claim")) in challenged,
+        })
+    return items
 
 
 def _final_frame_from_state(
@@ -445,6 +474,18 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                     settings.database_url, request_id, contradictions,
                 ))
 
+            if facts:
+                # One end-of-run findings frame so a LIVE run shows the same
+                # claim/verified counts its own replay already rebuilds from
+                # the persisted ``claims`` rows (replayPanelRun). Emitted once,
+                # before the final report: the audit bridge annotates every
+                # fact's verdict only at finalization.
+                yield event_line(
+                    "findings",
+                    items=_finding_items(facts, contradictions),
+                    verified_update=True,
+                )
+
             degraded = take_fallbacks()
             degradation = degradation_summary()
             for agent in degraded:
@@ -662,6 +703,7 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
             source_index = list(final_state.get("source_index") or [])
             sources = list(final_state.get("sources") or [])
             facts = list(final_state.get("facts") or [])
+            contradictions = list(final_state.get("contradictions") or [])
             confidence = float(final_state.get("confidence", 0.0) or 0.0)
             await _finish("completed", confidence)
 
@@ -673,6 +715,20 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
                 ))
             if facts:
                 await _persist(save_claims(settings.database_url, request_id, facts))
+            if contradictions:
+                # Same challenge flagging a fresh run applies — a resumed run
+                # must not persist claims the fresh path would have marked.
+                await _persist(mark_challenged_claims(
+                    settings.database_url, request_id, contradictions,
+                ))
+            if facts:
+                # Same end-of-run findings frame as the fresh-run path: the
+                # live panel must match what a replay of this id shows.
+                yield event_line(
+                    "findings",
+                    items=_finding_items(facts, contradictions),
+                    verified_update=True,
+                )
 
             if report:
                 await _persist_report(settings.database_url, request_id, query, report, confidence, audit="")

@@ -44,6 +44,7 @@ export type Finding = {
   verification_reason?: string | null;
   agent?: string;
   confidence?: number | null;
+  challenged?: boolean;
 };
 
 /** Any frame carries the server's emission stamp (`ts`, epoch ms). The client
