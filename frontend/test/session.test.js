@@ -128,3 +128,47 @@ test("updateMission and removeMission target the session, not the run", () => {
   const afterRemove = removeMission("chat-1");
   assert.deepEqual(afterRemove.map((m) => m.sessionId), ["chat-2"]);
 });
+
+/* ---- the visible list must always be the cached list ----
+ *
+ * `updateMission` / `removeMission` read and write localStorage, while the
+ * backend session sync produced missions that existed in React state ONLY. A
+ * rename, pin or delete on one of those read an empty cache and wrote it
+ * straight back, so the rail emptied — pinning one of 30 sessions deleted all
+ * 30. Reproduced live, then fixed by persisting whatever is visible. */
+const { persistMissions } = await import("../src/lib.js");
+
+test("persistMissions caches exactly the list it is given", () => {
+  store.clear();
+  persistMissions([
+    { sessionId: "chat-1", query: "q1" },
+    { sessionId: "chat-2", query: "q2" },
+  ]);
+  assert.deepEqual(loadMissions().map((m) => m.sessionId), ["chat-1", "chat-2"]);
+});
+
+test("persistMissions never grows the cache past the 30-session cap", () => {
+  store.clear();
+  persistMissions(Array.from({ length: 45 }, (_, i) => ({ sessionId: `c${i}` })));
+  assert.equal(loadMissions().length, 30, "an unbounded cache is how RUNTIME_STATE leaked");
+});
+
+test("a mutation on a freshly cached session cannot empty the list", () => {
+  // The exact failure: the sync wrote 30 missions into state, the cache was
+  // empty, and updateMission persisted the empty list back over it.
+  store.clear();
+  const synced = Array.from({ length: 30 }, (_, i) => ({ sessionId: `s${i}`, runId: `r${i}` }));
+  persistMissions(synced);                       // what the sync now does
+  updateMission("s0", { pinned: true });         // what a pin does
+  const after = loadMissions();
+  assert.equal(after.length, 30, "pinning one session must not delete the other 29");
+  assert.equal(after.find((m) => m.sessionId === "s0").pinned, true);
+});
+
+test("removeMission on a cached session removes exactly that one", () => {
+  store.clear();
+  persistMissions(Array.from({ length: 5 }, (_, i) => ({ sessionId: `s${i}` })));
+  const after = removeMission("s2");
+  assert.equal(after.length, 4);
+  assert.equal(after.find((m) => m.sessionId === "s2"), undefined);
+});

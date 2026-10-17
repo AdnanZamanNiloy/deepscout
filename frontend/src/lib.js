@@ -206,23 +206,34 @@ export function upsertMission(mission) {
 
 export function removeMission(sessionId) {
   const list = loadMissions().filter((m) => m.sessionId !== sessionId);
+  persistMissions(list);
+  return list;
+}
+
+/* Mirror a mission list into the local cache.
+ *
+ * Needed because the two halves used to disagree. `updateMission` /
+ * `removeMission` / `upsertMission` all read and write localStorage, while
+ * `saveMissions` in App.jsx set React state only — so a session that arrived
+ * from the backend sync existed in state and nowhere else. Renaming, pinning
+ * or deleting one of those read an EMPTY cache, wrote it straight back, and the
+ * rail emptied: pinning one of 30 sessions wiped all 30.
+ *
+ * Any list that becomes the visible list must therefore also be persisted, or
+ * the next mutation will write back a stale cache over it. */
+export function persistMissions(list) {
   try {
-    localStorage.setItem(MISSIONS_KEY, JSON.stringify(list));
+    localStorage.setItem(MISSIONS_KEY, JSON.stringify((list || []).slice(0, MAX_MISSIONS)));
   } catch {
     /* ignore */
   }
-  return list;
 }
 
 /* Patch fields (title, pinned) on one mission, preserving order. */
 export function updateMission(sessionId, patch) {
   const list = loadMissions().map((m) =>
     m.sessionId === sessionId ? { ...m, ...patch, updatedAt: new Date().toISOString() } : m);
-  try {
-    localStorage.setItem(MISSIONS_KEY, JSON.stringify(list.slice(0, MAX_MISSIONS)));
-  } catch {
-    /* ignore */
-  }
+  persistMissions(list);
   return list.slice(0, MAX_MISSIONS);
 }
 

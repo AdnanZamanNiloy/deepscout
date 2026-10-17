@@ -130,7 +130,125 @@ what remains is substantive mismatch the verifier exists to catch. Capture:
 30 cited URLs, 23 fetched, 4 failed, 0 over budget, ~9s after the run's
 timeout scope closed.
 
-662 backend tests pass; ruff clean.
+- **The degraded cap is wired again, and explains itself**
+  (`backend/app/evidence/audit.py`, `backend/app/research/runner.py`,
+  `backend/app/runtime/event_adapter.py`, `backend/app/api/routes.py`,
+  `backend/tests/test_audit_bridge.py`,
+  `frontend/src/App.jsx`, `frontend/src/components/IntelligencePanel.jsx`).
+  The `confidence-v3` entry above claims "degraded runs still cap at 0.55",
+  but that promise was dead in production: `compute_audit` accepted a
+  `degraded` list and never forwarded it to `compute_confidence`, so a run
+  whose synthesizer fell back to deterministic extraction scored on its
+  extractive claims — which trivially self-verify — and could read "High".
+  The same omission silently disabled the provider-outage cap. The state now
+  reaches the engine (`degraded` plus an explicit `provider_degraded` flag),
+  defaulting to the request-scoped degradation context when a caller omits
+  it, with regression tests covering each cap path (healthy strong-summarizer,
+  synthesizer fallback, provider outage, ambient fallback record). A new
+  `confidence_notes` field carries the reasons — including a cap and why it
+  applied — on the `final_report` frame and in the Research health panel, so
+  a capped score is never just a number.
+- **Session rows are actionable again: the "…" is back on the rail**
+  (`frontend/src/components/Sidebar.jsx`, `frontend/src/layout.css`,
+  `frontend/src/App.jsx`, `frontend/src/lib.js`,
+  `frontend/test/session-row-menu.test.js`). Flattening the rail (commit
+  `0347fb0d`) removed the per-row menu on the reasoning that session management
+  belongs on the session header. That left the rail as a list you could read but
+  not act on. The "…" is restored on every row with the same three actions and
+  the same handlers — Pin, Rename (inline, in the row's own box), Delete — and
+  the header keeps its own menu, because a pinned row is not always the open
+  session. The button appears on hover/focus/open so the rail stays calm, and it
+  is a SIBLING of the row button rather than nested inside it: the row must keep
+  one hit target and one accessible name, and a control nested in a button is
+  invalid HTML and unreachable by keyboard.
+- **Two real bugs surfaced the moment that menu was usable** — both found by
+  driving the real app, not by reading it. Neither is new code; both were
+  sitting behind a UI that had been removed:
+  - **The header menu's actions were no-ops.** `PageTitle` passed
+    `mission.runId` to `toggleMissionPin` / `deleteMission` / `onRename`, which
+    key on `sessionId`. A mission's `runId` and `sessionId` are different values
+    by construction (one session holds many runs), so all three matched nothing.
+    Now keyed on `sessionId`.
+  - **Any mutation on a backend-synced session deleted every session.** The
+    `/api/sessions` sync called `setMissions` directly, so those missions lived
+    in React state and never in localStorage — while `updateMission` /
+    `removeMission` / `upsertMission` read and wrote localStorage. Renaming,
+    pinning or deleting one of them read an EMPTY cache and wrote it straight
+    back: pinning one of 30 sessions emptied the rail and left 0 of 30 in the
+    cache. Fixed with a single effect that persists whatever list is visible
+    (`persistMissions` in `lib.js`, sliced to the 30-session cap), so no write
+    path can leave the cache behind the UI again. Verified live on the real
+    30-session list: Pin keeps 30 and flips the row to "Unpin", Rename stores
+    the new title, Delete removes exactly one, and all of it survives a reload.
+    Note `Delete` remains client-side only — a reload re-syncs the session from
+    the backend, since removing it for real needs a backend endpoint.
+- **The docs page rendered blank, and every check said it was fine**
+  (`frontend/public/docs.content.js`, `frontend/test/docs-accuracy.test.js`).
+  The built-in docs are served verbatim from `public/` into an iframe, so the
+  Vite build never parses them, and every test that referenced them matched them
+  as TEXT. A missing comma between two array entries in the verification table
+  glued the two strings together; a truncated latency edit had eaten the closing
+  quote off three benchmark rows. The payload failed to parse, so
+  `window.DEEPSCOUT_DOCS` stayed undefined, `DocsView` threw
+  `Cannot read properties of undefined (reading 'id')`, and the page was blank —
+  with the build green and all tests green, because nothing had ever *run* the
+  file. Both syntax faults are fixed, along with a stale duplicate paragraph
+  that had been left behind by the same line-based edit (it claimed a "stale
+  count" and "unreachable sources" in the verifier output — neither exists; the
+  census is a log line of failure classes). The docs are now compiled and
+  **executed** in a sandbox by the suite, then asserted structurally: every nav
+  entry resolves to a non-empty page, and no HTML string ends mid-tag. Verified
+  by reintroducing the missing comma — the guard failed, then passed on restore.
+  Root cause worth keeping: a file that no build step and no test ever
+  *executed* is a file whose correctness is unverified no matter how many
+  assertions mention it.
+- **`MAX_PARALLEL_LLM` was documented as 2 in one place and 4 in another**
+  (`frontend/public/docs.content.js`, `AGENTS.md`). The real default is 4 (2 was
+  raised once the free-tier key was no longer the only path); the hero and
+  CONFIG.md were right, the Reliability section and AGENTS.md were stale. Both
+  now say 4 and explain why it was raised.
+- **The console preview on the landing page shows a sidebar that no longer
+  exists** (`frontend/src/components/Landing.jsx`, `frontend/src/components.css`,
+  `frontend/test/landing-hero.test.js`). The hero draws a picture of the console
+  and the whole point is that it is the product's actual shape — but it had
+  drifted after the rail was redesigned, and markup cannot disagree with the
+  product at runtime, so nothing failed. The preview still drew a `Research 30`
+  count badge, a `Recent` / `+24 more` section head, and two-line session rows
+  with the mode beneath each title; the real rail has been a flat single-line
+  list with a status dot, no count and no head. It also drew a `‹` chevron as the
+  panel collapse control (the real console collapses the run-insights panel to
+  an `IconPanel` button pinned top-right) and stamped the report
+  `Date: 17/10/2026` (the report's own markdown line is
+  `*17 October 2026, 18:25 +06*`, written by the run itself). All four now
+  mirror the real components. The preview was already accurate about the trace
+  bar ("Less steps" / "Worked for"), and that is now asserted too.
+  Five new tests read the preview against `Sidebar.jsx`, `App.jsx` and
+  `trace/AgentPipelineTrace.tsx` — including the backend's own date format — so
+  the picture and the console cannot diverge again. Verified by reintroducing
+  both drift shapes: the guards failed, then passed again on restore.
+- **Documentation describes the system that actually ships**
+  (`README.md`, `ARCHITECTURE.md`, `CONFIG.md`, `SETUP.md`,
+  `DeepScout-vision-v2.md`, `frontend/public/docs.content.js`,
+  `frontend/src/components/Landing.jsx`,
+  `frontend/test/docs-accuracy.test.js`, new). A documentation audit found
+  the published docs describing subsystems that do not exist (an intent
+  classifier, live citation re-validation), understating what the run
+  actually does, and quoting stale numbers. Corrected: the event tables now
+  list `findings` (which is emitted) and stop denying it; the resume docs
+  describe per-node checkpointing instead of claiming no checkpointing; the
+  degraded-cap wording distinguishes the unconditional synthesizer cap from
+  the evidence-conditional summarizer one; `CONFIG.md` drops a deleted
+  setting, adds `AUDIT_FETCH_*`, and explains that `.env.example` wins over
+  class defaults (so a stock clone runs 25 s / 90 s / fallback-on); mode
+  tables quote the enforced ceilings and quick's zero fact-check round;
+  counts match the suites (672 backend / 340 frontend); the landing page's
+  GitHub link points at the real repository; and the vision doc is labelled
+  the design record it is, so its conceptual role names stop reading as
+  current code. `docs-accuracy.test.js` reads the backend source of truth and
+  fails when the prose and the code drift — the stale count and the
+  un-emitted `findings` frame were both caught by it on first run.
+
+672 backend and 340 frontend tests pass; ruff clean.
 
 ## Unreleased — First-party research pipeline
 

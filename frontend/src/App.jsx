@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchSession, fetchTrace, listSessions, resumeResearch, startResearch, submitPlanDecision as apiSubmitPlanDecision } from "./api";
-import { MODE_META, isNoProviderError, loadActiveSessionId, loadKnowledge, loadMissions, newSessionId, removeMission, saveActiveSessionId, saveKnowledgeItem, shouldAutoScroll, truncateFromMessage, updateMission, upsertMission } from "./lib";
+import { MODE_META, isNoProviderError, loadActiveSessionId, loadKnowledge, loadMissions, newSessionId, persistMissions, removeMission, saveActiveSessionId, saveKnowledgeItem, shouldAutoScroll, truncateFromMessage, updateMission, upsertMission } from "./lib";
 import Sidebar from "./components/Sidebar";
 import Composer from "./components/Composer";
 import { ErrorCard, AgentMessageShell, UserMessage } from "./components/Thread";
@@ -279,6 +279,22 @@ export default function App() {
   }, []);
 
   const saveMissions = useCallback((list) => setMissions(list), []);
+
+  /* Whatever is VISIBLE must also be CACHED — one effect, so no path can skip it.
+   *
+   * `updateMission` / `removeMission` / `upsertMission` read and write
+   * localStorage (lib.js), so a list that only existed in React state was a
+   * phantom: the backend sync produced exactly those, which meant renaming,
+   * pinning or deleting a synced session read an EMPTY cache, wrote it back,
+   * and emptied the rail — pinning one of 30 sessions deleted all 30.
+   *
+   * Keyed on state alone, so it also covers the sync (which sets state
+   * directly) and any future caller that forgets to persist. Persisting from
+   * state is safe: every writer already slices to MAX_MISSIONS, so this can
+   * never grow the cache past the cap. */
+  useEffect(() => {
+    persistMissions(missions);
+  }, [missions]);
 
   /* One place that turns a run's terminal/stream status into a mission row.
    * All five call sites previously repeated the same field mapping; they now
@@ -975,6 +991,9 @@ export default function App() {
         onNew={startNew}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        onRename={renameMission}
+        onTogglePin={toggleMissionPin}
+        onDelete={deleteMission}
       />
       {sidebarOpen ? <button className="scrim" onClick={() => setSidebarOpen(false)} aria-label="Close menu" /> : null}
       </ErrorBoundary>
@@ -1003,7 +1022,7 @@ export default function App() {
                 <MissionsView
                   missions={missions}
                   onOpen={openReplay}
-                  onRemove={(runId) => saveMissions(removeMission(runId))}
+                  onRemove={(sessionId) => saveMissions(removeMission(sessionId))}
                   onNew={startNew}
                 />
               ) : view === "agents" ? (
@@ -1279,7 +1298,7 @@ function PageTitle({ title, mission, view, onRename, onTogglePin, onDelete }) {
 
   const commitRename = () => {
     const clean = draft.trim().slice(0, 80);
-    if (clean && mission) onRename(mission.runId, clean);
+    if (clean && mission) onRename(mission.sessionId, clean);
     setEditing(false);
   };
 
@@ -1348,11 +1367,11 @@ function PageTitle({ title, mission, view, onRename, onTogglePin, onDelete }) {
               >
                 <IconPencil size={14} /> Rename
               </button>
-              <button className="title-menu-item" onClick={() => { onTogglePin(mission.runId); close(); }}>
+              <button className="title-menu-item" onClick={() => { onTogglePin(mission.sessionId); close(); }}>
                 <IconPin size={14} /> {mission.pinned ? "Unpin" : "Pin"}
               </button>
               <div className="title-menu-sep" role="separator" />
-              <button className="title-menu-item danger" onClick={() => { onDelete(mission.runId); close(); }}>
+              <button className="title-menu-item danger" onClick={() => { onDelete(mission.sessionId); close(); }}>
                 <IconTrash size={14} /> Delete
               </button>
             </div>

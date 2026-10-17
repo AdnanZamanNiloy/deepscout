@@ -1,17 +1,28 @@
-import { IconAgents, IconCompass, IconMissions, IconPlus } from "./icons";
+import { useEffect, useState } from "react";
+import {
+  IconAgents, IconCompass, IconMissions, IconMore, IconPencil, IconPin,
+  IconPlus, IconTrash,
+} from "./icons";
 import BrandLockup from "./Brand";
 
 /* Primary navigation + the session list.
  *
- * The list is deliberately FLAT: a small status dot and the title, one compact
- * single-line row per research session. An earlier version stacked mode and
- * "7 min ago" under every title and gave each row a menu button, which made
- * the rail harder to scan than the chat it points at — the sub-line competed
- * with the titles, and rows were twice as tall for information that belongs on
- * the session itself.
+ * The list is deliberately FLAT: a status dot and the title, one compact
+ * single-line row per research session. An earlier version stacked the mode and
+ * "7 min ago" under every title, which made the rail harder to scan than the
+ * chat it points at — the sub-line competed with the titles and rows were twice
+ * as tall for information that belongs on the session itself.
  *
- * Session management (rename / pin / delete) is NOT here: it lives on the
- * session's own header menu, so the rail stays a pure index of what exists.
+ * Session management (rename / pin / delete) lives on each row's own "…" menu.
+ * It used to live ONLY on the session header, which meant a session could not
+ * be renamed, pinned or deleted from the rail at all — and a list you can read
+ * but not act on is a worse index than one that can. The same three actions,
+ * same handlers; the row is the anchor. The header keeps its own menu because a
+ * pinned row is not always the open session.
+ *
+ * The row and the "…" are SIBLING buttons, never nested: the row must stay one
+ * button so its hit target and its accessible name are the title, and a nested
+ * control inside a button is invalid HTML and unreachable by keyboard.
  */
 const NAV = [
   { id: "missions", label: "Research", icon: IconMissions },
@@ -30,9 +41,121 @@ export const STATUS_DOT = {
 
 export default function Sidebar({
   view, onNavigate, missions, activeSessionId, onOpenMission, onNew,
-  open, onClose,
+  open, onClose, onRename, onTogglePin, onDelete,
 }) {
+  const [menuSessionId, setMenuSessionId] = useState(null);
+  const [editing, setEditing] = useState(null);
+
+  /* One menu at a time, and it closes on the two things a menu must always
+   * close on: a click anywhere else, and Escape. Scoped to the open session's
+   * row so clicking inside the menu (or the row being renamed) does not close
+   * it under the pointer. */
+  useEffect(() => {
+    if (menuSessionId == null) return;
+    const onDown = (e) => {
+      if (!e.target.closest(".session-row-wrap")) setMenuSessionId(null);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setMenuSessionId(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuSessionId]);
+
   const go = (id) => { onNavigate(id); onClose?.(); };
+
+  const renderRow = (m) => {
+    const label = m.title || m.query;
+    const isActive = m.sessionId === activeSessionId;
+    const isEditing = editing === m.sessionId;
+    const menuOpen = menuSessionId === m.sessionId;
+    return (
+      <li key={m.sessionId} className={`session-row-wrap${menuOpen ? " open" : ""}`}>
+        <button
+          type="button"
+          className={`session-row${isActive ? " active" : ""}`}
+          aria-current={isActive ? "true" : undefined}
+          onClick={() => { onOpenMission(m.sessionId); onClose?.(); }}
+          title={label}
+        >
+          <span className={`dot ${STATUS_DOT[m.status] || "idle"}`} />
+          {isEditing ? (
+            <input
+              className="session-rename-input"
+              defaultValue={label}
+              autoFocus
+              aria-label={`Rename ${label}`}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") {
+                  const clean = e.currentTarget.value.trim();
+                  if (clean && clean !== label) onRename?.(m.sessionId, clean);
+                  setEditing(null);
+                } else if (e.key === "Escape") {
+                  setEditing(null);
+                }
+              }}
+              onBlur={(e) => {
+                const clean = e.target.value.trim();
+                if (clean && clean !== label) onRename?.(m.sessionId, clean);
+                setEditing(null);
+              }}
+            />
+          ) : (
+            <span className="name">{label}</span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          className="session-menu-btn"
+          aria-label={`Actions for ${label}`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuSessionId((cur) => (cur === m.sessionId ? null : m.sessionId));
+          }}
+        >
+          <IconMore size={15} />
+        </button>
+
+        {menuOpen ? (
+          <div className="session-row-menu" role="menu" aria-label={`Actions for ${label}`}>
+            <button
+              type="button"
+              className="session-menu-item"
+              role="menuitem"
+              onClick={() => { onTogglePin?.(m.sessionId); setMenuSessionId(null); }}
+            >
+              <IconPin size={15} /> {m.pinned ? "Unpin" : "Pin"}
+            </button>
+            <button
+              type="button"
+              className="session-menu-item"
+              role="menuitem"
+              onClick={() => { setEditing(m.sessionId); setMenuSessionId(null); }}
+            >
+              <IconPencil size={15} /> Rename
+            </button>
+            <button
+              type="button"
+              className="session-menu-item danger"
+              role="menuitem"
+              onClick={() => { onDelete?.(m.sessionId); setMenuSessionId(null); }}
+            >
+              <IconTrash size={15} /> Delete
+            </button>
+          </div>
+        ) : null}
+      </li>
+    );
+  };
 
   return (
     <aside className={`sidebar${open ? " open" : ""}`} aria-label="Chats and navigation">
@@ -65,24 +188,7 @@ export default function Sidebar({
           <p className="empty">No research yet — start a question and the chat appears here.</p>
         ) : (
           <ul className="session-list">
-            {missions.map((m) => {
-              const label = m.title || m.query;
-              const isActive = m.sessionId === activeSessionId;
-              return (
-                <li key={m.sessionId}>
-                  <button
-                    type="button"
-                    className={`session-row${isActive ? " active" : ""}`}
-                    aria-current={isActive ? "true" : undefined}
-                    onClick={() => { onOpenMission(m.sessionId); onClose?.(); }}
-                    title={label}
-                  >
-                    <span className={`dot ${STATUS_DOT[m.status] || "idle"}`} />
-                    <span className="name">{label}</span>
-                  </button>
-                </li>
-              );
-            })}
+            {missions.map(renderRow)}
           </ul>
         )}
       </div>
