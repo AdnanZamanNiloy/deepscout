@@ -276,7 +276,7 @@ Each line of the response is one JSON event; see the [API reference](#api-refere
 
 Open `http://127.0.0.1:5173/?demo=1` to run the real console against **real
 recorded runs**: five finished research runs with their actual questions,
-progress, confidence, claims and reports — no backend, no model calls. The
+progress, confidence, claims and reports, with no backend and no model calls. The
 fixtures are generated from real recordings by `backend/bench/make_demo_fixtures.py`, so
 they cannot describe a pipeline that no longer runs. The same mode powers the
 [static demo deployment](#static-demo-cloudflare-pages).

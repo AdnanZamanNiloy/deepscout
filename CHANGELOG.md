@@ -188,7 +188,7 @@ timeout scope closed.
   `frontend/src/demo/index.js`, `frontend/test/demo-real-data.test.js`,
   `deploy/cloudflare-pages/README.md`, `README.md`). The deployment demo listed
   invented chats with `example.org` citations that were never retrieved, and its
-  own header claimed the wire emitted no `findings` frame — which it does. So
+  own header claimed the wire emitted no `findings` frame, which it does. So
   the demo's live run showed an empty evidence panel while the real product
   filled one, and nothing failed: a fixture is data, so being wrong looks
   exactly like being right.
@@ -202,13 +202,13 @@ timeout scope closed.
   FULL reports. Bounded and disclosed: claim and source rows (first N, with the
   real totals beside them), and inter-frame delays scaled to a ~26s replay.
   `source_count` is never lowered, so the UI reports what the run really
-  retrieved. Reports are kept whole — a truncated report would misdescribe a
+  retrieved. Reports are kept whole; a truncated report would misdescribe a
   finished run.
 
   One featured run is recorded by the current build, so the demo carries today's
   wire (`findings`, `confidence_notes`); older recordings predate those fields
   and the generator does not invent them. The rich payload is read from the
-  recorded final_report FRAME, not the trace's `final_report` row — the row is
+  recorded final_report FRAME, not the trace's `final_report` row: the row is
   only four keys, and reading it alone would have shipped a demo whose runs had
   no confidence breakdown, silently, because every field it did read was
   present.
@@ -226,17 +226,17 @@ timeout scope closed.
   its own: real UUIDs, no placeholder hosts, real claim sentences, a finished
   report per run, terminal frames using the wire field names, and the
   streamed-count-equals-replayed-count invariant. `agent_events` is dropped from
-  the fixtures — the client reads the `stage` frames for the lifecycle, so it was
+  the fixtures. The client reads the `stage` frames for the lifecycle, so it was
   12% of the payload for a field no reader touches.
 
 - **The static demo no longer answers questions it cannot answer**
   (`frontend/src/components/Composer.jsx`,
   `frontend/test/nav-during-run.test.js`). A demo has no backend, so a typed
-  question could only be answered with a RECORDED run about something else —
+  question could only be answered with a RECORDED run about something else:
   true, and about the wrong thing, which is worse than no answer. Sending is now
   disabled for the whole demo build, on all three paths: the button, the submit
   handler and Enter (which falls through to a newline instead of sending). The
-  visitor is told why — the placeholder points at the recorded chats, a status
+  visitor is told why: the placeholder points at the recorded chats, a status
   line says the demo has no backend, and the button's tooltip explains the
   disabled state rather than leaving a dead control. The rail's real chats stay
   fully explorable, so the demo still shows the product doing real work.
@@ -250,11 +250,11 @@ timeout scope closed.
   (`brand/` → `docs/assets/`, `README.md`, `frontend/test/docs-accuracy.test.js`).
   The top-level `brand/` folder held three SVGs, and nothing but the README read
   any of them. The two wordmarks (light + dark) are documentation assets, so they
-  now live in `docs/assets/` — deliberately NOT in `frontend/public/`, which
+  now live in `docs/assets/`, deliberately NOT in `frontend/public/`, which
   would have copied 33 KB of unused art into every deployed demo bundle. The
   third file, `deepscout-logo.svg`, was **byte-identical** to
-  `frontend/public/deepscout.svg` (same md5) — the one the app actually serves as
-  favicon and mask icon — so it was deleted rather than carried along: the logo
+  `frontend/public/deepscout.svg` (same md5), the one the app actually serves as
+  favicon and mask icon, so it was deleted rather than carried along: the logo
   now has one source. `brand/workspace.png` (a 1920×953 capture of the console
   mid-run) moved with the folder and is now the README's screenshot, directly
   under the header.
@@ -263,7 +263,7 @@ timeout scope closed.
   icon and reports nothing, no build fails, and the README just loses its logo.
   Only README consumed these files, so nothing in the app would have noticed a
   dangling path. `docs-accuracy.test.js` now resolves every repo-relative `src`
-  and `srcset` the README renders, and asserts it exists — verified by pointing
+  and `srcset` the README renders, and asserts it exists. Verified by pointing
   one back at the old path and watching it fail.
 - **The docs page rendered blank, and every check said it was fine**
   (`frontend/public/docs.content.js`, `frontend/test/docs-accuracy.test.js`).

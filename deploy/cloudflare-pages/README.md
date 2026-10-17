@@ -2,7 +2,7 @@
 
 This folder is **self-contained**: it lets DeepScout's landing page, docs site
 and chat console deploy as a **static site with no backend**. The chat
-interface replays **real recorded research runs** — no models are called, no
+interface replays **real recorded research runs**: no models are called, no
 server runs.
 
 Nothing here changes the production app. Demo mode is opt-in at build time.
@@ -17,7 +17,7 @@ FastAPI backend. In demo builds, a fetch interceptor
 
 ```text
 frontend/src/demo/
-  runs.js          GENERATED — five REAL runs, pulled from
+  runs.js          GENERATED: five REAL runs, pulled from
                    GET /api/research/{run_id}/trace by
                    bench/make_demo_fixtures.py. Queries, plans, progress
                    lines, critic reviews, confidence, findings and full
@@ -31,13 +31,13 @@ frontend/src/demo/
 ```
 
 Because the interceptor sits *below* every component, the demo **is** the real
-UI — same stream parser, same event switch, same panels — pointed at recorded
+UI: same stream parser, same event switch, same panels, pointed at recorded
 data. There is no forked client to drift out of sync.
 
 The fixtures used to be hand-authored literals, and they rotted: their own
 header claimed the wire emitted no `findings` frame (it does), the sidebar
 listed invented chats, and the citations pointed at `example.org`. Nothing
-failed, because a fixture is data — being wrong looks exactly like being right.
+failed, because a fixture is data: being wrong looks exactly like being right.
 They are generated from recordings now, so re-running the generator after a wire
 change is all it takes to keep the demo current.
 
@@ -121,14 +121,14 @@ and hand-editing them is exactly how they went stale before. Re-record instead:
   claim rows, source rows and playback duration. The real totals stay beside the
   kept rows (`realClaimCount` / `realSourceCount`) and the run's own
   `source_count` is never lowered, so the UI shows the truth and the file stays
-  a sane size. Report markdown is kept whole — a truncated report would
+  a sane size. Report markdown is kept whole; a truncated report would
   misdescribe a finished run.
 - **Record a fresh run to feature**: send a question to a live backend in the
   mode you want, then pin that run id in `FEATURED_RUNS`. At least one featured
   run should come from the current build, or the demo stops showing today's wire
   (older recordings predate fields like `confidence_notes`).
 - **Change the starter question**: `DEFAULT_QUERY` / `DEMO_STARTERS` in
-  `conversations.js` — these are derived from the recordings, so the "starters"
+  `conversations.js`: these are derived from the recordings, so the "starters"
   are the real questions the demo can answer.
 - **Unknown typed queries** are answered with the closest-matching recording
   rather than a blank, so a visitor poking at the composer always sees a

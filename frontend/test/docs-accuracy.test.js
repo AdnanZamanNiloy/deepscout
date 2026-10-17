@@ -38,8 +38,8 @@ test("every backend path named in the docs exists", () => {
   const missing = [];
   for (const text of docs) {
     for (const m of text.matchAll(/\b(?:backend\/)?(?:app|bench)\/[A-Za-z0-9_./-]+\.py/g)) {
-      /* A bare `app/...` or `bench/...` means `backend/app/...` or `backend/bench/...`
-       * — that is how the docs are written, since both live under backend/. */
+      /* A bare `app/...` or `bench/...` means `backend/app/...` or `backend/bench/...`,
+       * which is how the docs are written: both live under backend/. */
       const rel = m[0].startsWith("backend/") ? m[0] : `backend/${m[0]}`;
       if (!exists(rel)) missing.push(rel);
     }

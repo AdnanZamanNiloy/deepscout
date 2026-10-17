@@ -6,7 +6,7 @@ Why this exists
 The demo used to be hand-authored: someone read a recorded run and retyped it
 into `conversations.js` / `sessions.js` as JavaScript literals. That is
 guaranteed to rot, and it did. The fixtures ended up describing a pipeline that
-no longer exists — their own header claimed the wire emits no `findings` frame
+no longer exists: their own header claimed the wire emits no `findings` frame
 (it does), invented the sidebar's chats, and shipped `example.org` citations
 that were never retrieved. Nobody noticed because a fixture is data: nothing
 fails when it is wrong, it just shows a visitor a product that never ran.
@@ -61,7 +61,7 @@ OUT = ROOT / "frontend" / "src" / "demo" / "runs.js"
 FEATURED_RUNS = [
     # Recorded by the CURRENT build, so it carries today's wire: a `findings`
     # frame and `confidence_notes` on the terminal frame. Keep at least one run
-    # like this — older recordings predate those fields, and a demo whose every
+    # like this; older recordings predate those fields, and a demo whose every
     # run lacks them describes a pipeline that no longer emits them.
     "7b58577a",  # perovskite vs crystalline silicon  conf 0.595  quick mode
     "f69ac1d0",  # grid-scale energy storage          conf 0.696
@@ -199,7 +199,7 @@ def build_run(base: str, prefix: str, session_by_run: dict, caps) -> dict:
     # while confidence_breakdown, confidence_notes, quality, citation_health,
     # source_count, degraded and answer_support exist only on the wire frame.
     # Reading the row alone would have shipped a demo whose run had no
-    # confidence breakdown and no health figures — silently, because every
+    # confidence breakdown and no health figures, silently, because every
     # field it did read was present.
     row = trace.get("final_report") or {}
     final = dict(final_frame)
@@ -245,7 +245,7 @@ def render(runs: list[dict]) -> str:
  * This file exists as generated data precisely so the demo cannot describe a
  * pipeline that no longer runs. The previous hand-authored fixtures claimed the
  * wire emitted no `findings` frame (it does), shipped invented chats and
- * `example.org` citations, and nothing failed — a fixture is data, so being
+ * `example.org` citations, and nothing failed: a fixture is data, so being
  * wrong looks exactly like being right. Regenerate instead of editing.
  *
  * Two fields are DISCLOSED bounds rather than fiction:
@@ -253,7 +253,7 @@ def render(runs: list[dict]) -> str:
  *   `claims`/`findings`/`sources` arrays beside them are the first N of those
  *   real rows (see bench/make_demo_fixtures.py). A `findings` frame item is
  *   derived from the same claim row the replay reads, so a streamed run and a
- *   replayed one always report the SAME count — the invariant the findings
+ *   replayed one always report the SAME count. The invariant the findings
  *   frame exists to hold. Report markdown is kept WHOLE; only the arrays are
  *   bounded, because a truncated report would misdescribe a finished run.
  *

@@ -1,6 +1,6 @@
 /* DeepScout static-demo runtime fixtures: what a typed question streams.
  *
- * The DATA is generated, not authored — see ./runs.js and
+ * The DATA is generated, not authored. See ./runs.js and
  * bench/make_demo_fixtures.py. Every run is a real recorded run: its query,
  * plan, progress lines, critic reviews, confidence, findings and full report
  * came out of `GET /api/research/{run_id}/trace`. This module and ./sessions.js
@@ -18,7 +18,7 @@ import { DEMO_RUNS } from "./runs";
 /* Rebuild the terminal frame the recording held.
  *
  * `finalReport` IS that frame's own content, so re-emitting it is a spread, not
- * a reconstruction — a field added to the wire frame reaches the demo without
+ * a reconstruction: a field added to the wire frame reaches the demo without
  * anyone editing this file. The two exceptions are the report and audit bodies:
  * they are stored under `*_markdown` (the trace row's own names, so the replay
  * trace and the wire frame can share one value) and renamed back here. The
@@ -54,7 +54,7 @@ function findingFrom(row) {
 /* Re-attach the claims to the findings frame the recording held.
  *
  * The generator stores the claims once and leaves the findings items off, so
- * this is the only place they are built — which is what makes a streamed run
+ * this is the only place they are built, which is what makes a streamed run
  * and a replayed one report the SAME count by construction. Two stored copies
  * that happened to agree would be a weaker guarantee, and this is the bug the
  * findings frame exists to prevent. */

@@ -40,7 +40,7 @@ const VALID_NODES = new Set([
   "narrative_writer", "evidence_auditor", "diagram_designer", "report_assembler",
 ]);
 
-/* The ONLY frame types the current pipeline emits. `findings` IS one of them —
+/* The ONLY frame types the current pipeline emits. `findings` IS one of them:
  * it carries the annotated claims once at the end of a run. An earlier version
  * of this fixture set listed `findings` as a removed pre-consolidation type and
  * emitted none, so the demo's live run showed an empty evidence panel while the
@@ -54,7 +54,7 @@ const VALID_FRAME_TYPES = new Set([
 /* The real flat signals a final_report.confidence_breakdown carries. */
 /* The signals a real recorded breakdown carries. Base weights in
  * app/core/confidence.py are 7; `axis_coverage` and `claim_evidence_quality`
- * are added conditionally, so a recording may hold either subset — the test
+ * are added conditionally, so a recording may hold either subset. The test
  * asserts every key is a real signal and every value is a number, not that the
  * set is fixed. Hard-coding the count is what made this drift. */
 const CONFIDENCE_SIGNALS = new Set([
@@ -128,7 +128,7 @@ test("the declared source count is the run's REAL count, and the array is a disc
   for (const c of CONVERSATIONS) {
     const final = c.frames.find((f) => f.type === "final_report");
     /* `source_count` is what the run really retrieved and must not be quietly
-     * reduced to match the rows the generator kept — the panel shows this
+     * reduced to match the rows the generator kept. The panel shows this
      * number, and understating it would be the demo lying about the run. The
      * kept rows are a bounded, disclosed subset (bench/make_demo_fixtures.py). */
     assert.equal(typeof final.source_count, "number", `"${c.query}" source_count is a number`);
@@ -190,7 +190,7 @@ test("sidebar sessions, details and traces agree on identity", () => {
 });
 
 test("critic_reviews, when the run recorded any, carry the nested breakdown the panel reads", () => {
-  /* Several featured runs recorded NO critic review — the fact-checker accepted
+  /* Several featured runs recorded NO critic review: the fact-checker accepted
    * the draft, so nothing was written. That is the honest state and the demo
    * must not invent reviews to fill the panel: a fabricated review is a
    * fabricated verdict. When a run DID record one, it must carry the real

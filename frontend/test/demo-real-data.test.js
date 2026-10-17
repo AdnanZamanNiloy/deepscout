@@ -2,7 +2,7 @@
  *
  * The fixtures used to be hand-authored: real-shaped literals with invented
  * chats, invented claims and `example.org` citations that were never retrieved.
- * Nothing failed, because a fixture is data — being wrong looks exactly like
+ * Nothing failed, because a fixture is data: being wrong looks exactly like
  * being right, and a visitor has no way to tell. That is the failure mode this
  * file exists to prevent.
  *
@@ -10,14 +10,14 @@
  *   - the payload is generated, and says so;
  *   - ids are real UUIDs and queries are real questions;
  *   - every cited source is a real, fetchable-looking http(s) URL on a real
- *     domain — never a placeholder;
+ *     domain, never a placeholder;
  *   - claims are real sentences with real verification verdicts, and the
  *     `findings` frame and the replay `claims` are THE SAME rows, so a
  *     streamed run and a replayed run report one claim count;
  *   - the bounded arrays are disclosed, and the real totals beside them are
  *     never quietly lowered to match the subset.
  *
- * If the demo ever needs re-recording, run bench/make_demo_fixtures.py — do not
+ * If the demo ever needs re-recording, run the generator. Do not
  * hand-edit runs.js.
  */
 import { test } from "node:test";
@@ -76,7 +76,7 @@ test("the demo's chats are real questions, not labels", () => {
   }
 });
 
-test("no source is a placeholder — every citation is a real URL", () => {
+test("no source is a placeholder: every citation is a real URL", () => {
   let checked = 0;
   for (const r of DEMO_RUNS) {
     for (const s of r.sources) {
@@ -117,7 +117,7 @@ test("every kept claim is a real sentence with a real verdict", () => {
 
 test("a streamed run and a replayed run report the SAME claims", () => {
   /* The findings frame exists so a live run's panel shows what its replay
-   * shows. Deriving both from one array is what guarantees it — and the old
+   * shows. Deriving both from one array is what guarantees it, and the old
    * fixtures emitted no findings frame at all, so the demo's live run showed an
    * empty evidence panel. */
   for (const c of CONVERSATIONS) {
@@ -161,7 +161,7 @@ test("every run's report is a finished report, not a stub", () => {
 test("the terminal frame uses the wire field names the client reads", () => {
   /* The client reads `evt.report` / `evt.audit`. An earlier adapter emitted the
    * stored `report_markdown` names instead, and the demo rendered runs with no
-   * report and no audit — silently, because every other field was present. */
+   * report and no audit, silently, because every other field was present. */
   for (const c of CONVERSATIONS) {
     const final = c.frames.at(-1);
     assert.equal(final.type, "final_report");
@@ -172,7 +172,7 @@ test("the terminal frame uses the wire field names the client reads", () => {
       "the stored name must not leak onto the wire frame");
     assert.equal(typeof final.confidence, "number");
     assert.ok(final.confidence_breakdown && typeof final.confidence_breakdown === "object");
-    /* Runs recorded before the field existed simply lack it — that is history,
+    /* Runs recorded before the field existed simply lack it. That is history,
      * not an error, and the generator must not invent one. But the set must
      * include at least one run recorded by the CURRENT build, or the demo never
      * shows today's wire and drifts back to describing an older pipeline. */
@@ -183,7 +183,7 @@ test("the terminal frame uses the wire field names the client reads", () => {
   }
   assert.ok(
     CONVERSATIONS.some((c) => Array.isArray(c.frames.at(-1).confidence_notes)),
-    "no featured run was recorded by the current build — re-record one",
+    "no featured run was recorded by the current build; re-record one",
   );
 });
 

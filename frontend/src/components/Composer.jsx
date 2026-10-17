@@ -76,7 +76,7 @@ export default function Composer({
 
   /* A static demo cannot answer a new question: there is no backend behind it.
    * Sending is disabled so a visitor is never handed a RECORDED run in reply to
-   * a question they actually asked — the answer would be true and about
+   * a question they actually asked: the answer would be true and about
    * something else, which is worse than no answer. The rail's real chats remain
    * fully explorable, so the demo still shows the product doing real work. */
   const demoLocked = IS_DEMO;
@@ -122,7 +122,7 @@ export default function Composer({
       />
       {demoLocked && !running ? (
         <p className="composer-hint" role="status">
-          Static demo — no backend, so only the recorded chats can be opened.
+          Static demo: no backend, so only the recorded chats can be opened.
         </p>
       ) : running && value.trim().length >= 5 ? (
         <p className="composer-hint" role="status">

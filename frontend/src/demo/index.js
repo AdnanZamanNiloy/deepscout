@@ -142,9 +142,9 @@ async function handleApi(pathname, search, init) {
        * run. That must be visible in the stream, not hidden: the first line
        * says which recording is playing, so no visitor reads it as a fresh
        * answer to their question. The rest of the frame is left exactly as
-       * recorded — only this message is ours. */
+       * recorded; only this message is ours. */
       if (i === 0 && !exact && typeof stamped.message === "string") {
-        stamped.message = `Demo: no recording for that question — replaying "${truncateForNotice(convo.query)}"`;
+        stamped.message = `Demo: no recording for that question, replaying "${truncateForNotice(convo.query)}"`;
       }
       return stamped;
     });

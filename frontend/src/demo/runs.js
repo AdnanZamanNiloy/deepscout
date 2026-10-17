@@ -12,7 +12,7 @@
  * This file exists as generated data precisely so the demo cannot describe a
  * pipeline that no longer runs. The previous hand-authored fixtures claimed the
  * wire emitted no `findings` frame (it does), shipped invented chats and
- * `example.org` citations, and nothing failed — a fixture is data, so being
+ * `example.org` citations, and nothing failed: a fixture is data, so being
  * wrong looks exactly like being right. Regenerate instead of editing.
  *
  * Two fields are DISCLOSED bounds rather than fiction:
@@ -20,7 +20,7 @@
  *   `claims`/`findings`/`sources` arrays beside them are the first N of those
  *   real rows (see bench/make_demo_fixtures.py). A `findings` frame item is
  *   derived from the same claim row the replay reads, so a streamed run and a
- *   replayed one always report the SAME count — the invariant the findings
+ *   replayed one always report the SAME count. The invariant the findings
  *   frame exists to hold. Report markdown is kept WHOLE; only the arrays are
  *   bounded, because a truncated report would misdescribe a finished run.
  *

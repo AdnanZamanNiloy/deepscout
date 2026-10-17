@@ -127,7 +127,7 @@ test("sending stays blocked while a run streams", async () => {
 
 test("the static demo cannot send at all", async () => {
   /* A demo has no backend, so a typed question can only be answered with a
-   * RECORDED run about something else — true, and about the wrong thing. The
+   * RECORDED run about something else: true, and about the wrong thing. The
    * button is therefore disabled for the whole demo, not merely while a run is
    * streaming, and all three send paths (button, click handler, Enter) are
    * gated so none of them can slip past. */
@@ -140,7 +140,7 @@ test("the static demo cannot send at all", async () => {
   assert.match(composer, /if \(running \|\| demoLocked\) return;/,
     "Enter falls through to a newline instead of sending");
   // The visitor is told why, rather than meeting a dead button with no reason.
-  assert.match(composer, /Static demo — no backend/);
+  assert.match(composer, /Static demo: no backend/);
   assert.match(composer, /Sending is disabled in the static demo/);
 });
 

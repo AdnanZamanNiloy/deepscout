@@ -1,6 +1,6 @@
 /* DeepScout static-demo runtime fixtures: the chats the demo lists.
  *
- * The DATA is generated, not authored — see ./runs.js and
+ * The DATA is generated, not authored. See ./runs.js and
  * bench/make_demo_fixtures.py. Every run is a real recorded run: its query,
  * plan, progress lines, critic reviews, confidence, findings and full report
  * came out of `GET /api/research/{run_id}/trace`. This module and
@@ -88,7 +88,7 @@ export function demoTrace(runId) {
   return TRACE_BY_RUN.get(runId) || null;
 }
 
-/* Session detail — the ordered user question + run message the chat replays. */
+/* Session detail: the ordered user question + run message the chat replays. */
 export function demoSessionDetail(sessionId) {
   const run = DEMO_RUNS.find((r) => r.sessionId === sessionId);
   if (!run) return null;

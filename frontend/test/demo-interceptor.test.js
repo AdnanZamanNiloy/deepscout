@@ -62,7 +62,7 @@ test("GET /api/sessions returns the demo sidebar", async () => {
 });
 
 test("GET /api/sessions/{id} returns an ordered chat history", async () => {
-  // The id is the run's REAL session id, read from the fixture — a hardcoded id
+  // The id is the run's REAL session id, read from the fixture. A hardcoded id
   // here would silently stop exercising the handler the moment the recordings
   // are re-recorded.
   const res = await demoFetch(`/api/sessions/${DEMO_SESSIONS[0].id}`);
