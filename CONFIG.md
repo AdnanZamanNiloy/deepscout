@@ -9,8 +9,11 @@ with an untouched `.env`. The LLM key is added from the app's Model Controls
 tab (`/#/model-controls`, legacy `/#/providers`) and stored encrypted in the
 database; the variables below are optional overrides for headless use.
 
-Every default in this table is the value in `app/common/config.py`, which is the
-single source of truth. If you change a default there, change it here.
+The `Default` column is the class default in `app/common/config.py`. Where
+`.env.example` ships a different value it is shown as `class / shipped`, because
+**`.env.example` wins over the class defaults** (and `.env` wins over that) — so
+on a fresh clone the shipped value is the live one. If you change a default in
+`config.py`, change it here.
 
 ## LLM providers (all optional)
 
@@ -26,7 +29,7 @@ exist for headless/CI setups or to seed a provider before the UI is reachable.
 | `CUSTOM_LLM_API_KEY` | `""` | Custom OpenAI-compatible provider (any host serving `/chat/completions`: OpenRouter, Together, Ollama+ngrok, vLLM, LM Studio). All three of the `CUSTOM_LLM_*` values must be set. |
 | `CUSTOM_LLM_BASE_URL` | `""` | Base URL for the custom provider. |
 | `CUSTOM_LLM_MODEL` | `""` | Model id for the custom provider. |
-| `ACTIVE_PROVIDER_FALLBACK` | `false` | Whether a *failing* UI-selected active provider falls through to the env chain instead of degrading the run. `false` (strict) never spends another provider's key without your say-so. |
+| `ACTIVE_PROVIDER_FALLBACK` | `false` class / `true` in `.env.example` | Whether a *failing* UI-selected active provider falls through to the env chain instead of degrading the run. `false` (strict) never spends another provider's key without your say-so. |
 | `PROVIDER_CHAINS_ENABLED` | `true` | Kill switch for provider fallback chains. An **enabled chain replaces the single-provider selection entirely** — the two modes are mutually exclusive by construction (selecting a provider disables any chain; enabling a chain clears the active provider). `false` disables chain resolution without deleting stored chain data. |
 | `DEEPSCOUT_SECRET_KEY` | `""` | Encrypts provider keys at rest. Unset falls back to a `backend/.deepscout_secret` file created once with `0600` permissions. |
 
@@ -75,8 +78,8 @@ exist for headless/CI setups or to seed a provider before the UI is reachable.
 | `MAX_RESEARCH_SECONDS` | `300.0` | Per-run wall-clock ceiling used by the research budget. |
 | `MAX_ITERATIONS` | `3` | Upper bound on planned research iterations. |
 | `MAX_PARALLEL_AGENTS` | `3` | **Wave size for section research**: how many report sections are researched at once. Each wave's writers also receive the sections already written, so a smaller wave means tighter de-duplication at the cost of latency. |
-| `LLM_TIMEOUT_SEC` | `60.0` | Per-call timeout for Groq/Hugging Face. |
-| `CUSTOM_LLM_TIMEOUT_SEC` | `60.0` | Same, for the custom OpenAI-compatible provider, which is typically slower. Applies to the custom provider only. |
+| `LLM_TIMEOUT_SEC` | `60.0` class / `25` in `.env.example` | Per-call timeout for Groq/Hugging Face. |
+| `CUSTOM_LLM_TIMEOUT_SEC` | `60.0` class / `90` in `.env.example` | Same, for the custom OpenAI-compatible provider, which is typically slower and needs the longer value. Applies to the custom provider only. |
 | `LLM_TEMPERATURE` | `0.3` | Sampling temperature. A provider row may override it. |
 | `LLM_BREAKER_THRESHOLD` | `3` | Consecutive failures that open the circuit breaker. |
 | `LLM_BREAKER_COOLDOWN_SEC` | `15.0` | How long the breaker stays open. Kept short because one upstream 503 otherwise degrades the whole chain for a full minute. |
@@ -106,7 +109,8 @@ here — the Model Control Center owns those.
 | `RESEARCH_REPORT_FORMAT` | `APA` | Citation format named in the prompts. |
 | `RESEARCH_LANGUAGE` | `english` | Output language. |
 | `RESEARCH_REPORT_SOURCE` | `web` | Evidence source: `web`, `local`, or `hybrid`. |
-| `RESEARCH_FAST_TOKEN_LIMIT` | `6000` | Output-token cap for low-stakes calls. |
+| `AUDIT_FETCH_MAX_URLS` | `32` | How many cited URLs the audit-time source capture may fetch. |
+| `AUDIT_FETCH_TIMEOUT_SEC` | `20.0` | Wall-clock budget for that capture pass. It runs after the report, outside the mode timeout, so it can only enrich a run. |
 | `RESEARCH_SMART_TOKEN_LIMIT` | `12000` | Output-token cap for report writing. |
 | `RESEARCH_STRATEGIC_TOKEN_LIMIT` | `8000` | Output-token cap for query planning. |
 | `RESEARCH_MAX_RESULTS_PER_QUERY` | `5` | Results per search query. |

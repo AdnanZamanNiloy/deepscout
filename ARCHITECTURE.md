@@ -90,13 +90,13 @@ structure is the same, and the section outline is derived from the question.
 
 ## Component map
 
-### Research pipeline (`app/research/`)
+### Research pipeline (`app/research/`) and the agent team (`app/agents/`)
 
 | Module | Responsibility |
 |---|---|
 | `app/agents/` | The LangGraph team. `team.py` builds the graph (`ResearchTeam`, `Pathfinder`) and wraps every node so it announces its start and end. `architect.py` is `ResearchArchitect` (planning + the per-section wave sub-graph). `scout.py` is `Scout` / `DraftReviewer` / `DraftReviser`. `report.py` holds `ReviewGate`, `NarrativeWriter`, `EvidenceAuditor`, `DiagramDesigner`, `ReportAssembler`. `routing.py` owns the two bounded loop routers. |
 | `app/research/researcher.py` | `Researcher`: one research unit — choose a role, gather evidence, write a report. |
-| `app/research/skills/` | The capabilities a researcher composes: research conductor, report generator, context manager, browser/scraper manager, source curator. |
+| `app/research/skills/` | The capabilities a researcher composes: evidence gatherer, report writer, context manager, page scraper, source ranker. |
 | `app/research/retrieval/` | Retriever contract, factory, and `SearchClientRetriever` (delegates to `SearchClient`). |
 | `app/research/scraping/` | Page fetcher (httpx), HTML text extraction, and the anti-bot / word-list / PDF guards. |
 | `app/research/context/` | BM25 lexical filtering and the document→context selection layer. |
@@ -120,12 +120,15 @@ structure is the same, and the section outline is derived from the question.
 | `app/retrieval/searchkit/` | Search-client internals: providers, ranking, fetch, dedup, scoring and query handling. |
 | `app/evidence/sources/`, `app/evidence/utils.py` | Source classification, reliability, freshness, corroboration-query building, claim/number extraction, answer-support scoring — the shared evidence vocabulary. |
 | `app/evidence/audit.py` | Reconstructs the fact pool from the report + captured sources and runs the audit core over it. |
+| `app/evidence/verify.py` | The claim verifier: weighted overlap, numeric grounding and polarity, judged against the cited source's captured text (the union, when a claim cites several). |
+| `app/research/source_capture.py` | Audit-time capture: fetches cited pages whose text is only a snippet, so the verifier judges the page rather than a search stub. Bounded, SSRF-guarded, never raises. |
 | `app/report/formatting.py` | Report markdown normalisation (tables, placeholders, duplicate headings), shared by the pipeline and the export path. |
 | `app/infra/budget.py` | Per-run ceilings (model calls, wall-clock seconds) and mode multipliers. |
+| `app/infra/ladder.py` | The degradation ladder: given elapsed time and what MUST still happen, which optional work to shed, in a fixed announced order. |
 | `app/infra/reliability.py` | Retry / circuit-breaker / timeout primitives. |
 | `app/infra/retrieval_health.py` | Run-scoped retrieval health: domain cooldowns, failed-fetch memory, telemetry. |
 | `app/quality/` | Report/answer quality scoring and calibration. |
-| `app/core/confidence.py` | Confidence engine: base signals + citation support + axis coverage + pool-size-scaled contradiction penalty; degraded-run cap 0.55. |
+| `app/core/confidence.py` | Confidence engine: ten signals (base, plus citation support, axis coverage and evidence grade) and a pool-size-scaled contradiction penalty; degraded-run cap 0.55. |
 | `app/core/contradictions.py` | Three detectors (polarity, temporal, unit-aware numeric), severity ordering, cap 5. |
 | `app/common/semantic.py` | TF-IDF hybrid engine: stemming, synonym canonicalization, negation weighting, vectorized batch scoring. |
 | `app/core/evidence_grade.py` | Claim grading (claim→source→verification→independence→corroboration→contradiction). |
@@ -144,7 +147,8 @@ structure is the same, and the section outline is derived from the question.
 | Module | Responsibility |
 |---|---|
 | `app/api/routes.py` | NDJSON stream, resume, trace, export, sessions; provider CRUD + latency probe live in `app/api/providers_routes.py`. |
-| `app/db/sqlite.py` | Auto-initialized schema (WAL), `file:`/`sqlite://` URL forms. |
+| `app/db/sqlite.py` | The stable facade over `app/db/store/`; auto-initialized schema (WAL), `file:`/`sqlite://` URL forms. |
+| `app/db/store/checkpoints.py` | Per-node run checkpoints (`run_checkpoints`), written latest-wins, which is what makes a resume skip completed nodes. |
 | `frontend/` | React mission console: thread, answer card, claim drawer, intelligence panel, Model Control Center. |
 
 ---
@@ -158,11 +162,12 @@ structure is the same, and the section outline is derived from the question.
 | `plan` | `items` (the planned section outline) |
 | `plan_review` | `run_id`, `status` (`awaiting` / `expired`), `alternatives`, `deadline_ts`. Human-in-the-loop: opens the approval card, and closes it when the review window runs out. |
 | `critic` | `iteration`, `reason` (the fact-checker's revision notes, sent whole) |
-| `final_report` | `report` (the primary answer), `confidence`, `confidence_breakdown`, `quality`, `contradictions`, `answer_support`, `degraded`, `degraded_reasons`, `source_count` |
+| `findings` | `items` (the extracted claims: claim, source, verification verdict, challenge flag). One end-of-run frame, so a live run shows the same claim counts a replay rebuilds from `claims`. |
+| `final_report` | `report` (the primary answer), `confidence`, `confidence_breakdown`, `confidence_notes` (how the score was reached, incl. any cap), `quality`, `contradictions`, `answer_support`, `degraded`, `degraded_reasons`, `source_count` |
 | `error` | `message` (actionable: key / quota / timeout causes) |
 
 That is the complete emitted set. `intent`, `route`, `direct_answer`,
-`findings`, `search_progress` and `search_query` are **not** emitted by the
+`search_progress` and `search_query` are **not** emitted by the
 current pipeline — the frontend still has reducers for them, but nothing
 produces them, so they are not listed as part of the contract. Any event type
 the pipeline has no genuine signal for is deliberately not fabricated; the

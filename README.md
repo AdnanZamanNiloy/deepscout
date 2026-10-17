@@ -67,7 +67,7 @@ happened during the run.
 |---|---|
 | **Answer and audit never mix** | The report is prose a person can read. Confidence, quality, contradictions and answer support travel in separate fields of the `final_report` frame, so process metadata never leaks into the answer. |
 | **The audit is deterministic** | Pairing claims with the sources they cite, detecting contradictions (numeric, polarity, temporal), grading evidence and scoring confidence all run without a model call. It is cheap enough to run on every request and gives the same result for the same input. |
-| **Confidence reflects what happened** | A run in which a stage fell back to a default is capped at **0.55**, so it cannot read as high confidence, and the reasons are listed in `degraded_reasons`. When a run retrieved nothing usable, the audit says so instead of inventing a score. |
+| **Confidence reflects what happened** | A run whose **synthesizer** fell back to deterministic extraction is capped at **0.55**, as is any run where a provider failed for transport reasons. A **summarizer** fallback is capped only when the evidence pool is genuinely weak — a verified, independently corroborated extractive pool is a blunt but real answer, and is not scored down for it. Every cap is stated in plain language beside the score (`confidence_notes`). When a run retrieved nothing usable, the audit says so instead of inventing a score. |
 | **Work is bounded** | Per-run wall-clock and model-call ceilings scale with the mode. Revision loops are bounded and force-accept at their ceiling, so a stage that keeps finding fault cannot hold a request open. |
 | **Fails fast and says why** | A preflight probe checks that at least one provider is reachable before any research starts. Auth, quota and timeout failures surface with an actionable message. |
 | **Runs where you are** | 8 GB RAM, no GPU, no local models. Any OpenAI-compatible provider works. Provider keys are encrypted at rest. |
@@ -88,7 +88,7 @@ happened during the run.
 | **Output** | Cited Markdown report plus audit fields; export to Markdown, DOCX or PDF |
 | **Streaming** | NDJSON over a single HTTP response |
 | **Persistence** | SQLite (WAL), schema created automatically |
-| **Tests** | 602 backend and 285 frontend tests, all offline; backend suite runs in CI on every push and pull request |
+| **Tests** | 672 backend and 340 frontend tests, all offline; backend suite runs in CI on every push and pull request |
 
 ---
 
@@ -283,15 +283,23 @@ model calls. The same mode powers the [static demo deployment](#static-demo-clou
 Select the mode in the composer, or send `"mode"` in the request. A mode sets
 **how much research a run does**, not the shape of the report or its audit.
 
-| Mode | Report sections | Plan revisions | Draft revisions | Fact-check revisions | Call and time ceilings¹ | Use for |
-|---|---|---|---|---|---|---|
-| `quick` | 3 | 1 | 1 | 1 | 21 calls · 105 s | Fast lookups |
-| `standard` (default) | 5 | 2 | 2 | 1 | 60 calls · 300 s | Normal research |
-| `deep` | 8 | 2 | 2 | 1 | 150 calls · 750 s | Multi-angle investigations |
+| Mode | Report sections | Plan revisions | Draft revisions | Fact-check revisions | Call and time ceilings¹ | Typical run | Use for |
+|---|---|---|---|---|---|---|---|
+| `quick` | 3 | 1 | 1 | **0** | 21 calls · 180 s | ~2 min | Fast lookups |
+| `standard` (default) | 5 | 2 | 2 | 1 | 60 calls · 360 s | ~3.5 min | Normal research |
+| `deep` | 8 | 2 | 2 | 1 | 150 calls · 720 s | ~5 min | Multi-angle investigations |
 
-¹ With default settings: `MAX_LLM_CALLS` (60) and `MAX_RESEARCH_SECONDS` (300)
-multiplied by 0.35, 1.0 and 2.5. `RESEARCH_TIMEOUT_SEC` (1000 s) is the hard
-ceiling on any single request. An unknown mode falls back to `standard`.
+¹ The ceilings are `MAX_LLM_CALLS` (60) scaled by 0.35 / 1.0 / 2.5, and the
+per-mode wall-clock caps in `MODE_HARD_CAP_SECONDS` — the point at which a run
+is stopped, set well above a healthy run so a stalled provider is caught rather
+than a real one. `RESEARCH_TIMEOUT_SEC` (1000 s) can only lower them. "Typical
+run" is the measured median, and is what the mode picker shows. An unknown mode
+falls back to `standard`.
+
+`quick` differs from the others in more than size: it runs a **single pass**,
+with no fact-check revision round and no figure, because both were the round
+that pushed it from ~100 s to 132-175 s. A standing fact-check objection is
+still reported — it just does not buy a rewrite.
 
 ### Interactive plan review (human in the loop)
 
@@ -328,10 +336,15 @@ WeasyPrint, which needs the pango and cairo system libraries on the host.
 ### Resume
 
 `POST /api/research/{run_id}/resume` retries a run whose status is `failed` or
-`timeout`. **The pipeline does not checkpoint between stages, so a resume
-re-runs the research from the beginning**; the run identity and the NDJSON
-contract are preserved. A user-cancelled run is deliberately not resumable, and a
-run that already has a final report returns `409`.
+`timeout`. **The pipeline checkpoints its state after every node**, so a resume
+restores that state and skips the nodes already done — an interrupted run does
+not re-pay for the search and model calls it already made. Run identity and the
+NDJSON contract are preserved. A user-cancelled run is deliberately not
+resumable, and a run that already has a final report returns `409`.
+
+Resume reopens the stages a pending objection still needs: if the last thing to
+happen was a rejection the consumer has not seen, that pair runs again rather
+than the run looping on the rejection it already recorded.
 
 ### Local documents
 
@@ -411,6 +424,7 @@ The response is `application/x-ndjson`: one JSON object per line, each with a
 | `plan` | `items`: the planned section outline |
 | `plan_review` | `status` (`awaiting` or `expired`), `run_id`, `alternatives`, `deadline_ts`: opens the approval card and closes it when the window ends |
 | `critic` | `iteration`, `reason`: the fact-checker's revision notes |
+| `findings` | `items`: the extracted claims, each with its source, verification verdict and challenge flag. Emitted once at the end of a run, so the live panel shows the same claim counts a replay does. |
 | `final_report` | The report and its audit fields (below) |
 | `error` | `message`: actionable, naming the key, quota or timeout cause |
 
@@ -431,8 +445,9 @@ A typical run, abridged:
 | Field | Type | Meaning |
 |---|---|---|
 | `report` | string (Markdown) | **The answer**: introduction, researched sections, conclusion, optional Mermaid diagram, references. No scores or limitation lists inside the body. |
-| `confidence` | float, 0 to 1 | Multi-signal score: citation support, axis coverage, source quality, a pool-size-scaled contradiction penalty and more. Capped at 0.55 on degraded runs. |
-| `confidence_breakdown` | object | The signals, weights and notes behind the score |
+| `confidence` | float, 0 to 1 | Multi-signal score over ten signals: source quality and diversity, citation coverage and support, claim verification, cross-source agreement, freshness, critic survival, evidence grade, axis coverage, less a pool-size-scaled contradiction penalty. Capped on degraded runs. |
+| `confidence_breakdown` | object | Every signal's measured value for this run |
+| `confidence_notes` | array | How the score was reached: signals that could not be measured, and any cap applied |
 | `quality` | object | Report quality assessment |
 | `contradictions` | array | Detected conflicts (numeric, polarity or temporal), severity-ordered, at most 5 |
 | `answer_support` | float or null | Share of the report's cited sentences supported by the source they cite |
@@ -505,14 +520,14 @@ which overrides `backend/.env.example`. Nothing is required.
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `LLM_TIMEOUT_SEC` | `60` | Per-call timeout (Groq, Hugging Face) |
-| `CUSTOM_LLM_TIMEOUT_SEC` | `60` | Per-call timeout for the custom provider, which is often slower |
+| `LLM_TIMEOUT_SEC` | `60` class / `25` shipped | Per-call timeout (Groq, Hugging Face). The shipped `.env.example` lowers it to 25 s, which is what a fresh clone runs with. |
+| `CUSTOM_LLM_TIMEOUT_SEC` | `60` class / `90` shipped | Per-call timeout for the custom provider, which is often slower and needs the longer value. |
 | `LLM_TEMPERATURE` | `0.3` | Sampling temperature (a provider row may override it) |
 | `LLM_BREAKER_THRESHOLD` | `3` | Consecutive failures that open a provider's circuit breaker |
 | `LLM_BREAKER_COOLDOWN_SEC` | `15` | How long an open breaker stays open |
 | `LLM_CACHE_ENABLED` / `LLM_CACHE_TTL_SEC` | `true` / `21600` | Exact-prompt response cache, 6 hour TTL |
 | `PROVIDER_CHAINS_ENABLED` | `true` | Kill switch for fallback chains |
-| `ACTIVE_PROVIDER_FALLBACK` | `false` | Let a failing selected provider fall through to the env chain. Off means strict exclusivity: no other key is spent without your say-so. |
+| `ACTIVE_PROVIDER_FALLBACK` | `false` class / `true` shipped | Let a failing selected provider fall through to the env chain. `false` is strict: no other key is spent without your say-so. The shipped `.env.example` enables the fallback. |
 | `DEEPSCOUT_SECRET_KEY` | unset | Encrypts provider keys at rest; falls back to an auto-created `backend/.deepscout_secret` (`0600`) |
 | `GROQ_MODEL` | `openai/gpt-oss-20b` | Model for the env-configured Groq provider |
 | `HUGGINGFACE_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | Model for the env-configured Hugging Face provider |
@@ -723,12 +738,12 @@ Every run persists an auditable trace in SQLite, joinable by `run_id`.
 
 ```bash
 # Backend, from backend/
-pytest tests/ -q                       # 602 tests, all offline
+pytest tests/ -q                       # 672 tests, all offline
 ruff check app tests bench             # lint
 mypy app                               # informational baseline, not enforced
 
 # Frontend, from frontend/
-npm test                               # 285 tests on Node's built-in runner, no extra deps
+npm test                               # 340 tests on Node's built-in runner, no extra deps
 npm run build                          # production build
 ```
 
@@ -790,7 +805,9 @@ Stated plainly, so you can decide where DeepScout fits.
   the deterministic components, not live model wording. Small free-tier models are
   slower and less reliable than larger ones, and a rate-limited provider will
   degrade a run.
-- **Resume restarts from the beginning.** The pipeline does not checkpoint.
+- **Resume replays the last incomplete stretch, not the whole run.** State is
+  checkpointed per node, but the graph restarts from its entry point and
+  skips completed nodes; a stage whose output is lost is re-run.
 - **No cost accounting.** Token usage is recorded for observability, but nothing
   prices or caps spend. Bounds are on model calls and wall-clock time.
 - **SearXNG is a separate install.** It needs a local clone, its own virtualenv,
@@ -909,7 +926,7 @@ DOCX export are unaffected.
 │   │   │                        evidence grading, degradation, providers, export, SearXNG supervisor
 │   │   └── db/                  SQLite schema and persistence
 │   ├── bench/                   offline suite, threshold-gated evaluators, golden fixtures, results
-│   └── tests/                   pytest suite (39 modules)
+│   └── tests/                   pytest suite (45 modules)
 ├── frontend/
 │   ├── src/                     App.jsx (stream consumer, session state), api.js, components/,
 │   │                            trace/ (pipeline trace), demo/ (scripted fixtures)

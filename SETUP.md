@@ -136,9 +136,9 @@ curl -N -X POST http://127.0.0.1:8000/api/research/stream \
   -d '{"query": "What is the evidence that retrieval augmented generation reduces hallucinations?", "mode": "standard"}'
 ```
 
-Each line of the response is a JSON event. There are five types: `progress`,
-`plan`, `critic`, `final_report` and `error`. The full event schema is in
-`ARCHITECTURE.md`.
+Each line of the response is a JSON event. There are eight types: `progress`,
+`stage`, `plan`, `plan_review`, `critic`, `findings`, `final_report` and
+`error`. The full event schema is in `ARCHITECTURE.md`.
 
 ---
 
@@ -168,7 +168,7 @@ Select the research mode in the composer:
 
 | Mode | Report sections | Plan revisions | Draft revisions | Fact-check revisions | Use for |
 |---|---|---|---|---|---|
-| `quick` | 3 | 1 | 1 | 1 | fast lookups |
+| `quick` | 3 | 1 | 1 | **0** | fast lookups — one pass, no figures |
 | `standard` (default) | 5 | 2 | 2 | 1 | normal research |
 | `deep` | 8 | 2 | 2 | 1 | multi-angle investigations |
 
@@ -201,7 +201,7 @@ test below); the offline suite covers the deterministic components only.
 
 ```bash
 cd backend
-../.venv/bin/python -m pytest tests/ -q   # 602 tests, all offline
+../.venv/bin/python -m pytest tests/ -q   # 672 tests, all offline
 ```
 
 Every test runs without network or API keys: HTTP is mocked with respx, the

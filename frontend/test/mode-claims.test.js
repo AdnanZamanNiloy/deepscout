@@ -20,6 +20,7 @@ import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (p) => readFileSync(join(here, "..", p), "utf8");
+const readRoot = (p) => readFileSync(join(here, "..", "..", p), "utf8");
 
 const lib = read("src/lib.js");
 const landing = read("src/components/Landing.jsx");
@@ -120,18 +121,30 @@ test("the landing modes list states the same section counts as the backend", () 
   }
 });
 
-test("the docs test-count stat matches the collected backend suite", () => {
-  // Guarded in spirit: the docs must not print a number we know is wrong. The
-  // authoritative value is asserted by the backend suite itself; here we only
-  // pin the two places the docs print it to the SAME value, so they cannot
-  // disagree with each other after a partial edit.
+test("the docs test-count stat matches the collected suites", () => {
+  // The authoritative values are asserted by the backend suite itself and by
+  // docs-accuracy.test.js. What matters here is that the docs print two
+  // DIFFERENT numbers for two DIFFERENT things and both are self-consistent:
+  // the hero stat is the combined total, the quickstart comment is the
+  // backend suite. (These were once required to be equal, which only held
+  // while both printed the backend count.)
   const docs = read("public/docs.content.js");
-  const stats = [...docs.matchAll(/(\d{3})\s*<\/div><div class="k">Offline tests/g)];
-  const comment = /#\s*(\d{3}) tests, fully offline/.exec(docs);
-  assert.ok(stats.length === 1, "expected exactly one hero test-count stat");
-  assert.ok(comment, "expected the quickstart test-count comment");
+  const hero = /(\d{3,})\s*<\/div><div class="k">Offline tests/g;
+  const quickstart = /#\s*(\d{3})(?: \w+)? tests, fully offline/.exec(docs);
+
+  const stats = [...docs.matchAll(hero)];
+  assert.equal(stats.length, 1, "expected exactly one hero test-count stat");
+  assert.ok(quickstart, "expected the quickstart test-count comment");
+
+  const readme = readRoot("README.md");
+  const counts = /(\d+) backend and (\d+) frontend tests/.exec(readme);
+  assert.ok(counts, "README must state both suite counts");
+
+  const backend = Number(quickstart[1]);
+  assert.equal(backend, Number(counts[1]), "the quickstart comment must be the backend count");
   assert.equal(
-    stats[0][1], comment[1],
-    "the two test-count mentions in the docs must agree",
+    Number(stats[0][1]),
+    Number(counts[1]) + Number(counts[2]),
+    "the hero stat must be the combined backend + frontend total",
   );
 });

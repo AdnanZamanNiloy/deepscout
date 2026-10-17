@@ -10,6 +10,17 @@ The top-tier version evolves that foundation into a **research operating system*
 
 Section 0 below is a candid feasibility check against a solo developer running this on an i5-1240P / 8GB RAM machine with remote LLM APIs for generation. Read it before Section 34's build order — the rest of the document is the long-term vision, but Section 34 is the actual sequence to build in.
 
+> **This document is the design record, not the manual.** The role names below
+> (Orchestrator, Critic, Visualizer, Publisher, and the rest) are conceptual and
+> mostly predate the shipped code; the agent team is now eight concrete LangGraph
+> nodes with real names. Nothing in here describes the current system, and where
+> the two disagree, the code and [`ARCHITECTURE.md`](ARCHITECTURE.md) are right.
+> Its remaining job is to record *why* each feature was wanted and what "done"
+> meant for it — which is why it has not been rewritten to match the code, since
+> rewriting it would destroy the acceptance criteria it exists to hold. For how
+> to install, configure or operate DeepScout today, use
+> [`SETUP.md`](SETUP.md), [`CONFIG.md`](CONFIG.md) and [`README.md`](README.md).
+
 ---
 
 # 0. Feasibility & Sequencing Reality Check

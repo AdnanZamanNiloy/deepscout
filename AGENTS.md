@@ -287,7 +287,8 @@ These are real bugs found by reading the code, not hypotheticals. Each one below
       (app/core/llm.py).
   (b) No LLM concurrency cap: 3 parallel ~6K-token summarizer prompts are
       what exhausted Groq's TPD in the first place; LLMClient now holds a
-      MAX_PARALLEL_LLM semaphore (default 2) around every call.
+      MAX_PARALLEL_LLM semaphore around every call (the default has since
+      been raised from 2 to 4 — see CONFIG.md).
   (c) compute_confidence ignored degradation; extractive-fallback claims
       trivially self-verify, so source/verification signals read high.
       Degraded summarizer/synthesizer now caps overall at 0.55 — below the
@@ -488,6 +489,27 @@ These are real bugs found by reading the code, not hypotheticals. Each one below
   PipelineRunner; when touching the runner seam, grep both sides. A facade
   that forwards some methods is not an abstraction, it is a list of the
   methods someone remembered.
+
+[FIXED — docs page rendered blank, every check green]
+  frontend/public/docs.content.js, frontend/test/docs-accuracy.test.js
+  The built-in docs (`public/docs.html` + `docs.app.js` + `docs.content.js`)
+  are served VERBATIM into an iframe, so the Vite build never parses them, and
+  every test that mentioned them matched them as text. Two line-based edits
+  left a missing comma between two array entries and three benchmark rows with
+  their closing quote eaten. The payload failed to parse, `window.DEEPSCOUT_DOCS`
+  stayed undefined, `DocsView` threw on `undefined.id`, and `#/docs` rendered
+  completely blank — with the build green and all 327 tests green. A stale
+  duplicate paragraph from the same edit also claimed a "stale count" and
+  "unreachable sources" in the verifier output; neither exists (the census is a
+  log line of failure classes). Fixed, and the suite now COMPILES AND EXECUTES
+  the payload in a `node:vm` sandbox, then asserts the tree it publishes:
+  every nav entry resolves to a non-empty page, no HTML string ends mid-tag.
+  Rule: a file that no build step and no test ever EXECUTES has unverified
+  correctness no matter how many assertions mention it — asserting on text is
+  not the same as running the thing. Anything in `public/` that ships as
+  script must be executed by a test; when editing it line-by-line, run
+  `node --check` on it before you run the suite, because the suite's regexes
+  will happily pass over a syntax error.
 
 If you find a new instance of any of these patterns anywhere in the codebase while working on something else, fix it or flag it in your commit message — don't leave it for later just because it's outside your current task's file scope.
 
