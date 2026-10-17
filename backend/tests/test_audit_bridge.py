@@ -396,3 +396,114 @@ def test_retriever_source_sink_failure_does_not_raise():
         _Probe._record_sources([{"url": "https://a.test/x"}])  # no exception
     finally:
         _Probe.bind_source_sink(None)
+
+
+# A pool that scores well ABOVE the cap on its own, so a cap is observable.
+STRONG_REPORT = (
+    "# Grid storage economics\n\n"
+    "Grid-scale lithium storage costs fell to 140 dollars per kilowatt-hour "
+    "in 2025 across three major markets according to two independent "
+    "operator datasets ([1]). Sodium-ion chemistry reached commercial "
+    "deployment in grid storage during 2025 with lower material costs ([2]).\n\n"
+    "[1] https://example.com/a\n"
+    "[2] https://example.org/b\n"
+)
+STRONG_FACTS = [
+    {
+        "claim": "Grid-scale lithium storage costs fell to 140 dollars per kilowatt-hour in 2025 across three major markets",
+        "source": "https://example.com/a", "confidence": 0.9, "agent": "pipeline",
+        "verified": True, "verification_score": 0.86,
+        "verification_reason": "weighted overlap 0.86", "corroboration_count": 2,
+    },
+    {
+        "claim": "Sodium-ion chemistry reached commercial deployment in grid storage during 2025 with lower material costs",
+        "source": "https://example.org/b", "confidence": 0.85, "agent": "pipeline",
+        "verified": True, "verification_score": 0.81,
+        "verification_reason": "weighted overlap 0.81", "corroboration_count": 2,
+    },
+]
+STRONG_SOURCES = [{"url": "https://example.com/a"}, {"url": "https://example.org/b"}]
+
+
+def _audit(**over):
+    from app.evidence.audit import compute_audit
+
+    return compute_audit(
+        query="grid storage economics",
+        report=STRONG_REPORT,
+        sources=STRONG_SOURCES,
+        facts=[dict(f) for f in STRONG_FACTS],
+        **over,
+    )
+
+
+def test_a_degraded_run_is_actually_capped_through_the_audit_bridge():
+    """The degraded cap must fire on the LIVE path, not only in unit tests.
+
+    `compute_confidence` is the only place that applies DEGRADED_CAP, and
+    `compute_audit` is its only production caller. When that call site omitted
+    `degraded=`, the guard was dead — a run assembled without a model could
+    score as though it had been researched. The docs promised a cap nothing
+    applied.
+
+    A synthesizer fallback is a degraded PRODUCT whatever the evidence looks
+    like, so it caps unconditionally; that is the case this asserts.
+    """
+    from app.core.confidence import DEGRADED_CAP
+
+    healthy = _audit()
+    assert healthy["confidence"] > DEGRADED_CAP, (
+        "the fixture must score above the cap, or the assertion is vacuous"
+    )
+
+    capped = _audit(degraded=["synthesizer"])
+    assert capped["confidence"] <= DEGRADED_CAP, (
+        f"a synthesizer-fallback run scored {capped['confidence']}, above the "
+        f"{DEGRADED_CAP} cap — the degraded input is not reaching the engine"
+    )
+    assert any("capped" in n.lower() for n in capped.get("confidence_notes", [])), (
+        "the cap must be explained, not silently applied"
+    )
+
+
+def test_a_well_corroborated_summarizer_fallback_is_not_capped():
+    """The evidence-conditional half of the rule, so the fix cannot over-cap.
+
+    A summarizer that fell back to extractive text is capped ONLY when the
+    pool is genuinely weak. A verified, independently corroborated extractive
+    pool is a real (if blunt) answer and must not be scored down for it — the
+    engine says so explicitly instead of capping silently.
+    """
+    from app.core.confidence import DEGRADED_CAP
+
+    assert _audit(degraded=["summarizer"])["confidence"] > DEGRADED_CAP
+    notes = _audit(degraded=["summarizer"]).get("confidence_notes", [])
+    assert any("corroborated" in n and "no cap applied" in n for n in notes), notes
+
+
+def test_a_provider_outage_caps_even_a_strong_pool():
+    """A transport failure preserves no evidence signal, so it caps outright."""
+    from app.core.confidence import DEGRADED_CAP
+
+    out = _audit(degraded=[], provider_degraded=True)
+    assert out["confidence"] <= DEGRADED_CAP
+
+
+def test_the_audit_bridge_defaults_to_the_live_degradation_record():
+    """With no explicit arguments the bridge reads the request's own state.
+
+    Otherwise a future caller that forgets the arguments silently re-disables
+    the cap — which is exactly how it was disabled the first time.
+    """
+    from app.core.confidence import DEGRADED_CAP
+    from app.core.degradation import record_fallback, reset_fallbacks
+
+    reset_fallbacks()
+    try:
+        record_fallback("synthesizer", "provider-transient")
+        out = _audit()
+        assert out["confidence"] <= DEGRADED_CAP, (
+            "ambient degradation must reach the engine without being passed"
+        )
+    finally:
+        reset_fallbacks()

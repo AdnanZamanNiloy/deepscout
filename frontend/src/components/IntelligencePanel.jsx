@@ -120,6 +120,7 @@ export default function IntelligencePanel({
               </div>
             ))}
             <CitationHealthRow health={run.citationHealth} />
+            <ConfidenceNotes notes={run.confidenceNotes} />
           </section>
 
           <ConfidenceBreakdown breakdown={run.breakdown} />
@@ -232,6 +233,23 @@ function CitationHealthRow({ health }) {
       <IconShield size={15} className={`tone-${tone}`} />
       <span className="k">Citation health</span>
       <span className="v" style={broken ? { color: "var(--deepscout-soft)" } : undefined}>{label}</span>
+    </div>
+  );
+}
+
+/* The confidence engine's own account of how it scored: signals it could not
+   measure, and any cap it applied. Shown because a score with no visible
+   reason is a number the reader cannot interrogate — and a degraded cap is
+   worth 0.3 points that would otherwise appear to vanish. */
+function ConfidenceNotes({ notes }) {
+  const list = Array.isArray(notes) ? notes.filter(Boolean) : [];
+  if (!list.length) return null;
+  return (
+    <div className="health-note">
+      <span className="k">How this score was reached</span>
+      <ul>
+        {list.map((n, i) => <li key={`${i}-${n}`}>{n}</li>)}
+      </ul>
     </div>
   );
 }

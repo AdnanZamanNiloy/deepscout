@@ -198,6 +198,7 @@ def final_report_frame(
     degraded: Optional[List[str]] = None,
     degraded_reasons: Optional[Dict[str, str]] = None,
     confidence_breakdown: Optional[Dict[str, Any]] = None,
+    confidence_notes: Optional[List[str]] = None,
     answer_support: Optional[Dict[str, Any]] = None,
     citation_health: Optional[Dict[str, Any]] = None,
     quality: Optional[Dict[str, Any]] = None,
@@ -232,6 +233,7 @@ def final_report_frame(
         citation_health=citation_health or {},
         quality=quality or {},
         confidence_breakdown=confidence_breakdown or {},
+        confidence_notes=list(confidence_notes or []),
         contradictions=contradictions or [],
         # The real number of source URLs the run gathered. The panel's
         # "Sources analyzed" reads this (via the run's snippet count) instead of

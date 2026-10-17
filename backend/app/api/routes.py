@@ -141,6 +141,7 @@ def _final_frame_from_state(
         degraded=degraded,
         degraded_reasons=degraded_reasons,
         confidence_breakdown=final_state.get("confidence_breakdown") or {},
+        confidence_notes=list(final_state.get("confidence_notes") or []),
         answer_support=final_state.get("answer_support"),
         quality=final_state.get("quality") or {},
         contradictions=final_state.get("contradictions") or [],

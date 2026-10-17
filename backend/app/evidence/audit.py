@@ -439,6 +439,8 @@ def compute_audit(
     answer_support: Optional[Dict[str, Any]] = None,
     critique: Optional[Dict[str, Any]] = None,
     sub_questions: Optional[List[Dict[str, Any]]] = None,
+    degraded: Optional[List[str]] = None,
+    provider_degraded: bool = False,
 ) -> Dict[str, Any]:
     """Run the retained audit core over the reconstructed fact pool.
 
@@ -476,6 +478,27 @@ def compute_audit(
             logger.warning("[AuditBridge] answer support failed: %s", exc, exc_info=exc)
 
     confidence: Dict[str, Any] = {"overall": 0.0, "signals": {}}
+    # The run's degradation state reaches the engine from HERE, and it used to
+    # reach it from nowhere. `compute_confidence` is the only place that applies
+    # DEGRADED_CAP, so a call site that omits `degraded` silently disables the
+    # guard — and this call site is the only production caller. That is exactly
+    # the failure the cap was added for: an extractive fallback self-verifies,
+    # so every evidence signal reads high and a run assembled without a model
+    # would still look confident.
+    #
+    # Both inputs default to the request's live degradation record (a
+    # non-destructive read — routes still reads it afterwards for the banner),
+    # so no caller can disable the guard again by forgetting an argument.
+    if degraded is None or not provider_degraded:
+        try:
+            from app.core.degradation import has_provider_degradation, take_fallbacks
+        except Exception as exc:  # degradation state must never break the audit
+            logger.warning("[AuditBridge] degradation state unreadable", exc_info=exc)
+        else:
+            if degraded is None:
+                degraded = list(take_fallbacks())
+            if not provider_degraded:
+                provider_degraded = has_provider_degradation()
     try:
         confidence = compute_confidence(
             facts,
@@ -485,6 +508,8 @@ def compute_audit(
             contradictions=contradictions,
             answer_support=support,
             sub_questions=sub_questions,
+            degraded=list(degraded or []),
+            provider_degraded=bool(provider_degraded),
         )
     except Exception as exc:
         logger.warning("[AuditBridge] confidence failed: %s", exc, exc_info=exc)
@@ -515,6 +540,12 @@ def compute_audit(
         "contradictions": contradictions,
         "confidence": float(confidence.get("overall", 0.0) or 0.0),
         "confidence_breakdown": confidence.get("signals", {}) or {},
+        # The engine's own account of how it scored: which signals it could
+        # not measure, and any cap it applied. Without these the panel shows a
+        # number with no way to ask why — and a degraded cap silently costing
+        # 0.3 points is precisely the unexplained number this project refuses
+        # to ship.
+        "confidence_notes": list(confidence.get("notes", []) or []),
         "answer_support": support,
         "evidence_distribution": evidence_distribution,
         "quality": quality,

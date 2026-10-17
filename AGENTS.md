@@ -292,6 +292,15 @@ These are real bugs found by reading the code, not hypotheticals. Each one below
       trivially self-verify, so source/verification signals read high.
       Degraded summarizer/synthesizer now caps overall at 0.55 — below the
       0.75 sufficiency threshold — with an explanatory note in breakdown.
+      REGRESSION (2026-10): this cap silently died when the audit bridge was
+      rewritten. compute_audit accepted a `degraded` list and never forwarded
+      it, so the engine scored an extractive run as though nothing had
+      degraded and could still read "High". The state is now passed through
+      (with an explicit provider_degraded flag, defaulted from the
+      request-scoped context) and `test_audit_bridge.py` pins every cap path.
+      Corollary: a signal enforced one layer away from where it is produced is
+      one refactor from being a constant — pass it explicitly, and test the
+      caller, not just the function that honors it.
   (d) Frontend never rendered degraded/answer_support/decisions;
       AnswerCard now shows a degraded-run banner, the Decision Layer, and
       citation support. A degraded run must never be mistakable for a

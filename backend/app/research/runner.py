@@ -607,6 +607,7 @@ def build_final_state(
             for k in (
                 "confidence",
                 "confidence_breakdown",
+                "confidence_notes",
                 "contradictions",
                 "answer_support",
                 "evidence_distribution",

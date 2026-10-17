@@ -53,6 +53,20 @@ function viewFromHash() {
   }
 }
 
+/* The confidence engine's notes, as recorded on the run's final_report frame.
+   Replay reads them from the persisted frame so a restored session explains
+   its score exactly as the live run did. */
+function notesFromFrames(frames) {
+  if (!Array.isArray(frames)) return [];
+  for (let i = frames.length - 1; i >= 0; i -= 1) {
+    const f = frames[i];
+    if (f && f.type === "final_report" && Array.isArray(f.confidence_notes)) {
+      return f.confidence_notes;
+    }
+  }
+  return [];
+}
+
 /* Reconstruct a panel-shaped run from a persisted session trace, so the
  * intelligence panel has real numbers on replay screens. Read-only — the
  * trace already carries everything; nothing is re-fetched. */
@@ -79,6 +93,9 @@ function replayPanelRun(trace, query, runId) {
     verifiedCount: findings.filter((f) => f.verified).length,
     critiques: reviews.map((r) => ({ iteration: r.iteration, reason: r.reason || "" })),
     breakdown: lastReview?.breakdown || null,
+    // Scoring notes live on the run's persisted final_report frame, so a
+    // replay explains its score exactly as the live run did.
+    confidenceNotes: notesFromFrames(trace?.frames),
     confidence: typeof trace?.confidence === "number" ? trace.confidence : null,
     done: completed,
     error: completed ? "" : `Run ${trace?.status || "unknown"}`,
@@ -102,6 +119,7 @@ function blankRun(query, mode) {
     verifiedCount: 0,
     critiques: [],
     breakdown: null,
+    confidenceNotes: [],
     report: "",
     confidence: null,
     degraded: [],
@@ -567,6 +585,8 @@ export default function App() {
             citationHealth: evt.citation_health && typeof evt.citation_health === "object"
               ? evt.citation_health : m.run.citationHealth,
             quality: evt.quality && typeof evt.quality === "object" ? evt.quality : m.run.quality,
+            // The engine's own scoring notes: unmeasured signals and any cap.
+            confidenceNotes: Array.isArray(evt.confidence_notes) ? evt.confidence_notes : m.run.confidenceNotes,
             // The real source count for the run. The backend reports it here;
             // the panel's "Sources analyzed" reads it instead of guessing.
             snippets: typeof evt.source_count === "number" ? evt.source_count : m.run.snippets,
