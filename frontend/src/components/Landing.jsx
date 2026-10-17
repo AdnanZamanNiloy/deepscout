@@ -107,9 +107,9 @@ const CAPABILITIES = [
  * The "Executive" mode this list used to advertise was removed from the
  * backend long ago, so listing it described a mode that cannot be selected. */
 const MODES = [
-  { name: "Quick", desc: "3 sections, one revision loop, ~3 min cap. For lookups and narrow factual questions where breadth is not the point." },
-  { name: "Standard", desc: "5 sections and up to 2 revision loops, ~6 min cap. Balanced breadth and verification for everyday research questions." },
-  { name: "Deep", desc: "8 sections with the same revision ceilings but a wider decomposition (~12 min cap), so more of the question gets its own investigation." },
+  { name: "Quick", desc: "3 sections, one pass with no fact-check round, ~2 min. For lookups and narrow factual questions where breadth is not the point." },
+  { name: "Standard", desc: "5 sections and up to 2 revision loops, ~3.5 min. Balanced breadth and verification for everyday research questions." },
+  { name: "Deep", desc: "8 sections with the same revision ceilings but a wider decomposition (~5 min), so more of the question gets its own investigation." },
 ];
 
 /* Guarantees — the non-negotiable behaviours the pipeline enforces. */

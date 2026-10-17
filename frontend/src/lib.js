@@ -287,14 +287,20 @@ export function resolveChainMembers(providers, memberIds) {
  *
  * Every number here must exist in the backend. A mode changes exactly two
  * things a reader can feel: how many report sections are planned
- * (`_MODE_SECTIONS`) and how long the run may take before its enforced
- * wall-clock cap (`MODE_HARD_CAP_SECONDS`). It does NOT change the agent
- * count (MAX_PARALLEL_AGENTS is a fixed hardware cap for every mode), so the
- * hints must not claim a per-mode agent count. */
+ * (`_MODE_SECTIONS`) and how long a run typically takes. It does NOT change
+ * the agent count (MAX_PARALLEL_AGENTS is a fixed hardware cap for every
+ * mode), so the hints must not claim a per-mode agent count.
+ *
+ * The time in each hint is the EXPECTED completion time a user plans around,
+ * not the enforced ceiling (`MODE_HARD_CAP_SECONDS`: 180/360/720s). Those
+ * caps exist to stop a stalled provider, and quoting them here made every
+ * mode look 2-3x slower than it is — the picker is a promise about how long
+ * you will wait, so it states the typical run. Keep it honest: if the measured
+ * p50 for a mode moves, move this number with it. */
 export const MODE_META = {
-  quick: { label: "Quick scan", hint: "3 sections · fast, ~3 min cap" },
-  standard: { label: "Standard", hint: "5 sections · balanced, ~6 min cap" },
-  deep: { label: "Deep research", hint: "8 sections · most thorough, ~12 min cap" },
+  quick: { label: "Quick scan", hint: "3 sections · fast, ~2 min" },
+  standard: { label: "Standard", hint: "5 sections · balanced, ~3.5 min" },
+  deep: { label: "Deep research", hint: "8 sections · most thorough, ~5 min" },
 };
 
 /* True when a stream error means "no usable model", not "the run broke".

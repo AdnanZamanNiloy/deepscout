@@ -65,12 +65,48 @@ test("the picker never advertises a per-mode agent count", () => {
   assert.doesNotMatch(landing, /\d+\s+agents?\b/i, "landing must not claim agents per mode");
 });
 
-test("the picker's minute cap matches the enforced seconds", () => {
+test("the picker's stated time is a realistic expectation under the cap", () => {
+  /* The hint used to quote the ENFORCED CEILING (~3/6/12 min), which is where
+   * a stalled provider gets stopped, not what a run takes. Measured p50 was
+   * ~2.2 / 3.4 / 3.9 min, so the picker made every mode look 2-3x slower than
+   * it is. It now states the expected completion time.
+   *
+   * The claim must still be BOUNDED BY REALITY: a stated time below the
+   * measured floor would be the same overstatement bug in the other
+   * direction, and a stated time at/above the hard cap would be meaningless
+   * (the run is killed there). Both ends are checked against the backend.
+   */
+  const caps = backendCaps();
+  // Lower bounds from measured runs (bench/results/MODE_BASELINE.md); a mode
+  // that finishes faster than this in practice means the copy is too slow.
+  const measuredFloorMin = { quick: 1.0, standard: 2.0, deep: 2.5 };
+  for (const [mode, seconds] of Object.entries(caps)) {
+    const m = new RegExp(`${mode}:\\s*\\{[^}]*hint:\\s*"[^"]*~(\\d+(?:\\.\\d+)?) min`).exec(lib);
+    assert.ok(m, `${mode} hint must state an expected "~N min" time`);
+    const stated = Number(m[1]);
+    assert.ok(
+      stated < seconds / 60,
+      `${mode} states ~${stated} min, which is not below the ${seconds / 60} min hard cap`
+    );
+    assert.ok(
+      stated >= measuredFloorMin[mode],
+      `${mode} states ~${stated} min, below the measured floor of ${measuredFloorMin[mode]} min`
+    );
+  }
+});
+
+test("the picker no longer quotes the enforced cap as the expected time", () => {
+  // Regression guard: the caps are 3/6/12 min; quoting them was the defect.
   const caps = backendCaps();
   for (const [mode, seconds] of Object.entries(caps)) {
-    const minutes = Math.round(seconds / 60);
-    const re = new RegExp(`${mode}:\\s*\\{[^}]*hint:\\s*"[^"]*~?${minutes} min`);
-    assert.match(lib, re, `${mode} hint must state the ~${minutes} min cap (${seconds}s)`);
+    const m = new RegExp(`${mode}:\\s*\\{[^}]*hint:\\s*"[^"]*~(\\d+(?:\\.\\d+)?) min`).exec(lib);
+    assert.ok(m, `${mode} hint must state a time`);
+    const stated = Number(m[1]);
+    const capMin = seconds / 60;
+    assert.ok(
+      stated < capMin,
+      `${mode} still quotes the ${capMin} min ceiling as if it were the expected time`
+    );
   }
 });
 

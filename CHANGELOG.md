@@ -79,6 +79,42 @@ critic signal sat on a "model hedge" branch forever, and citation coverage was
   `mark_challenged_claims`, so a resumed run persisted unmarked claims.
   Verified live: run `0e84a07c` streamed 120 items / 61 verified, identical
   to its `claims` rows and its replay.
+- **Fast mode answers in one pass, with no figures**
+  (`app/research/runner.py`, `app/agents/report.py`,
+  `app/runtime/event_adapter.py`, `frontend/src/components/IntelligencePanel.jsx`).
+  Quick-mode runs were taking 132-175s. Measured stage spans showed why: a
+  fact-check objection bought a FULL second round (narrative_writer re-drafted
+  at 17-20s, evidence_auditor re-audited at 7-11s), and the run then arrived at
+  the diagram with no budget left, so the ladder shed `second_audit_pass` and
+  `diagram` — the "Degraded run" banner was a SYMPTOM of the second round, not
+  a separate problem. Now: `max_fact_check_revisions` is 0 for quick (one pass;
+  the standing objection is still reported because the notes stay on state),
+  and DiagramDesigner returns before its model call in quick mode.
+  Because quick mode has no diagram *by design*, skipping it is no longer
+  recorded as a degradation — the banner no longer claims "the model response
+  for ladder:diagram was unavailable", which was false (no call was attempted).
+  The stage line says "Skipping figures in fast mode" instead of announcing
+  visuals it will not build, and the rail drops the Diagram Designer row for
+  quick runs (a permanently Queued stage misdescribes the pipeline).
+  Verified live: 104s and 147s on two queries, `degraded: []`, one narrative
+  and one auditor pass each; the spread is retrieval latency (scout_swarm
+  38-68s), not structure.
+- **The mode picker states the expected time, not the enforced cap**
+  (`frontend/src/lib.js`, `frontend/src/components/Landing.jsx`). Both
+  surfaces quoted `MODE_HARD_CAP_SECONDS` (~3 / 6 / 12 min) as if it were how
+  long a run takes. Those caps exist to stop a stalled provider; measured p50
+  was ~2.2 / 3.4 / 3.9 min, so every mode looked 2-3x slower than it is. The
+  hints now read ~2 / ~3.5 / ~5 min. `mode-claims.test.js` no longer asserts
+  "hint == cap" (that was the defect); it asserts the stated time is BELOW the
+  cap and ABOVE a measured floor, so the copy cannot drift into either
+  overstatement. The landing Quick copy also stops claiming a revision loop —
+  fast mode has none now.
+- **The report is stamped with the time, not just the date**
+  (`app/agents/architect.py`, `app/agents/report.py`). The title line read
+  `*17 October 2026*`, which cannot tell a reader whether the report predates a
+  same-day development. It now reads `*17 October 2026, 18:25 +06*` — the run's
+  own clock (never the model's guess), local zone, month named so it stays
+  unambiguous across locales.
 
 Live smoke (cold, quick mode): confidence 0.714 with every signal measured —
 source_quality 0.808, coverage 0.40, agreement 1.0, verification 0.344,

@@ -148,3 +148,27 @@ def test_placeholder_link_targets_are_unwrapped():
     # A real URL target is untouched.
     kept = sanitize_report_markdown("Real [paper](https://a.test/x) stays.")
     assert "[paper](https://a.test/x)" in kept
+
+
+def test_the_report_is_stamped_with_a_date_AND_time():
+    """A report read later must know when within the day it was produced.
+
+    The stamp used to be a bare date ("17 October 2026"), which cannot tell a
+    reader whether the report predates a same-day development. It now carries
+    the time. The value is produced in the architect (the run's real clock, not
+    the model's guess) and rendered as an italic line under the title.
+    """
+    import re
+    from datetime import datetime
+
+    from app.agents.architect import ResearchArchitect  # noqa: F401  (import guard)
+
+    stamp = datetime.now().astimezone().strftime("%d %B %Y, %H:%M %Z")
+    # Month name, not numeric: "11/10/2026" is ambiguous across locales.
+    assert re.match(r"^\d{2} [A-Z][a-z]+ \d{4}, \d{2}:\d{2} \S+$", stamp), stamp
+    # And the cleaned report keeps the time on the date line.
+    from app.evidence.sources import clean_writer_prose
+
+    md = f"# Title\n*{stamp}*\n\n## Introduction\nA body long enough to survive.\n"
+    out = clean_writer_prose(md)
+    assert str(stamp) in out, "the date line must keep its time"

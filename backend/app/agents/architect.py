@@ -86,10 +86,12 @@ class ResearchArchitect:
 
         return {
             "title": title,
-            # The run's actual date, not the model's guess: a model date is
-            # often ambiguous (11/10/2026) or wrong, and the report should be
-            # dated when it was produced.
-            "date": datetime.now().strftime("%d %B %Y"),
+            # The run's actual date AND time, not the model's guess: a model date
+            # is often ambiguous (11/10/2026) or wrong, and the report should be
+            # stamped when it was produced. The time matters because a report is
+            # read later — "17 October 2026" alone cannot say whether it was
+            # written before or after a same-day development.
+            "date": datetime.now().astimezone().strftime("%d %B %Y, %H:%M %Z").strip(),
             "sections": primary or (candidates[0] if candidates else []),
             "plan_alternatives": candidates,
         }
