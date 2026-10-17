@@ -36,8 +36,10 @@ function ruleBody(sel) {
 }
 
 /* Body of the rule whose selector list contains ALL of `sels` — used for the
- * shared `.mission-menu, .title-menu, .mode-menu` surface rule, whose selector
- * spans multiple lines and therefore never matches a single-selector lookup. */
+ * shared `.title-menu, .mode-menu` surface rule, whose selector spans
+ * multiple lines and therefore never matches a single-selector lookup.
+ * (`.mission-menu` left this list with the flat session rail: the sidebar no
+ * longer renders a per-row menu, so its rule was deleted rather than kept.) */
 function sharedRuleBody(sels) {
   const out = [];
   const re = /([^{}]+)\{([^}]*)\}/g;
@@ -91,11 +93,11 @@ test("the wrap and the toggle share one max-width clamp", () => {
 });
 
 test("the shared popup rule declares no horizontal anchor", () => {
-  // A shared `left: 0` on the .mission-menu/.title-menu/.mode-menu selector
+  // A shared `left: 0` on the .title-menu/.mode-menu selector
   // list is what repeatedly dragged the session menu to the header's far-left
   // edge, overriding its own rule depending on stylesheet order. Each menu now
   // owns its anchor; the shared rule must stay neutral.
-  const shared = sharedRuleBody([".mission-menu", ".title-menu", ".mode-menu"]);
+  const shared = sharedRuleBody([".title-menu", ".mode-menu"]);
   assert.ok(shared.trim(), "the shared popup rule must exist");
   assert.doesNotMatch(shared, /(^|[^-])left\s*:/m,
     "shared popup rule must not set left — each menu anchors itself");
@@ -121,7 +123,7 @@ test(".title-menu stays inside the header (left-anchored to the title)", () => {
   // Left-anchoring to a content-sized wrap that begins at the header's left
   // padding keeps the menu inside the header: it grows rightward from the
   // title and the shared rule caps its width against the viewport.
-  const shared = ruleBody(".mission-menu,\n.title-menu,\n.mode-menu");
+  const shared = ruleBody(".title-menu,\n.mode-menu");
   const anyMenu = ruleBody(".title-menu") + shared;
   assert.match(anyMenu, /max-width/, "menu must remain viewport-capped");
 });

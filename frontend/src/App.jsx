@@ -955,9 +955,6 @@ export default function App() {
         onNew={startNew}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        onRename={renameMission}
-        onTogglePin={toggleMissionPin}
-        onDelete={deleteMission}
       />
       {sidebarOpen ? <button className="scrim" onClick={() => setSidebarOpen(false)} aria-label="Close menu" /> : null}
       </ErrorBoundary>
