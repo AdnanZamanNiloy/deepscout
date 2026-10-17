@@ -182,6 +182,89 @@ timeout scope closed.
     the new title, Delete removes exactly one, and all of it survives a reload.
     Note `Delete` remains client-side only — a reload re-syncs the session from
     the backend, since removing it for real needs a backend endpoint.
+- **The static demo now replays real recorded runs, and is generated**
+  (`bench/make_demo_fixtures.py`, `frontend/src/demo/runs.js` (generated),
+  `frontend/src/demo/conversations.js`, `frontend/src/demo/sessions.js`,
+  `frontend/src/demo/index.js`, `frontend/test/demo-real-data.test.js`,
+  `deploy/cloudflare-pages/README.md`, `README.md`). The deployment demo listed
+  invented chats with `example.org` citations that were never retrieved, and its
+  own header claimed the wire emitted no `findings` frame — which it does. So
+  the demo's live run showed an empty evidence panel while the real product
+  filled one, and nothing failed: a fixture is data, so being wrong looks
+  exactly like being right.
+
+  The fixtures are now generated from real recordings. `runs.js` holds five
+  finished runs pulled from `GET /api/research/{run_id}/trace`, and the
+  conversations/sessions modules are thin derivations of it, so a streamed run
+  and a replayed one read the same rows and report the same claim count by
+  construction. Real: the questions, plans, progress lines, stage lifecycle,
+  critic reviews, confidence breakdown and notes, findings, source rows and
+  FULL reports. Bounded and disclosed: claim and source rows (first N, with the
+  real totals beside them), and inter-frame delays scaled to a ~26s replay.
+  `source_count` is never lowered, so the UI reports what the run really
+  retrieved. Reports are kept whole — a truncated report would misdescribe a
+  finished run.
+
+  One featured run is recorded by the current build, so the demo carries today's
+  wire (`findings`, `confidence_notes`); older recordings predate those fields
+  and the generator does not invent them. The rich payload is read from the
+  recorded final_report FRAME, not the trace's `final_report` row — the row is
+  only four keys, and reading it alone would have shipped a demo whose runs had
+  no confidence breakdown, silently, because every field it did read was
+  present.
+
+  Three real bugs were found while doing this, all by verifying rather than
+  reading: the adapter emitted the stored `report_markdown` name where the client
+  reads `evt.report` (so every demo run rendered with no report and no audit);
+  `ts` was spread before the recorded value, so a recording's clock would have
+  overridden the playback stamp; and a substituted answer for an unrecognised
+  question replaced the real first frame, discarding the recording's own opening
+  line. A question with no recording now says which recording is playing, on
+  that recording's own first line.
+
+  `demo-real-data.test.js` enforces the honesty that a fixture cannot fail on
+  its own: real UUIDs, no placeholder hosts, real claim sentences, a finished
+  report per run, terminal frames using the wire field names, and the
+  streamed-count-equals-replayed-count invariant. `agent_events` is dropped from
+  the fixtures — the client reads the `stage` frames for the lifecycle, so it was
+  12% of the payload for a field no reader touches.
+
+- **The static demo no longer answers questions it cannot answer**
+  (`frontend/src/components/Composer.jsx`,
+  `frontend/test/nav-during-run.test.js`). A demo has no backend, so a typed
+  question could only be answered with a RECORDED run about something else —
+  true, and about the wrong thing, which is worse than no answer. Sending is now
+  disabled for the whole demo build, on all three paths: the button, the submit
+  handler and Enter (which falls through to a newline instead of sending). The
+  visitor is told why — the placeholder points at the recorded chats, a status
+  line says the demo has no backend, and the button's tooltip explains the
+  disabled state rather than leaving a dead control. The rail's real chats stay
+  fully explorable, so the demo still shows the product doing real work.
+
+  The gate reads `IS_DEMO`, which `main.jsx` already imported, so no new bundle
+  weight. Verified live in the built demo: a typed question leaves the button
+  disabled and Enter starts nothing; verified on the normal dev build that the
+  same composer still sends and still starts a run, so the gate cannot leak into
+  production.
+- **Brand assets moved to `docs/assets/`, and the duplicate logo is gone**
+  (`brand/` → `docs/assets/`, `README.md`, `frontend/test/docs-accuracy.test.js`).
+  The top-level `brand/` folder held three SVGs, and nothing but the README read
+  any of them. The two wordmarks (light + dark) are documentation assets, so they
+  now live in `docs/assets/` — deliberately NOT in `frontend/public/`, which
+  would have copied 33 KB of unused art into every deployed demo bundle. The
+  third file, `deepscout-logo.svg`, was **byte-identical** to
+  `frontend/public/deepscout.svg` (same md5) — the one the app actually serves as
+  favicon and mask icon — so it was deleted rather than carried along: the logo
+  now has one source. `brand/workspace.png` (a 1920×953 capture of the console
+  mid-run) moved with the folder and is now the README's screenshot, directly
+  under the header.
+
+  A moved asset is a silent failure: GitHub renders a missing image as a broken
+  icon and reports nothing, no build fails, and the README just loses its logo.
+  Only README consumed these files, so nothing in the app would have noticed a
+  dangling path. `docs-accuracy.test.js` now resolves every repo-relative `src`
+  and `srcset` the README renders, and asserts it exists — verified by pointing
+  one back at the old path and watching it fail.
 - **The docs page rendered blank, and every check said it was fine**
   (`frontend/public/docs.content.js`, `frontend/test/docs-accuracy.test.js`).
   The built-in docs are served verbatim from `public/` into an iframe, so the
@@ -241,14 +324,14 @@ timeout scope closed.
   setting, adds `AUDIT_FETCH_*`, and explains that `.env.example` wins over
   class defaults (so a stock clone runs 25 s / 90 s / fallback-on); mode
   tables quote the enforced ceilings and quick's zero fact-check round;
-  counts match the suites (672 backend / 340 frontend); the landing page's
+  counts match the suites (672 backend / 353 frontend); the landing page's
   GitHub link points at the real repository; and the vision doc is labelled
   the design record it is, so its conceptual role names stop reading as
   current code. `docs-accuracy.test.js` reads the backend source of truth and
   fails when the prose and the code drift — the stale count and the
   un-emitted `findings` frame were both caught by it on first run.
 
-672 backend and 340 frontend tests pass; ruff clean.
+672 backend and 353 frontend tests pass; ruff clean.
 
 ## Unreleased — First-party research pipeline
 

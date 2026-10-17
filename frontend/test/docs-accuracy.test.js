@@ -38,8 +38,8 @@ test("every backend path named in the docs exists", () => {
   const missing = [];
   for (const text of docs) {
     for (const m of text.matchAll(/\b(?:backend\/)?(?:app|bench)\/[A-Za-z0-9_./-]+\.py/g)) {
-      // A bare app/... or bench/... means backend/app/... — that is how the
-      // docs are written, since the backend is where the code lives.
+      /* A bare `app/...` or `bench/...` means `backend/app/...` or `backend/bench/...`
+       * — that is how the docs are written, since both live under backend/. */
       const rel = m[0].startsWith("backend/") ? m[0] : `backend/${m[0]}`;
       if (!exists(rel)) missing.push(rel);
     }
@@ -53,7 +53,7 @@ test("every backend path named in the docs exists", () => {
  * every published copy drifts apart.
  */
 const BACKEND_TESTS = 672;
-const FRONTEND_TESTS = 340;
+const FRONTEND_TESTS = 353;
 
 test("the quoted test counts match what the suites actually collect", () => {
   const m = /(\d+) backend and (\d+) frontend tests/.exec(README);
@@ -253,4 +253,28 @@ test("every html string in the docs is a closed fragment", () => {
       );
     }
   }
+});
+
+/* ---- every asset the README renders must exist ----
+ *
+ * The brand wordmarks moved from `brand/` to `docs/assets/`. GitHub renders a
+ * missing image as a broken icon and reports nothing: no build fails, no test
+ * fails, and the README simply loses its logo. Only README consumed those
+ * files, so nothing in the app would have caught the dangling path.
+ */
+test("every repo-relative asset the README renders exists", () => {
+  const refs = new Set();
+  for (const m of README.matchAll(/(?:src|srcset)="(?!https?:|data:|#)([^"]+)"/g)) {
+    refs.add(m[1]);
+  }
+  assert.ok(refs.size > 0, "expected the README to render at least one local asset");
+  const missing = [...refs].filter((r) => !exists(r));
+  assert.deepEqual(missing, [], "README renders assets that do not exist");
+});
+
+test("the README names no folder that was moved or removed", () => {
+  assert.doesNotMatch(README, /(?:^|[^\w/])brand\//m,
+    "README still points at the old brand/ path");
+  assert.ok(exists("docs/assets/deepscout-branding-light.svg"));
+  assert.ok(exists("docs/assets/deepscout-branding-dark.svg"));
 });

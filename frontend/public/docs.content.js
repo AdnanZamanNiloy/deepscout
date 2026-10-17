@@ -107,7 +107,7 @@
       '<div class="hero-stat"><div class="v">100%</div><div class="k">Confidence in-band &amp; monotonic</div></div>',
       '<div class="hero-stat"><div class="v">0.71</div><div class="k">Claim dedup Spearman &rho;</div></div>',
         '<div class="hero-stat"><div class="v">1.00</div><div class="k">Contradiction detection F1</div></div>',
-        '<div class="hero-stat"><div class="v">1012</div><div class="k">Offline tests passing</div></div>',
+        '<div class="hero-stat"><div class="v">1025</div><div class="k">Offline tests passing</div></div>',
       "</div>",
     "</div>",
 

@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="brand/deepscout-branding-dark.svg">
-  <img alt="DeepScout" src="brand/deepscout-branding-light.svg" width="560">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/deepscout-branding-dark.svg">
+  <img alt="DeepScout" src="docs/assets/deepscout-branding-light.svg" width="560">
 </picture>
 
 ### Deep research with verifiable evidence, honest confidence, and bounded work.
@@ -18,6 +18,10 @@
 [Quick start](#quick-start) · [How it works](#how-it-works) · [API](#api-reference) · [Configuration](#configuration) · [Deployment](#deployment) · [Contributing](#contributing)
 
 </div>
+
+<p align="center">
+  <img alt="The DeepScout console mid-run: the question at the top, the streaming pipeline steps in the middle, the session rail on the left, and the Run Insights panel on the right showing one agent working, the eight pipeline stages with Pathfinder working and the rest queued, and the Research Health counters." src="docs/assets/workspace.png" width="100%">
+</p>
 
 DeepScout is a multi-agent research system. Give it a question and it plans a
 report outline, researches each section across several search providers, writes
@@ -88,7 +92,7 @@ happened during the run.
 | **Output** | Cited Markdown report plus audit fields; export to Markdown, DOCX or PDF |
 | **Streaming** | NDJSON over a single HTTP response |
 | **Persistence** | SQLite (WAL), schema created automatically |
-| **Tests** | 672 backend and 340 frontend tests, all offline; backend suite runs in CI on every push and pull request |
+| **Tests** | 672 backend and 353 frontend tests, all offline; backend suite runs in CI on every push and pull request |
 
 ---
 
@@ -270,9 +274,12 @@ Each line of the response is one JSON event; see the [API reference](#api-refere
 
 ### Just want to look around?
 
-Open `http://127.0.0.1:5173/?demo=1` to run the real console against scripted
-fixtures: five fully streamed research conversations, with no backend and no
-model calls. The same mode powers the [static demo deployment](#static-demo-cloudflare-pages).
+Open `http://127.0.0.1:5173/?demo=1` to run the real console against **real
+recorded runs**: five finished research runs with their actual questions,
+progress, confidence, claims and reports — no backend, no model calls. The
+fixtures are generated from real recordings by `backend/bench/make_demo_fixtures.py`, so
+they cannot describe a pipeline that no longer runs. The same mode powers the
+[static demo deployment](#static-demo-cloudflare-pages).
 
 ---
 
@@ -743,7 +750,7 @@ ruff check app tests bench             # lint
 mypy app                               # informational baseline, not enforced
 
 # Frontend, from frontend/
-npm test                               # 340 tests on Node's built-in runner, no extra deps
+npm test                               # 353 tests on Node's built-in runner, no extra deps
 npm run build                          # production build
 ```
 
@@ -929,11 +936,11 @@ DOCX export are unaffected.
 │   └── tests/                   pytest suite (45 modules)
 ├── frontend/
 │   ├── src/                     App.jsx (stream consumer, session state), api.js, components/,
-│   │                            trace/ (pipeline trace), demo/ (scripted fixtures)
-│   ├── public/                  docs.html and the built-in docs site
+│   │                            trace/ (pipeline trace), demo/ (real recorded runs)
+│   ├── public/                  docs.html, the built-in docs site, deepscout.svg (favicon/logo)
 │   └── test/                    Node-runner tests
 ├── deploy/cloudflare-pages/     static demo deployment
-├── brand/                       logo and wordmarks
+├── docs/assets/                 README assets: wordmarks (light + dark), console screenshot
 └── .github/workflows/tests.yml  CI
 ```
 
