@@ -2,9 +2,17 @@
  *
  * Design direction: the hero shows the product's ACTUAL shape rather than
  * describing it. The left column is the promise; the right column is a working
- * preview of the console — sidebar, question, streamed report, evidence
- * outcomes, follow-up box — built from the same components and vocabulary the
- * real UI uses, so the first screen and the product cannot drift apart.
+ * preview of the console — sidebar, question, the collapsed pipeline trace, the
+ * report head and the follow-up composer — drawn from the same components and
+ * vocabulary the real UI uses, so the first screen and the product cannot drift
+ * apart.
+ *
+ * The preview is kept honest by CONSTRUCTION rather than by discipline: every
+ * row here mirrors a real element in Sidebar.jsx / App.jsx / Composer.jsx /
+ * trace/AgentPipelineTrace.tsx, and it was last reconciled against them after
+ * the rail was flattened. When the console changes shape, change it here in the
+ * same commit — a mockup of a UI that no longer exists is worse than none,
+ * because it is the first thing a visitor trusts.
  *
  * Everything below the hero (capabilities, trust model, modes) is real product
  * detail mapped to real pipeline modules, not filler.
@@ -19,12 +27,12 @@ import ThemeToggle from "./ThemeToggle";
 import BrandLockup, { BrandMark } from "./Brand";
 import {
   IconAgents, IconArrowUp, IconArrowRight, IconChart, IconCheckCircle,
-  IconCompass, IconDoc, IconFlask, IconGithub, IconLayers, IconMissions,
-  IconPlay, IconPlus, IconRoute, IconSearch, IconShield, IconShieldCheck,
-  IconSpark, IconTarget,
+  IconChevronDown, IconCompass, IconDoc, IconFlask, IconGithub, IconLayers,
+  IconMissions, IconPanel, IconPlay, IconPlus, IconRoute, IconSearch,
+  IconShield, IconShieldCheck, IconSpark, IconTarget,
 } from "./icons";
 
-const GITHUB_URL = "https://github.com/AdnanZamanNiloy/deepscout-ai";
+const GITHUB_URL = "https://github.com/AdnanZamanNiloy/deepscout";
 
 /* The sample "Watch demo" runs. Exported so App can launch the exact question
  * the hero advertises — a demo that ran something else than the button
@@ -44,11 +52,14 @@ const PIPELINE = [
 
 /* Console preview content. Sample questions only — nothing here is read from a
  * run, and no statistic is presented as a measured result. Rows mirror the real
- * sidebar's shape: a title line that truncates, and the mode beneath it. */
+ * sidebar's current shape: a single truncated line per session, with the status
+ * dot. The real rail carries no section head and no "+N more" — the list simply
+ * scrolls — and the mode lives on the session rather than under every title, so
+ * neither is drawn here. */
 const PREVIEW_RECENT = [
-  { title: DEMO_QUERY, mode: "standard", tone: "live", active: true },
-  { title: "What are the latest advances in AI agents", mode: "standard", tone: "done" },
-  { title: "How does graph RAG differ from vector search", mode: "standard", tone: "done" },
+  { title: DEMO_QUERY, tone: "live", active: true },
+  { title: "What are the latest advances in AI agents", tone: "done" },
+  { title: "How does graph RAG differ from vector search", tone: "done" },
 ];
 
 /* Capabilities — what the system does that a single-prompt assistant does not.
@@ -106,10 +117,14 @@ const CAPABILITIES = [
  * per-mode (MAX_PARALLEL_AGENTS is a fixed hardware cap), so it is not listed.
  * The "Executive" mode this list used to advertise was removed from the
  * backend long ago, so listing it described a mode that cannot be selected. */
+/* `desc` quotes the EXPECTED completion time a reader plans around. The
+   enforced ceiling behind it is 180 / 360 / 720s (MODE_HARD_CAP_SECONDS) and
+   exists to stop a stalled provider — quoting it as the budget made every mode
+   look 2-3x slower than it is. Section counts come from _MODE_SECTIONS. */
 const MODES = [
-  { name: "Quick", desc: "3 sections, one pass with no fact-check round, ~2 min. For lookups and narrow factual questions where breadth is not the point." },
-  { name: "Standard", desc: "5 sections and up to 2 revision loops, ~3.5 min. Balanced breadth and verification for everyday research questions." },
-  { name: "Deep", desc: "8 sections with the same revision ceilings but a wider decomposition (~5 min), so more of the question gets its own investigation." },
+  { name: "Quick", desc: "3 sections, one pass with no fact-check round, ~2 min. Stops at 3 min or 21 model calls. For lookups and narrow factual questions where breadth is not the point." },
+  { name: "Standard", desc: "5 sections and up to 2 revision loops, ~3.5 min. Stops at 6 min or 60 model calls. Balanced breadth and verification for everyday research questions." },
+  { name: "Deep", desc: "8 sections with the same revision ceilings but a wider decomposition (~5 min). Stops at 12 min or 150 model calls, so more of the question gets its own investigation." },
 ];
 
 /* Guarantees — the non-negotiable behaviours the pipeline enforces. */
@@ -120,18 +135,34 @@ const GUARANTEES = [
   { icon: IconSpark, text: "The direct answer leads; analysis, mechanisms and caveats support it." },
 ];
 
+/* The report's date line, in the exact shape the backend stamps:
+ * `app/agents/architect.py` builds it with
+ * `datetime.now().astimezone().strftime("%d %B %Y, %H:%M %Z")` and
+ * `app/agents/report.py` emits it as italic markdown. Reproduced here so the
+ * preview cannot show a date format the product does not produce. */
+function reportStamp(d = new Date()) {
+  const day = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit", month: "long", year: "numeric",
+  }).format(d);
+  const time = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(d);
+  const offset = -d.getTimezoneOffset();
+  const zone = `${offset >= 0 ? "+" : "-"}${String(Math.floor(Math.abs(offset) / 60)).padStart(2, "0")}`;
+  return `${day}, ${time} ${zone}`;
+}
+
 /* A preview of the console, drawn from the real UI's parts: the sidebar's
- * nav and recent list, the thread's question bubble, and the answer's report
+ * nav and session list, the thread's question bubble, the answer's report
  * head. Spans only — no buttons or links — because role="img" promises the
  * whole block is one picture, and a focusable control inside it would be a
  * promise the page cannot keep. */
 function ConsolePreview() {
-  const today = new Date().toLocaleDateString("en-GB");
   return (
     <div
       className="lp-window"
       role="img"
-      aria-label="A DeepScout research run in the console: the question at the top, a streamed cited report in the middle, and a follow-up box below."
+      aria-label="A DeepScout research run in the console: the session listed and selected in the sidebar, the question and its collapsed pipeline trace above the report, the report head below, and a follow-up box at the bottom."
     >
       <div className="lp-window-bar">
         <span className="lp-traffic" aria-hidden="true">
@@ -149,38 +180,31 @@ function ConsolePreview() {
             <IconPlus size={11} /> New research
           </div>
           <div className="lp-rail-nav">
-            <span className="lp-rail-item">
-              <IconMissions size={12} /> Research<span className="lp-rail-count">30</span>
-            </span>
+            <span className="lp-rail-item"><IconMissions size={12} /> Research</span>
             <span className="lp-rail-item"><IconCompass size={12} /> Model Controls</span>
             <span className="lp-rail-item"><IconAgents size={12} /> Agents</span>
-          </div>
-          {/* The real rail's section head carries a "+N more" affordance; without
-              it the preview reads as a sidebar that has nothing to scroll to. */}
-          <div className="lp-rail-head">
-            <span>Recent</span>
-            <span className="lp-rail-more">+24 more</span>
           </div>
           <div className="lp-recent">
             {PREVIEW_RECENT.map((item) => (
               <span className={`lp-recent-row${item.active ? " active" : ""}`} key={item.title}>
                 <span className={`dot ${item.tone}`} />
-                <span className="lp-recent-body">
-                  <span className="lp-recent-name">{item.title}</span>
-                  <span className="lp-recent-sub">{item.mode}</span>
-                </span>
+                <span className="lp-recent-name">{item.title}</span>
               </span>
             ))}
           </div>
         </div>
 
         <div className="lp-stage">
-          {/* The real title bar: chat title on the left, collapse control on the
-              right. The title is the question here, so the preview states what
-              the run was about instead of showing a generic label. */}
+          {/* The real title bar: the session title is itself the control, with a
+              chevron for its menu (rename / pin / delete), and the run-insights
+              panel collapses to a lone button pinned top-right. The hamburger is
+              desktop-hidden, so it is not drawn. */}
           <div className="lp-stage-top">
-            <span className="lp-stage-query">{DEMO_QUERY}</span>
-            <span className="lp-collapse" aria-hidden="true">‹</span>
+            <span className="lp-stage-title">
+              <span className="lp-stage-query">{DEMO_QUERY}</span>
+              <IconChevronDown size={12} className="lp-stage-chev" />
+            </span>
+            <span className="lp-collapse"><IconPanel size={13} /></span>
           </div>
 
           <div className="lp-stage-body">
@@ -196,7 +220,10 @@ function ConsolePreview() {
               The Most Demanding Skill of 2027: Rewriting Learned Procedures When the
               Foundations Shift
             </h3>
-            <div className="lp-report-date">Date: {today}</div>
+            {/* The date is the report's own markdown line — `*17 October 2026,
+                18:25 +06*` — stamped by the run itself, not a "Date:" label and
+                not a locale-formatted day/month/year. */}
+            <div className="lp-report-date">{reportStamp()}</div>
             <h4 className="lp-report-sub">Introduction</h4>
             <p className="lp-report-text">
               When a procedure that has run reliably for years suddenly rests on assumptions
@@ -372,7 +399,9 @@ export default function Landing({ onStart, onDocs, onDemo }) {
             </h2>
             <p className="landing-section-desc">
               The same pipeline runs at three depths. Each sets its own research breadth,
-              evidence requirements and time budget.
+              its own revision ceilings, and an enforced wall-clock and model-call
+              ceiling — shown as the time you can expect, with the hard stop set
+              well above it.
             </p>
           </header>
           <div className="landing-modes">

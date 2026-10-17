@@ -91,3 +91,57 @@ test("the advertised modes match the orchestrator's presets", () => {
   assert.equal(names.length, modes.length, `the orchestrator has ${modes.length} modes: ${modes.join(", ")}`);
   assert.doesNotMatch(landing, /six (research )?(modes|depths)/i, "there are three modes, not six");
 });
+/* ---- the preview must not outlive the console it draws ----
+ *
+ * The picture drifted silently once already: the rail was redesigned to be a
+ * flat single-line list with no count badge and no section head, and the
+ * preview kept drawing the old two-line sidebar with "Research 30" and
+ * "+24 more". Nothing failed, because a mockup is markup — it cannot disagree
+ * with the product at runtime. So the two are compared here instead. */
+
+const trace = await readFile(new URL("../src/trace/AgentPipelineTrace.tsx", import.meta.url), "utf8");
+const architect = await readFile(
+  new URL("../../backend/app/agents/architect.py", import.meta.url), "utf8",
+);
+
+test("the preview's sidebar matches the real rail's flat session list", () => {
+  // The real row is a dot and a name. If Sidebar ever grows a second line, the
+  // preview must grow it too — and until then the preview must not invent one.
+  assert.match(sidebar, /className=\{`dot /, "the real row leads with a status dot");
+  assert.doesNotMatch(sidebar, /lp-recent-sub/, "the rail's rows are single-line");
+  assert.doesNotMatch(preview, /lp-recent-sub/, "the preview must not draw a mode sub-line");
+  assert.doesNotMatch(preview, /item\.mode/, "the preview's session rows must not carry a mode");
+});
+
+test("the preview draws no rail chrome the real rail does not have", () => {
+  // A count badge, a section head and a "+N more" affordance were all removed
+  // from the real rail; the preview described a sidebar that no longer exists.
+  assert.doesNotMatch(sidebar, /rail-count|\+.*more/i, "the real rail has no count or '+N more'");
+  assert.doesNotMatch(preview, /lp-rail-count|lp-rail-head|lp-rail-more/, "preview still draws removed rail chrome");
+  assert.doesNotMatch(preview, />\s*Research\s*<span[^>]*>\d+/, "no count badge beside Research");
+});
+
+test("the preview's panel toggle is the real one", () => {
+  // The real console collapses the run-insights panel to a single icon button
+  // (App.jsx), not a chevron in the title bar.
+  assert.match(app, /aria-label="Show the run insights panel"/, "the real toggle is the insights-panel button");
+  assert.match(preview, /lp-collapse[^>]*>\s*<IconPanel/, "the preview must draw the insights-panel icon");
+  assert.doesNotMatch(preview, /lp-collapse[^>]*>\s*‹/, "the old chevron glyph is not the real control");
+});
+
+test("the preview's trace bar uses the real trace's wording", () => {
+  for (const label of ["Less steps", "Worked for"]) {
+    assert.ok(trace.includes(label), `the real trace no longer says "${label}"`);
+    assert.ok(preview.includes(label), `the preview must show the real "${label}"`);
+  }
+  assert.match(trace, /defaultOpen=\{false\}|expanded/, "the real trace defaults to collapsed");
+});
+
+test("the preview's report date matches the format the backend stamps", () => {
+  // report.py emits the run's own `*D Month YYYY, HH:MM +ZZ*` line. A "Date:"
+  // label and a locale day/month/year were both invented by the preview.
+  assert.match(architect, /%d %B %Y, %H:%M %Z/, "the backend stamp format changed");
+  assert.doesNotMatch(preview, /Date:\s*\{/, "the report date is the report's own line, not a 'Date:' label");
+  assert.match(preview, /reportStamp\(\)/, "the preview must derive its date from reportStamp()");
+  assert.match(landing, /day: "2-digit", month: "long", year: "numeric"/, "reportStamp must spell the month");
+});

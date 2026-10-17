@@ -1015,42 +1015,22 @@
   border-radius: var(--r-sm);
 }
 .lp-rail-item svg { color: var(--t4); flex: none; }
-.lp-rail-count {
-  margin-left: auto;
-  font-size: 10px; font-weight: 650;
-  color: var(--t3);
-  background: var(--lp-window);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 1px 6px;
-  font-variant-numeric: tabular-nums;
-}
-.lp-rail-head {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
-  margin: 14px 0 4px;
-  padding: 0 4px;
-  font-size: 9.5px; font-weight: 700;
-  letter-spacing: 0.12em; text-transform: uppercase;
-  color: var(--t4);
-}
-.lp-rail-more { letter-spacing: 0.02em; text-transform: none; font-weight: 600; color: var(--t4); }
 .lp-recent { display: flex; flex-direction: column; gap: 1px; }
+.lp-recent { margin-top: 12px; }
 .lp-recent-row {
-  display: flex; align-items: flex-start; gap: 8px;
-  padding: 6px 8px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px;
   border-radius: var(--r-sm);
 }
 .lp-recent-row.active { background: var(--row-active); }
-.lp-recent-row .dot { margin-top: 5px; width: 6px; height: 6px; }
-.lp-recent-body { min-width: 0; flex: 1; display: block; }
+.lp-recent-row .dot { flex: none; width: 6px; height: 6px; }
 .lp-recent-name {
-  display: block;
+  min-width: 0; flex: 1;
   font-size: 11.5px; font-weight: 550;
   color: var(--t2);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .lp-recent-row.active .lp-recent-name { color: var(--t1); }
-.lp-recent-sub { display: block; margin-top: 2px; font-size: 10px; color: var(--t4); }
 
 /* The run itself. */
 .lp-stage { display: flex; flex-direction: column; min-width: 0; }
@@ -1060,12 +1040,14 @@
   font-size: 12px; font-weight: 600; color: var(--t2);
   border-bottom: 1px solid var(--line-soft);
 }
+.lp-stage-title { min-width: 0; display: flex; align-items: center; gap: 5px; }
 .lp-stage-query { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-stage-chev { flex: none; color: var(--t4); }
+/* The real collapsed panel is a 28px icon button pinned top-right. */
 .lp-collapse {
   flex: none;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px;
-  font-size: 13px; line-height: 1;
+  width: 22px; height: 22px;
   color: var(--t3);
   border: 1px solid var(--line);
   border-radius: var(--r-xs);
@@ -1103,7 +1085,7 @@
   letter-spacing: -0.015em;
   color: var(--t1);
 }
-.lp-report-date { margin-top: 7px; font-size: 11px; color: var(--t4); font-variant-numeric: tabular-nums; }
+.lp-report-date { margin-top: 6px; font-size: 11px; font-style: italic; color: var(--t4); font-variant-numeric: tabular-nums; }
 .lp-report-sub {
   margin: 10px 0 0;
   font-size: 13px; font-weight: 650; color: var(--t1);
