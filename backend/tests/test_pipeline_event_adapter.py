@@ -267,3 +267,19 @@ def test_a_stage_signal_survives_a_sink_that_raises():
         return await team._staged("architect", work)({"task": {"query": "q"}})
 
     assert asyncio.run(_run()) == {"sections": ["A"]}
+
+
+def test_fast_mode_does_not_announce_visuals_it_will_not_build():
+    """The diagram node runs in quick mode only to decide to skip.
+
+    Its one-shot progress line announced "Generating visuals" and then the run
+    immediately said figures were skipped — a contradiction the reader sees as
+    a flaked stage. The label must describe the real outcome.
+    """
+    quick = PipelineEventAdapter("q", "quick").stage_frame("diagram_designer")
+    assert quick["message"] == "Skipping figures in fast mode"
+
+    # A mode that DOES build figures keeps the real label.
+    for mode in ("standard", "deep", ""):
+        frame_ = PipelineEventAdapter("q", mode).stage_frame("diagram_designer")
+        assert frame_["message"] == "Generating visuals", mode

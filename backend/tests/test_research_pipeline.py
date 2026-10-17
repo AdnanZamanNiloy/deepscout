@@ -401,3 +401,24 @@ def test_relevance_gate_passes_single_page():
     rc = _conductor()
     pages = [{"url": "http://a.test", "title": "X", "raw_content": "anything"}]
     assert rc._filter_by_relevance(pages) == pages
+
+
+def test_fast_mode_does_not_buy_a_second_fact_check_round():
+    """Quick mode answers in one pass; standard/deep keep the revision round.
+
+    A fact-check objection costs a FULL second round — narrative_writer
+    re-drafts (17-20s on the measured baseline) and evidence_auditor re-audits
+    (7-11s). That round is what pushed fast-mode runs to 132-175s. The ceiling
+    is 0 for quick, which `route_evidence_audit` reads as "the auditor never
+    gets to reject" (one pass, no revision); the standing objection is still
+    reported because the notes stay on the state.
+    """
+    from app.research.runner import ResearchRunner
+
+    def task_for(mode: str) -> dict:
+        runner = ResearchRunner(llm=_FakeLLM(), search_client=None, query="q", mode=mode)
+        return runner._build_task()
+
+    assert task_for("quick")["max_fact_check_revisions"] == 0
+    assert task_for("standard")["max_fact_check_revisions"] == 1
+    assert task_for("deep")["max_fact_check_revisions"] == 1

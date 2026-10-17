@@ -262,18 +262,30 @@ export function deriveAgents(run) {
   const stages = run.stages || {};
   const stageKeys = Object.keys(stages);
 
+  // Fast mode produces no figures at all (the backend skips DiagramDesigner
+  // by design), so the rail must not show a stage that never runs — a
+  // permanently "Queued" box is a lie about the pipeline for that mode.
+  const visible = run.mode === "quick"
+    ? PIPELINE.filter((stage) => stage.key !== "diagram_designer")
+    : PIPELINE;
+
   // The stage-review gate is genuinely running whenever the user is being asked
   // to approve, which is a state the old ladder had no way to express.
   const awaitingReview = !!run.planReview;
 
   // Fallback ladder, only consulted when no lifecycle frames exist at all.
-  let reached = 0;
-  if (sources) reached = 1;
-  if (planned) reached = 2;
-  if (planned) reached = 3;
-  if (claims) reached = 4;
-  if (reviews) reached = 6;
-  if (done) reached = 9;
+  // Expressed as the stage currently being worked on (1-based, 0 = none), the
+  // same meaning the integer ladder had: everything before it is done, it is
+  // active, everything after is queued. Keyed by stage name rather than a row
+  // index so a mode that HIDES a stage cannot shift the meaning of the rest.
+  let activeKey = "";
+  if (sources) activeKey = "pathfinder";
+  if (planned) activeKey = "review_gate";
+  if (claims) activeKey = "scout_swarm";
+  if (reviews) activeKey = "evidence_auditor";
+  const activeIndex = activeKey
+    ? visible.findIndex((stage) => stage.key === activeKey) + 1
+    : 0;
 
   const hasLifecycle = stageKeys.length > 0 || awaitingReview;
 
@@ -282,7 +294,7 @@ export function deriveAgents(run) {
     architect: planned ? `${planned} section${planned === 1 ? "" : "s"} planned` : "deriving the outline",
     review_gate: awaitingReview
       ? "awaiting plan review"
-      : (stages.review_gate?.status === "done" || reached >= 4 || done
+      : (stages.review_gate?.status === "done" || activeIndex >= 3 || done
         ? "outline accepted"
         : "checking the outline"),
     scout_swarm: claims ? `${claims} claim${claims === 1 ? "" : "s"} extracted` : "researching each section",
@@ -292,7 +304,7 @@ export function deriveAgents(run) {
     report_assembler: done ? "report delivered" : "assembling the report",
   };
 
-  return PIPELINE.map((stage, i) => {
+  return visible.map((stage, i) => {
     const index = i + 1;
     const live_status = stages[stage.key]?.status;
 
@@ -307,9 +319,14 @@ export function deriveAgents(run) {
       // The lifecycle is authoritative once present: a stage with no frame has
       // not started, so it is queued — not "done because a later artifact exists".
       status = "waiting";
+    } else if (done) {
+      // A finished run marks every remaining stage done (the old ladder used
+      // "reached = one past the end"). Quick mode must still show a complete
+      // rail even though it has no diagram stage.
+      status = "done";
     } else {
-      const isDone = reached > index;
-      status = isDone ? "done" : reached === index && live ? "active" : "waiting";
+      const isDone = activeIndex > index;
+      status = isDone ? "done" : activeIndex === index && live ? "active" : "waiting";
     }
 
     return {

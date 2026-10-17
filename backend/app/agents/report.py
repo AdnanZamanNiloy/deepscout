@@ -330,10 +330,26 @@ class DiagramDesigner:
         return await self.llm.create_chat_completion(messages=prompt)
 
     async def run(self, research_state: Dict[str, Any]) -> Dict[str, Any]:
-        # The diagram is presentation only — it adds no evidence. When the
-        # run's ladder says there is no room left before the time budget, skip
-        # it rather than spend a model call the report does not need.
+        # The diagram is presentation only — it adds no evidence. Two ways it
+        # does not run, and they must NOT be reported the same way:
+        #
+        #  * OFF BY DESIGN (quick mode). Fast mode trades the diagram for
+        #    latency as a product decision, so skipping it is not a degraded
+        #    run — recording a fallback here would put "the model response for
+        #    ladder:diagram was unavailable" in the banner of every fast run,
+        #    which is false: nothing was unavailable, the feature is off.
+        #  * SHED FOR TIME (any mode). The ladder found no room before the
+        #    budget; that IS a degradation and is recorded as one.
         ladder = get_run_ladder()
+        mode = getattr(ladder, "mode", "") if ladder is not None else ""
+        if mode == "quick":
+            if self.sink:
+                await stream_output(
+                    "logs", "visualizing",
+                    "Fast mode skips figures (presentation only) to keep the answer quick.",
+                    self.sink,
+                )
+            return {"diagrams": []}
         if ladder is not None and not ladder.evaluate(
             ["diagram_designer", "report_assembler"], capability="diagram"
         ):
@@ -341,7 +357,7 @@ class DiagramDesigner:
             if self.sink:
                 await stream_output(
                     "logs", "visualizing",
-                    "Skipping visuals to stay within the time budget.", self.sink,
+                    "Skipping visuals to stay within the time budget.", self.sink
                 )
             return {"diagrams": []}
         if self.sink:
@@ -614,7 +630,9 @@ class ReportAssembler:
         date_value = research_state.get("date") or ""
         # ``headers["date"]`` is the literal label "Date", not a value; only
         # render the line when a real date exists. The value is already
-        # human-readable ("11 October 2026"), so no ambiguous numeric format.
+        # human-readable ("17 October 2026, 14:32 +06"), so no ambiguous
+        # numeric format; the time is included because a report read later
+        # needs to know when within that day it was produced.
         date_line = f"*{date_value}*\n" if str(date_value).strip() else ""
 
         def labeled_section(label_key: str, value) -> str:

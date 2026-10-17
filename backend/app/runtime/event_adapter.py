@@ -50,8 +50,13 @@ class PipelineEventAdapter:
     run) avoids module-level state (AGENTS.md 4.3).
     """
 
-    def __init__(self, query: str):
+    def __init__(self, query: str, mode: str = ""):
         self.query = query
+        # Fast mode skips figure generation by design; the stage still exists in
+        # the graph (it is the node that decides to skip), so its one-shot line
+        # must describe what actually happens rather than announce work it will
+        # not do.
+        self.mode = str(mode or "").strip().lower()
         self._emitted_plan = False
         # Two dedupe sets on purpose: `stage_frame` claims a node name when it
         # announces the stage, and the retrieval notes below claim the SAME node
@@ -177,6 +182,9 @@ class PipelineEventAdapter:
         if not node or node in self._emitted_stages:
             return None
         self._emitted_stages.add(node)
+        if node == "diagram_designer" and self.mode == "quick":
+            # Truthful label: the node runs but produces no figures in fast mode.
+            return frame("progress", message="Skipping figures in fast mode")
         label = _STAGE_LABELS.get(node, node)
         return frame("progress", message=label)
 

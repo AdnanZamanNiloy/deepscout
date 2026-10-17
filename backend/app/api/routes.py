@@ -359,7 +359,7 @@ async def stream_research(request: Request, payload: ResearchRequest) -> Streami
                 run_id=request_id,
                 hitl=payload.hitl,
             )
-            adapter = PipelineEventAdapter(payload.query)
+            adapter = PipelineEventAdapter(payload.query, str(payload.mode or "standard"))
 
             try:
                 # Hard wall-clock cap for THIS mode (quick fails fast, deep is
@@ -659,7 +659,7 @@ async def resume_research(run_id: str, request: Request) -> StreamingResponse:
                 mode=resume_mode,
                 headers={},
             )
-            adapter = PipelineEventAdapter(query)
+            adapter = PipelineEventAdapter(query, resume_mode)
             try:
                 async with asyncio.timeout(mode_timeout_seconds(settings, resume_mode)):
                     async for pipeline_event in runner.run():

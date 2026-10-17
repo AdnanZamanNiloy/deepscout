@@ -193,7 +193,14 @@ class ResearchRunner:
             "query": self.query,
             "max_sections": sections,
             "max_plan_revisions": 1 if self.mode == "quick" else 2,
-            "max_fact_check_revisions": 1,
+            # A fact-check objection buys a FULL second round: narrative_writer
+            # re-drafts (17-20s) and evidence_auditor re-audits (7-11s). On the
+            # measured baseline that round is the difference between a ~100s
+            # quick run and the 132-175s it was actually taking. Fast mode
+            # answers in one pass and reports the standing objection instead;
+            # route_evidence_audit accepts a draft with `>= max` revisions and
+            # the notes stay on the state, so nothing is silently dropped.
+            "max_fact_check_revisions": 0 if self.mode == "quick" else 1,
             "max_draft_revisions": 1 if self.mode == "quick" else 2,
             "follow_guidelines": False,
             "guidelines": "",

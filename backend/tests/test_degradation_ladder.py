@@ -128,8 +128,9 @@ def test_shed_reasons_name_every_shed_capability():
 
 
 def test_the_ladder_rides_the_run_and_sheds_are_degradations():
+    """In a mode that HAS a diagram, shedding it for time is a degradation."""
     s = Settings(groq_api_key="k", database_url=":memory:", _env_file=None)
-    usage = start_run_usage("ladder-1", s, mode="quick")
+    usage = start_run_usage("ladder-1", s, mode="standard")
 
     assert get_run_ladder() is usage.ladder, "the run must expose its own ladder"
     # Force the run far past its soft limit and let the diagram agent decide.
@@ -147,6 +148,45 @@ def test_the_ladder_rides_the_run_and_sheds_are_degradations():
     assert out["diagrams"] == []
     assert "ladder:diagram" in take_fallbacks()
     assert fallback_reasons().get("ladder:diagram")
+
+
+class _CaptureSink:
+    def __init__(self):
+        # stream_output emits (type, content_key, output_message, metadata).
+        self.events = []
+
+    async def emit(self, kind, content, output, metadata=None):
+        self.events.append((kind, str(content), str(output), metadata))
+
+
+def test_quick_mode_skips_the_diagram_by_design_not_as_a_degradation():
+    """Fast mode has no figures at all — so nothing was 'unavailable'.
+
+    Reporting ladder:diagram here put "the model response for ladder:diagram
+    was unavailable or unusable" in the banner of EVERY fast run, which is
+    false: no call was attempted, the feature is off. A by-design skip must
+    not read as a degraded run.
+    """
+    s = Settings(groq_api_key="k", database_url=":memory:", _env_file=None)
+    usage = start_run_usage("ladder-quick", s, mode="quick")
+    # Even far past the soft limit, quick mode reports no diagram degradation:
+    # it is off by design, not shed for time.
+    usage.ladder.started_at -= 10_000
+
+    from app.agents.report import DiagramDesigner
+
+    class _LLM:
+        async def create_chat_completion(self, **kw):  # pragma: no cover - must not run
+            raise AssertionError("quick mode must not call the diagram model")
+
+    sink = _CaptureSink()
+    agent = DiagramDesigner(_LLM(), cfg=None, sink=sink)
+    out = asyncio.run(agent.run({"task": {}}))
+
+    assert out["diagrams"] == []
+    assert "ladder:diagram" not in take_fallbacks()
+    said = " ".join(output for _, _, output, _ in sink.events).lower()
+    assert "fast mode" in said, "the skip is announced, not silent"
 
 
 def test_without_a_run_optional_work_proceeds():

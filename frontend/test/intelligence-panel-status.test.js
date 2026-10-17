@@ -214,3 +214,45 @@ test("a restored run with no lifecycle frames still falls back to artifacts", as
   assert.equal(statusOf(agents, "Pathfinder"), "done");
   assert.notEqual(statusOf(agents, "Report Assembler"), "done");
 });
+
+test("fast mode has no Diagram Designer row at all", async () => {
+  const { deriveAgents } = await loadPanel();
+  // The backend skips DiagramDesigner by design in quick mode, so the rail
+  // must not show a stage that never runs. A permanently "Queued" box would
+  // misrepresent the pipeline for that mode.
+  const agents = deriveAgents(run({ mode: "quick", plan: ["A"], snippets: 10 }));
+  const names = agents.map((a) => a.name);
+  assert.equal(names.includes("Diagram Designer"), false, "quick mode runs no diagram stage");
+  assert.equal(agents.length, 7, "seven stages remain");
+  // The rest of the ladder is unchanged.
+  assert.equal(names[0], "Pathfinder");
+  assert.equal(names[names.length - 1], "Report Assembler");
+});
+
+test("standard mode still shows the Diagram Designer row", async () => {
+  const { deriveAgents } = await loadPanel();
+  const agents = deriveAgents(run({ mode: "standard", plan: ["A"], snippets: 10 }));
+  assert.equal(agents.map((a) => a.name).includes("Diagram Designer"), true);
+  assert.equal(agents.length, 8);
+});
+
+test("a finished fast run marks every remaining stage done", async () => {
+  const { deriveAgents } = await loadPanel();
+  // Without the diagram stage the old "reached one past the end" arithmetic
+  // would leave the last row queued on a completed run.
+  const agents = deriveAgents(run({
+    mode: "quick", plan: ["A", "B"], snippets: 40,
+    findings: [{ claim: "c", verified: true }], verifiedCount: 1, done: true,
+  }));
+  assert.equal(agents.every((a) => a.status === "done"), true);
+});
+
+test("fast mode fallback ladder still advances while live", async () => {
+  const { deriveAgents } = await loadPanel();
+  // Archived sessions carry no stage frames; the artifact ladder must still
+  // show progress, and hiding the diagram must not shift which row is active.
+  const agents = deriveAgents(run({ mode: "quick", plan: ["A", "B"] }));
+  assert.equal(statusOf(agents, "Pathfinder"), "done");
+  assert.equal(statusOf(agents, "Review Gate"), "active");
+  assert.equal(statusOf(agents, "Report Assembler"), "waiting");
+});
