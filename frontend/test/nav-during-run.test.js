@@ -118,11 +118,30 @@ test("the composer accepts text while a run streams", async () => {
 test("sending stays blocked while a run streams", async () => {
   const composer = await readFile(new URL("../src/components/Composer.jsx", import.meta.url), "utf8");
   // canSend gates the button, submit gates Enter and clicks.
-  assert.match(composer, /const canSend = value\.trim\(\)\.length >= 5 && !running;/);
-  assert.match(composer, /if \(v\.length < 5 \|\| running\) return;/);
+  assert.match(composer, /const canSend = [^;]*!demoLocked && value\.trim\(\)\.length >= 5 && !running;/);
+  assert.match(composer, /if \(demoLocked \|\| v\.length < 5 \|\| running\) return;/);
   // While running, Enter must fall through to a newline rather than being
   // preventDefault'd into doing nothing at all.
-  assert.match(composer, /if \(running\) return;\s*\n\s*e\.preventDefault\(\);/);
+  assert.match(composer, /if \(running \|\| demoLocked\) return;\s*\n\s*e\.preventDefault\(\);/);
+});
+
+test("the static demo cannot send at all", async () => {
+  /* A demo has no backend, so a typed question can only be answered with a
+   * RECORDED run about something else — true, and about the wrong thing. The
+   * button is therefore disabled for the whole demo, not merely while a run is
+   * streaming, and all three send paths (button, click handler, Enter) are
+   * gated so none of them can slip past. */
+  const composer = await readFile(new URL("../src/components/Composer.jsx", import.meta.url), "utf8");
+  assert.match(composer, /import \{ IS_DEMO \} from "\.\.\/demo"/, "the composer reads the demo flag");
+  assert.match(composer, /const demoLocked = IS_DEMO;/);
+  assert.match(composer, /const canSend = !demoLocked &&/, "the button is disabled in a demo");
+  assert.match(composer, /if \(demoLocked \|\| v\.length < 5 \|\| running\) return;/,
+    "the submit handler refuses in a demo");
+  assert.match(composer, /if \(running \|\| demoLocked\) return;/,
+    "Enter falls through to a newline instead of sending");
+  // The visitor is told why, rather than meeting a dead button with no reason.
+  assert.match(composer, /Static demo — no backend/);
+  assert.match(composer, /Sending is disabled in the static demo/);
 });
 
 test("a queued draft says why it cannot be sent", async () => {

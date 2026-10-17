@@ -28,7 +28,7 @@ const srcDemo = join(here, "..", "src", "demo");
  * files sharing one shim dir race on the writes. Distinct dirs per file. */
 const outDir = join(here, ".demo-build", "fixtures");mkdirSync(outDir, { recursive: true });
 
-for (const name of ["conversations", "sessions", "index"]) {
+for (const name of ["conversations", "sessions", "index", "runs"]) {
   let src = readFileSync(join(srcDemo, `${name}.js`), "utf8");
   src = src.replace(/from "\.\/([a-z]+)"/g, 'from "./$1.js"');
   src = src.replace(/import\.meta\.env/g, '({ VITE_DEMO: "1" })');
@@ -40,23 +40,32 @@ const VALID_NODES = new Set([
   "narrative_writer", "evidence_auditor", "diagram_designer", "report_assembler",
 ]);
 
-/* The ONLY frame types the current pipeline emits. Anything else (intent,
- * route, direct_answer, search_progress, search_query, findings) is from the
- * removed pre-consolidation engine and must not appear. */
+/* The ONLY frame types the current pipeline emits. `findings` IS one of them —
+ * it carries the annotated claims once at the end of a run. An earlier version
+ * of this fixture set listed `findings` as a removed pre-consolidation type and
+ * emitted none, so the demo's live run showed an empty evidence panel while the
+ * real product filled it. Anything outside this set (intent, route,
+ * direct_answer, search_progress, search_query) is from the removed engine. */
 const VALID_FRAME_TYPES = new Set([
-  "progress", "stage", "plan", "plan_review", "critic", "final_report", "error",
+  "progress", "stage", "plan", "plan_review", "critic", "findings",
+  "final_report", "error",
 ]);
 
 /* The real flat signals a final_report.confidence_breakdown carries. */
-const CONFIDENCE_SIGNALS = [
+/* The signals a real recorded breakdown carries. Base weights in
+ * app/core/confidence.py are 7; `axis_coverage` and `claim_evidence_quality`
+ * are added conditionally, so a recording may hold either subset — the test
+ * asserts every key is a real signal and every value is a number, not that the
+ * set is fixed. Hard-coding the count is what made this drift. */
+const CONFIDENCE_SIGNALS = new Set([
   "source_quality", "source_diversity", "citation_coverage",
   "claim_verification_strength", "cross_source_agreement", "freshness",
-  "critic_survival", "claim_evidence_quality",
-];
+  "critic_survival", "axis_coverage", "claim_evidence_quality",
+]);
 
-const { CONVERSATIONS, DEFAULT_QUERY, DEMO_STARTERS, findConversation } =
+const { CONVERSATIONS, DEFAULT_QUERY, DEMO_STARTERS, findConversation, DEMO_RUN_IDS } =
   await import(join(outDir, "conversations.js"));
-const { DEMO_SESSIONS, DEMO_RUN_IDS, demoSessionDetail, demoTrace } =
+const { DEMO_SESSIONS, demoSessionDetail, demoTrace } =
   await import(join(outDir, "sessions.js"));
 
 test("there is a meaningful set of demo conversations", () => {
@@ -115,11 +124,19 @@ test("every node that starts also finishes (the rail cannot be left spinning)", 
   }
 });
 
-test("declared source count matches the final frame", () => {
+test("the declared source count is the run's REAL count, and the array is a disclosed subset", () => {
   for (const c of CONVERSATIONS) {
     const final = c.frames.find((f) => f.type === "final_report");
-    assert.equal(final.source_count, c.sourceCount, `"${c.query}" source_count`);
+    /* `source_count` is what the run really retrieved and must not be quietly
+     * reduced to match the rows the generator kept — the panel shows this
+     * number, and understating it would be the demo lying about the run. The
+     * kept rows are a bounded, disclosed subset (bench/make_demo_fixtures.py). */
+    assert.equal(typeof final.source_count, "number", `"${c.query}" source_count is a number`);
+    assert.ok(final.source_count > 0);
     assert.equal(typeof final.confidence, "number");
+    const trace = demoTrace(c.runId);
+    assert.ok(trace.sources.length <= final.source_count,
+      "kept source rows can never exceed the real count");
   }
 });
 
@@ -172,11 +189,17 @@ test("sidebar sessions, details and traces agree on identity", () => {
   });
 });
 
-test("trace critic_reviews carry the real confidence breakdown the panel reads", () => {
+test("critic_reviews, when the run recorded any, carry the nested breakdown the panel reads", () => {
+  /* Several featured runs recorded NO critic review — the fact-checker accepted
+   * the draft, so nothing was written. That is the honest state and the demo
+   * must not invent reviews to fill the panel: a fabricated review is a
+   * fabricated verdict. When a run DID record one, it must carry the real
+   * confidence object the panel reads ({overall, signals, weights}). */
+  let withReviews = 0;
   for (const runId of DEMO_RUN_IDS) {
     const trace = demoTrace(runId);
-    assert.ok(trace.critic_reviews.length > 0);
     for (const rev of trace.critic_reviews) {
+      withReviews += 1;
       const b = rev.breakdown;
       assert.equal(typeof b.overall, "number", "breakdown.overall is what the panel shows");
       assert.ok(b.signals && typeof b.signals === "object");
@@ -184,6 +207,16 @@ test("trace critic_reviews carry the real confidence breakdown the panel reads",
       assert.ok(b.weights && typeof b.weights === "object");
     }
   }
+  // Every review row must be a real one: the generator never authors them, so a
+  // run either has the rows the backend wrote or none at all.
+  for (const runId of DEMO_RUN_IDS) {
+    const trace = demoTrace(runId);
+    for (const rev of trace.critic_reviews) {
+      assert.equal(typeof rev.iteration, "number");
+      assert.ok(rev.created_at === undefined || typeof rev.created_at === "string");
+    }
+  }
+  assert.ok(withReviews >= 0, "reviews are optional; none is a valid recorded state");
 });
 
 test("the replay frames exclude the terminal report (it is rendered separately)", () => {

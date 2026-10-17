@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { MODE_META } from "../lib";
+import { IS_DEMO } from "../demo";
 import { IconArrowUp, IconCheck, IconChevronDown, IconStop } from "./icons";
 
 const MODES = ["quick", "standard", "deep"];
@@ -73,11 +74,17 @@ export default function Composer({
     }
   }, [value]);
 
-  const canSend = value.trim().length >= 5 && !running;
+  /* A static demo cannot answer a new question: there is no backend behind it.
+   * Sending is disabled so a visitor is never handed a RECORDED run in reply to
+   * a question they actually asked — the answer would be true and about
+   * something else, which is worse than no answer. The rail's real chats remain
+   * fully explorable, so the demo still shows the product doing real work. */
+  const demoLocked = IS_DEMO;
+  const canSend = !demoLocked && value.trim().length >= 5 && !running;
 
   const submit = () => {
     const v = value.trim();
-    if (v.length < 5 || running) return;
+    if (demoLocked || v.length < 5 || running) return;
     onSubmit(v);
   };
 
@@ -93,7 +100,7 @@ export default function Composer({
             // While a run is streaming the draft cannot be sent, so Enter must
             // not be swallowed — it inserts a newline and the draft keeps
             // building. Only intercept it when a send will actually happen.
-            if (running) return;
+            if (running || demoLocked) return;
             e.preventDefault();
             submit();
           }
@@ -101,7 +108,11 @@ export default function Composer({
         placeholder={
           running
             ? "Type your next question… stop the run to send"
-            : placeholder || "Ask a research question…"
+            : demoLocked
+              /* Say what is really possible rather than inviting a send that
+                 cannot happen. */
+              ? "Open a recorded research chat on the left…"
+              : placeholder || "Ask a research question…"
         }
         /* Editable while a run streams. Disabling the field stopped the user
            drafting a follow-up while waiting — they could only watch. Sending
@@ -109,7 +120,11 @@ export default function Composer({
            and silently queue behind the active run. */
         aria-label="Research question"
       />
-      {running && value.trim().length >= 5 ? (
+      {demoLocked && !running ? (
+        <p className="composer-hint" role="status">
+          Static demo — no backend, so only the recorded chats can be opened.
+        </p>
+      ) : running && value.trim().length >= 5 ? (
         <p className="composer-hint" role="status">
           Stop the current run to send this question.
         </p>
@@ -185,7 +200,9 @@ export default function Composer({
             className="send-btn"
             onClick={submit}
             disabled={!canSend}
-            title={canSend ? "Send (Enter)" : "Type at least 5 characters"}
+            title={canSend ? "Send (Enter)"
+              : demoLocked ? "Sending is disabled in the static demo"
+                : "Type at least 5 characters"}
             aria-label="Send research question"
           >
             <IconArrowUp size={15} />

@@ -21,7 +21,7 @@ const srcDemo = join(here, "..", "src", "demo");
 const outDir = join(here, ".demo-build", "interceptor");
 mkdirSync(outDir, { recursive: true });
 
-for (const name of ["conversations", "sessions", "index"]) {
+for (const name of ["conversations", "sessions", "index", "runs"]) {
   let src = readFileSync(join(srcDemo, `${name}.js`), "utf8");
   src = src.replace(/from "\.\/([a-z]+)"/g, 'from "./$1.js"');
   src = src.replace(/import\.meta\.env/g, '({ VITE_DEMO: "1" })');
@@ -42,6 +42,7 @@ globalThis.localStorage = {
 };
 
 const { installDemoFetch, IS_DEMO, setDemoSpeed } = await import(join(outDir, "index.js"));
+const { DEMO_SESSIONS } = await import(join(outDir, "sessions.js"));
 // Replay instantly: the authored ~10s of pauses are a viewing detail, not a
 // behaviour under test. The abort test re-enables a small real delay below.
 setDemoSpeed(0.001);
@@ -61,7 +62,11 @@ test("GET /api/sessions returns the demo sidebar", async () => {
 });
 
 test("GET /api/sessions/{id} returns an ordered chat history", async () => {
-  const res = await demoFetch("/api/sessions/demo-session-what-is-rag");  const body = await res.json();
+  // The id is the run's REAL session id, read from the fixture — a hardcoded id
+  // here would silently stop exercising the handler the moment the recordings
+  // are re-recorded.
+  const res = await demoFetch(`/api/sessions/${DEMO_SESSIONS[0].id}`);
+  const body = await res.json();
   assert.equal(body.messages[0].role, "user");
   assert.equal(body.messages[1].role, "run");
 });
@@ -72,10 +77,13 @@ test("an unknown session id returns 404, not a fabricated success", async () => 
 });
 
 test("GET /api/research/{id}/trace returns a readable trace", async () => {
-  const res = await demoFetch("/api/research/demo-run-what-is-rag/trace");
+  const res = await demoFetch(`/api/research/${DEMO_SESSIONS[0].run_ids[0]}/trace`);
   const body = await res.json();
   assert.ok(Array.isArray(body.claims) && body.claims.length);
   assert.ok(body.final_report.report_markdown.length > 100);
+  // The trace's findings must survive the round trip, or a replayed run opens
+  // with an empty evidence panel.
+  assert.ok(Array.isArray(body.frames) && body.frames.some((f) => f.type === "findings"));
 });
 
 test("POST /api/research/stream replays NDJSON frames in order", async () => {

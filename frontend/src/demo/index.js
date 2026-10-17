@@ -27,7 +27,7 @@
  */
 
 import { CONVERSATIONS, findConversation } from "./conversations";
-import { DEMO_RUN_IDS, DEMO_SESSIONS, demoSessionDetail, demoTrace } from "./sessions";
+import { DEMO_SESSIONS, demoSessionDetail, demoTrace } from "./sessions";
 
 const DEMO_ACTIVE =
   (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_DEMO === "1")
@@ -68,7 +68,9 @@ function streamResponse(frames, signal) {
         for (const raw of frames) {
           if (signal?.aborted) break;
           const { delay = 500, ...rest } = raw;
-          const frame = { ts: Date.now(), ...rest };
+          // ts LAST: the recorded frames carry no ts, but if one ever does it
+          // must not win and paint a real run's clock onto this playback.
+          const frame = { ...rest, ts: Date.now() };
           await sleep(Math.round(delay * speed), signal);
           if (signal?.aborted) break;
           controller.enqueue(encoder.encode(JSON.stringify(frame) + "\n"));
@@ -128,12 +130,24 @@ async function handleApi(pathname, search, init) {
   /* Start a research run — the streaming endpoint. */
   if (pathname === "/api/research/stream" && method === "POST") {
     const convo = pickConversation(body.query);
-    const requestId = convo.query === body.query ? suggestRunId(body.query) : `demo-run-${Date.now()}`;
-    const frames = convo.frames.map((f, i) => (
-      i === 0
-        ? { type: "progress", request_id: requestId, session_id: body.session_id || "demo-session", message: "Query received", delay: f.delay }
-        : f
-    ));
+    const typed = String(body.query || "").trim().toLowerCase();
+    const exact = convo.query.trim().toLowerCase() === typed;
+    /* An exact question replays its own recording under its own run id, so the
+     * streamed run and the sidebar row are one identity. */
+    const requestId = exact ? convo.runId : `demo-recording-${Date.now()}`;
+    const sessionId = body.session_id || convo.sessionId;
+    const frames = convo.frames.map((f, i) => {
+      const stamped = { ...f, request_id: requestId, session_id: sessionId };
+      /* A typed question that matches no recording is answered by SOME real
+       * run. That must be visible in the stream, not hidden: the first line
+       * says which recording is playing, so no visitor reads it as a fresh
+       * answer to their question. The rest of the frame is left exactly as
+       * recorded — only this message is ours. */
+      if (i === 0 && !exact && typeof stamped.message === "string") {
+        stamped.message = `Demo: no recording for that question — replaying "${truncateForNotice(convo.query)}"`;
+      }
+      return stamped;
+    });
     return streamResponse(frames, init?.signal);
   }
 
@@ -185,18 +199,14 @@ async function handleApi(pathname, search, init) {
   return jsonResponse({ detail: `No demo fixture for ${method} ${pathname}` }, 404);
 }
 
-function safeParse(raw) {
-  try { return JSON.parse(raw); } catch { return {}; }
+/* Keep the disclosure to one readable line. */
+function truncateForNotice(text, max = 72) {
+  const t = String(text || "");
+  return t.length > max ? `${t.slice(0, max - 1)}\u2026` : t;
 }
 
-/* Reuse the fixture's own run id for a known query, so a freshly streamed run
- * and the sidebar's replay row share one identity. Unknown queries get a
- * timestamp id (their run has no persisted trace to replay). */
-function suggestRunId(query) {
-  const idx = CONVERSATIONS.findIndex(
-    (c) => c.query.trim().toLowerCase() === String(query || "").trim().toLowerCase(),
-  );
-  return idx === -1 ? `demo-run-${Date.now()}` : DEMO_RUN_IDS[idx];
+function safeParse(raw) {
+  try { return JSON.parse(raw); } catch { return {}; }
 }
 
 /* Install the fetch interceptor. Idempotent and guarded — a failure here
